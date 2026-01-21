@@ -40,9 +40,10 @@ module Teems
 
       def list_chats
         api = runner.chats_api
-        response = api.list(limit: @options[:limit])
+        response = with_token_refresh { api.list(limit: @options[:limit]) }
 
-        chats = response['value'] || []
+        # ng.msg returns 'conversations', Graph API returns 'value'
+        chats = response['conversations'] || response['value'] || []
 
         if chats.empty?
           puts 'No chats found'
