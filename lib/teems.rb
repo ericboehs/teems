@@ -37,6 +37,7 @@ module Teems
     autoload :TokenExtractor, 'teems/services/token_extractor'
     autoload :TokenRefresher, 'teems/services/token_refresher'
     autoload :CacheStore, 'teems/services/cache_store'
+    autoload :TeamsUrlParser, 'teems/services/teams_url_parser'
   end
 
   # Output formatters for messages and terminal output

@@ -13,12 +13,15 @@ module Teems
 
         target = positional_args.first
         unless target
-          error('Target required. Specify a channel ID or chat ID.')
+          error('Target required. Specify a channel ID, chat ID, or Teams URL.')
           puts
-          puts 'Usage: teems messages <channel-id|chat-id>'
+          puts 'Usage: teems messages <channel-id|chat-id|teams-url>'
           puts 'Use "teems channels" or "teems chats" to find IDs.'
           return 1
         end
+
+        target = parse_teams_url_if_needed(target)
+        return 1 unless target
 
         fetch_messages(target)
       end
@@ -43,9 +46,10 @@ module Teems
             teems messages <target> [options]
 
           #{output.bold('ARGUMENTS:')}
-            target           Chat ID (thread.v2 format)
+            target           Chat ID, channel ID, or Teams message URL
 
           #{output.bold('OPTIONS:')}
+            -t, --team ID    Team ID (required for channel messages)
             -n, --limit N    Number of messages (default: 20)
             -v, --verbose    Show debug output
             -q, --quiet      Suppress output
@@ -58,10 +62,30 @@ module Teems
           #{output.bold('EXAMPLES:')}
             teems messages 19:abc123@thread.v2         # Read chat messages
             teems messages 19:abc123@thread.v2 -n 50   # Show 50 messages
+            teems messages "https://teams.microsoft.com/l/message/19:abc@thread.v2/123?context=..."
         HELP
       end
 
       private
+
+      def parse_teams_url_if_needed(target)
+        return target unless looks_like_url?(target)
+
+        result = Services::TeamsUrlParser.parse(target)
+        unless result
+          error('Invalid Teams URL format')
+          return nil
+        end
+
+        debug("Parsed URL: conversation=#{result.conversation_id}, team=#{result.team_id}")
+        @options[:team_id] = result.team_id if result.team_id
+
+        result.conversation_id
+      end
+
+      def looks_like_url?(str)
+        str&.start_with?('https://')
+      end
 
       def fetch_messages(target)
         api = runner.messages_api
