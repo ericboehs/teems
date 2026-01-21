@@ -3,12 +3,26 @@
 require 'net/http'
 require 'json'
 require 'uri'
+require 'openssl'
 
 module Teems
   module Services
     # Refreshes the skypeToken by exchanging the skype_spaces_token via authsvc
     class TokenRefresher
       AUTHSVC_URL = 'https://teams.microsoft.com/api/authsvc/v1.0/authz'
+
+      # Network errors that are expected during token exchange
+      NETWORK_ERRORS = [
+        SocketError,
+        Errno::ECONNREFUSED,
+        Errno::ECONNRESET,
+        Errno::ETIMEDOUT,
+        Errno::EHOSTUNREACH,
+        Net::OpenTimeout,
+        Net::ReadTimeout,
+        OpenSSL::SSL::SSLError,
+        JSON::ParserError
+      ].freeze
 
       def initialize(token_store:, output: nil)
         @token_store = token_store
@@ -35,6 +49,9 @@ module Teems
           log('Token refresh failed - skype_spaces_token may be expired')
           false
         end
+      rescue *NETWORK_ERRORS => e
+        log("Token exchange error: #{e.class}: #{e.message}")
+        false
       end
 
       private
@@ -60,9 +77,6 @@ module Teems
           log("Token exchange failed: HTTP #{response.code}")
           nil
         end
-      rescue StandardError => e
-        log("Token exchange error: #{e.message}")
-        nil
       end
 
       def log(message)

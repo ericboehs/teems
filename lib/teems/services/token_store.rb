@@ -45,6 +45,7 @@ module Teems
         data['skype_token'] = skype_token
         data['skype_token_refreshed_at'] = Time.now.iso8601
         File.write(tokens_file, JSON.pretty_generate(data))
+        File.chmod(0o600, tokens_file)
         true
       end
 

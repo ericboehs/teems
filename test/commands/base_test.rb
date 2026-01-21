@@ -269,3 +269,151 @@ class BaseCommandOutputTest < Minitest::Test
     end
   end
 end
+
+class WithTokenRefreshTest < Minitest::Test
+  class RefreshTestCommand < Teems::Commands::Base
+    attr_accessor :call_count, :should_fail_first
+
+    def execute
+      0
+    end
+
+    def test_with_token_refresh(&block)
+      with_token_refresh(&block)
+    end
+  end
+
+  def test_with_token_refresh_yields_block_on_success
+    with_temp_config do
+      runner = test_runner
+      cmd = RefreshTestCommand.new([], runner: runner)
+      called = false
+
+      cmd.test_with_token_refresh { called = true }
+
+      assert called
+    end
+  end
+
+  def test_with_token_refresh_returns_block_result
+    with_temp_config do
+      runner = test_runner
+      cmd = RefreshTestCommand.new([], runner: runner)
+
+      result = cmd.test_with_token_refresh { 'success' }
+
+      assert_equal 'success', result
+    end
+  end
+
+  def test_with_token_refresh_raises_non_token_errors
+    with_temp_config do
+      runner = test_runner
+      cmd = RefreshTestCommand.new([], runner: runner)
+
+      assert_raises(Teems::ApiError) do
+        cmd.test_with_token_refresh { raise Teems::ApiError, 'Some other API error' }
+      end
+    end
+  end
+
+  def test_with_token_refresh_attempts_refresh_on_invalid_token
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'test-auth',
+                          'skype_token' => 'test-skype',
+                          'skype_spaces_token' => 'spaces-token'
+                        })
+      runner = Teems::Runner.new(output: test_output)
+      cmd = RefreshTestCommand.new([], runner: runner)
+      call_count = 0
+
+      # Mock the refresh to succeed but block still fails
+      runner.define_singleton_method(:refresh_tokens) { true }
+
+      assert_raises(Teems::ApiError) do
+        cmd.test_with_token_refresh do
+          call_count += 1
+          raise Teems::ApiError, 'Invalid token or session expired'
+        end
+      end
+
+      # Should have been called twice (initial + retry)
+      assert_equal 2, call_count
+    end
+  end
+
+  def test_with_token_refresh_attempts_refresh_on_expired_message
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'test-auth',
+                          'skype_token' => 'test-skype',
+                          'skype_spaces_token' => 'spaces-token'
+                        })
+      runner = Teems::Runner.new(output: test_output)
+      cmd = RefreshTestCommand.new([], runner: runner)
+      call_count = 0
+
+      runner.define_singleton_method(:refresh_tokens) { true }
+
+      assert_raises(Teems::ApiError) do
+        cmd.test_with_token_refresh do
+          call_count += 1
+          raise Teems::ApiError, 'Token expired'
+        end
+      end
+
+      assert_equal 2, call_count
+    end
+  end
+
+  def test_with_token_refresh_reraises_if_refresh_fails
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'test-auth',
+                          'skype_token' => 'test-skype'
+                        })
+      output = test_output
+      runner = Teems::Runner.new(output: output)
+      cmd = RefreshTestCommand.new([], runner: runner)
+      call_count = 0
+
+      runner.define_singleton_method(:refresh_tokens) { false }
+
+      assert_raises(Teems::ApiError) do
+        cmd.test_with_token_refresh do
+          call_count += 1
+          raise Teems::ApiError, 'Invalid token'
+        end
+      end
+
+      # Should only be called once since refresh failed
+      assert_equal 1, call_count
+    end
+  end
+
+  def test_with_token_refresh_succeeds_after_refresh
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'test-auth',
+                          'skype_token' => 'test-skype',
+                          'skype_spaces_token' => 'spaces-token'
+                        })
+      runner = Teems::Runner.new(output: test_output)
+      cmd = RefreshTestCommand.new([], runner: runner)
+      call_count = 0
+
+      runner.define_singleton_method(:refresh_tokens) { true }
+
+      result = cmd.test_with_token_refresh do
+        call_count += 1
+        raise Teems::ApiError, 'Invalid token' if call_count == 1
+
+        'success after refresh'
+      end
+
+      assert_equal 'success after refresh', result
+      assert_equal 2, call_count
+    end
+  end
+end

@@ -196,4 +196,137 @@ class TokenStoreTest < Minitest::Test
       assert_equal 0o600, mode, "Expected file mode 0600, got #{format('%o', mode)}"
     end
   end
+
+  def test_save_with_skype_spaces_token
+    with_temp_config do |dir|
+      store = Teems::Services::TokenStore.new
+      store.save(
+        name: 'default',
+        auth_token: 'auth',
+        skype_token: 'skype',
+        skype_spaces_token: 'spaces-token'
+      )
+
+      tokens_file = "#{dir}/teems/tokens.json"
+      data = JSON.parse(File.read(tokens_file))
+
+      assert_equal 'spaces-token', data['skype_spaces_token']
+    end
+  end
+
+  def test_skype_spaces_token_returns_stored_token
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'auth',
+                          'skype_token' => 'skype',
+                          'skype_spaces_token' => 'my-spaces-token'
+                        })
+      store = Teems::Services::TokenStore.new
+
+      assert_equal 'my-spaces-token', store.skype_spaces_token
+    end
+  end
+
+  def test_skype_spaces_token_returns_nil_when_not_set
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'auth',
+                          'skype_token' => 'skype'
+                        })
+      store = Teems::Services::TokenStore.new
+
+      assert_nil store.skype_spaces_token
+    end
+  end
+
+  def test_skype_spaces_token_returns_nil_when_no_tokens_file
+    with_temp_config do
+      store = Teems::Services::TokenStore.new
+
+      assert_nil store.skype_spaces_token
+    end
+  end
+
+  def test_update_skype_token_updates_token
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'auth',
+                          'skype_token' => 'old-skype',
+                          'skype_spaces_token' => 'spaces'
+                        })
+      store = Teems::Services::TokenStore.new
+
+      result = store.update_skype_token('new-skype')
+
+      assert result
+      account = store.account
+      assert_equal 'new-skype', account.skype_token
+    end
+  end
+
+  def test_update_skype_token_preserves_other_fields
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'name' => 'myaccount',
+                          'auth_token' => 'auth',
+                          'skype_token' => 'old-skype',
+                          'skype_spaces_token' => 'spaces'
+                        })
+      store = Teems::Services::TokenStore.new
+
+      store.update_skype_token('new-skype')
+
+      tokens_file = "#{dir}/teems/tokens.json"
+      data = JSON.parse(File.read(tokens_file))
+
+      assert_equal 'myaccount', data['name']
+      assert_equal 'auth', data['auth_token']
+      assert_equal 'spaces', data['skype_spaces_token']
+    end
+  end
+
+  def test_update_skype_token_adds_refreshed_at_timestamp
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'auth',
+                          'skype_token' => 'old-skype'
+                        })
+      store = Teems::Services::TokenStore.new
+
+      store.update_skype_token('new-skype')
+
+      tokens_file = "#{dir}/teems/tokens.json"
+      data = JSON.parse(File.read(tokens_file))
+
+      assert data['skype_token_refreshed_at']
+      # Should be a valid ISO8601 timestamp
+      assert_match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, data['skype_token_refreshed_at'])
+    end
+  end
+
+  def test_update_skype_token_returns_false_when_no_tokens
+    with_temp_config do
+      store = Teems::Services::TokenStore.new
+
+      result = store.update_skype_token('new-skype')
+
+      refute result
+    end
+  end
+
+  def test_update_skype_token_sets_restricted_permissions
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'auth',
+                          'skype_token' => 'old-skype'
+                        })
+      store = Teems::Services::TokenStore.new
+
+      store.update_skype_token('new-skype')
+
+      tokens_file = "#{dir}/teems/tokens.json"
+      mode = File.stat(tokens_file).mode & 0o777
+      assert_equal 0o600, mode, "Expected file mode 0600, got #{format('%o', mode)}"
+    end
+  end
 end
