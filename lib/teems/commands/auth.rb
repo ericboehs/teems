@@ -75,6 +75,7 @@ module Teems
           name: 'default',
           auth_token: tokens[:auth_token],
           skype_token: tokens[:skype_token],
+          skype_spaces_token: tokens[:skype_spaces_token],
           chatsvc_token: tokens[:chatsvc_token]
         )
       end

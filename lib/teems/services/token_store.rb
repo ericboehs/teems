@@ -23,17 +23,34 @@ module Teems
         )
       end
 
-      def save(name:, auth_token:, skype_token:, chatsvc_token: nil)
+      def save(name:, auth_token:, skype_token:, skype_spaces_token: nil, chatsvc_token: nil)
         @paths.ensure_config_dir
         data = {
           'name' => name,
           'auth_token' => auth_token,
           'skype_token' => skype_token,
+          'skype_spaces_token' => skype_spaces_token,
           'chatsvc_token' => chatsvc_token,
           'saved_at' => Time.now.iso8601
         }.compact
         File.write(tokens_file, JSON.pretty_generate(data))
         File.chmod(0o600, tokens_file)
+      end
+
+      # Update just the skype_token (used during refresh)
+      def update_skype_token(skype_token)
+        data = load_tokens
+        return false if data.empty?
+
+        data['skype_token'] = skype_token
+        data['skype_token_refreshed_at'] = Time.now.iso8601
+        File.write(tokens_file, JSON.pretty_generate(data))
+        true
+      end
+
+      # Get the skype_spaces_token for refresh
+      def skype_spaces_token
+        load_tokens['skype_spaces_token']
       end
 
       def clear

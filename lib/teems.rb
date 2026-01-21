@@ -35,6 +35,7 @@ module Teems
     autoload :Configuration, 'teems/services/configuration'
     autoload :TokenStore, 'teems/services/token_store'
     autoload :TokenExtractor, 'teems/services/token_extractor'
+    autoload :TokenRefresher, 'teems/services/token_refresher'
     autoload :CacheStore, 'teems/services/cache_store'
   end
 

@@ -21,7 +21,7 @@ module Teems
       wire_up_warnings
     end
 
-    # Account helpers
+    # Account helpers - always get fresh from token_store (important for token refresh)
     def account
       @token_store.account or raise ConfigError, 'No account configured. Run: teems auth login'
     end
@@ -30,7 +30,7 @@ module Teems
       @token_store.configured?
     end
 
-    # API helpers
+    # API helpers - create fresh instances to get latest account/tokens
     def channels_api
       Api::Channels.new(@api_client, account)
     end
@@ -41,6 +41,12 @@ module Teems
 
     def messages_api
       Api::Messages.new(@api_client, account)
+    end
+
+    # Clear any cached API instances after token refresh
+    def clear_api_cache
+      # API instances are not cached, but account is fetched fresh each time
+      # This method exists for future extensibility
     end
 
     # Formatter helpers
@@ -54,6 +60,19 @@ module Teems
     # Token extractor for Safari automation
     def token_extractor
       @token_extractor ||= Services::TokenExtractor.new
+    end
+
+    # Token refresher for automatic token refresh
+    def token_refresher
+      @token_refresher ||= Services::TokenRefresher.new(
+        token_store: @token_store,
+        output: @output
+      )
+    end
+
+    # Attempt to refresh the skype_token
+    def refresh_tokens
+      token_refresher.refresh
     end
 
     # Logging

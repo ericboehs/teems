@@ -201,6 +201,7 @@ module Teems
         {
           auth_token: auth_token,
           skype_token: skype_token,
+          skype_spaces_token: skype_spaces_token,
           chatsvc_token: nil
         }
       rescue JSON::ParserError => e

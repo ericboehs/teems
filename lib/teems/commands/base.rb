@@ -139,6 +139,23 @@ module Teems
         error('Not authenticated. Run: teems auth login')
         1
       end
+
+      # Execute a block with automatic token refresh on 401
+      # Usage: with_token_refresh { runner.messages_api.chat_messages(chat_id: id) }
+      def with_token_refresh
+        yield
+      rescue ApiError => e
+        raise unless e.message.include?('Invalid token') || e.message.include?('expired')
+
+        debug('Token expired, attempting refresh...')
+        if runner.refresh_tokens
+          debug('Token refreshed, retrying request...')
+          yield
+        else
+          warn('Token refresh failed. Try: teems auth login')
+          raise
+        end
+      end
     end
   end
 end

@@ -75,11 +75,13 @@ module Teems
       end
 
       def fetch_channel_messages(api, channel_id)
-        response = api.channel_messages(
-          team_id: @options[:team_id],
-          channel_id: channel_id,
-          limit: @options[:limit]
-        )
+        response = with_token_refresh do
+          runner.messages_api.channel_messages(
+            team_id: @options[:team_id],
+            channel_id: channel_id,
+            limit: @options[:limit]
+          )
+        end
 
         # ng.msg returns 'messages', Graph API returns 'value', other APIs return 'posts'
         display_messages(response['messages'] || response['posts'] || response['value'] || [])
@@ -89,10 +91,12 @@ module Teems
       end
 
       def fetch_chat_messages(api, chat_id)
-        response = api.chat_messages(
-          chat_id: chat_id,
-          limit: @options[:limit]
-        )
+        response = with_token_refresh do
+          runner.messages_api.chat_messages(
+            chat_id: chat_id,
+            limit: @options[:limit]
+          )
+        end
 
         # ng.msg returns 'messages', Graph API returns 'value', other APIs return 'posts'
         display_messages(response['messages'] || response['posts'] || response['value'] || [])
