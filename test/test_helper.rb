@@ -1,8 +1,17 @@
 # frozen_string_literal: true
 
+require 'simplecov'
+SimpleCov.start do
+  add_filter '/test/'
+  enable_coverage :branch
+end
+
 require 'minitest/autorun'
 require_relative '../lib/teems'
 require 'stringio'
+require 'tmpdir'
+require 'json'
+require 'fileutils'
 
 module Teems
   module TestHelpers
@@ -34,6 +43,135 @@ module Teems
       end
     end
 
+    # Write a tokens file to the temp config directory
+    def write_tokens_file(dir, tokens)
+      config_dir = "#{dir}/teems"
+      FileUtils.mkdir_p(config_dir)
+      File.write("#{config_dir}/tokens.json", JSON.generate(tokens))
+    end
+
+    # Write a config file to the temp config directory
+    def write_config_file(dir, config)
+      config_dir = "#{dir}/teems"
+      FileUtils.mkdir_p(config_dir)
+      File.write("#{config_dir}/config.json", JSON.generate(config))
+    end
+
+    # Load fixture JSON
+    def fixture(name)
+      file = File.join(File.dirname(__FILE__), 'fixtures', "#{name}.json")
+      JSON.parse(File.read(file))
+    end
+
+    # Mock account for testing
+    def mock_account(name: 'default', auth_token: 'eyJ0eXAtest123', skype_token: 'eyJhbGcitest456')
+      Models::Account.new(name: name, auth_token: auth_token, skype_token: skype_token)
+    end
+
+    # Sample API response data
+    def sample_graph_message
+      {
+        'id' => '1234567890',
+        'body' => { 'content' => '<p>Hello world</p>' },
+        'from' => {
+          'user' => {
+            'id' => 'user123',
+            'displayName' => 'John Doe'
+          }
+        },
+        'createdDateTime' => '2026-01-20T12:00:00Z',
+        'messageType' => 'message',
+        'importance' => 'normal'
+      }
+    end
+
+    def sample_ng_msg_message
+      {
+        'id' => '1768935087318',
+        'content' => '<p>Hello from ng.msg</p>',
+        'imdisplayname' => 'Jane Smith',
+        'from' => 'https://ng.msg.gcc.teams.microsoft.com/v1/users/ME/contacts/8:orgid:abc123',
+        'composetime' => '2026-01-20T12:00:00.000Z',
+        'messagetype' => 'RichText/Html',
+        'properties' => {
+          'emotions' => [
+            { 'key' => 'like', 'users' => [{ 'mri' => 'user1' }] }
+          ]
+        }
+      }
+    end
+
+    def sample_system_message
+      {
+        'id' => '1768935087319',
+        'content' => '<addmember><target>8:orgid:abc</target></addmember>',
+        'composetime' => '2026-01-20T12:00:00.000Z',
+        'messagetype' => 'ThreadActivity/AddMember'
+      }
+    end
+
+    def sample_team
+      {
+        'id' => 'team-uuid-123',
+        'displayName' => 'Engineering Team',
+        'description' => 'The engineering team'
+      }
+    end
+
+    def sample_channel
+      {
+        'id' => '19:channel123@thread.tacv2',
+        'displayName' => 'General',
+        'description' => 'General discussions',
+        'membershipType' => 'standard'
+      }
+    end
+
+    def sample_chat
+      {
+        'id' => '19:chat123@thread.v2',
+        'topic' => 'Project Discussion',
+        'chatType' => 'group',
+        'createdDateTime' => '2026-01-15T10:00:00Z',
+        'lastUpdatedDateTime' => '2026-01-20T12:00:00Z'
+      }
+    end
+
+    # Capture output for command tests
+    def capture_output
+      out = StringIO.new
+      err = StringIO.new
+      output = Formatters::Output.new(io: out, err: err, color: false)
+      yield output
+      { stdout: out.string, stderr: err.string }
+    end
+
+    # Create a runner with mock token store that is configured
+    def configured_runner(output: nil, account: nil)
+      output ||= test_output
+      store = mock_token_store(account: account || mock_account)
+      Runner.new(output: output, token_store: store, api_client: MockApiClient.new)
+    end
+
+    # Mock token store for testing
+    def mock_token_store(account: nil, configured: true)
+      MockTokenStore.new(account: account, configured: configured)
+    end
+
+    # Mock token store class
+    class MockTokenStore
+      def initialize(account: nil, configured: true)
+        @account = account
+        @configured = configured
+      end
+
+      def configured? = @configured
+      def account = @account
+      def save(**kwargs) = nil
+      def clear = nil
+      def token_age = nil
+    end
+
     # Mock API client for testing
     class MockApiClient
       attr_reader :calls, :call_count
@@ -52,18 +190,37 @@ module Teems
       def get(_endpoint, path, account:, params: {})
         @calls << { method: :get, path: path, params: params }
         @call_count += 1
-        @responses[path] || { 'value' => [] }
+        find_response(path) || { 'value' => [] }
       end
 
       def post(_endpoint, path, account:, body: nil)
         @calls << { method: :post, path: path, body: body }
         @call_count += 1
-        @responses[path] || {}
+        find_response(path) || {}
       end
 
       def close
         # no-op for tests
       end
+
+      private
+
+      def find_response(path)
+        # Try exact match first
+        return @responses[path] if @responses.key?(path)
+
+        # Try partial match
+        @responses.each do |pattern, response|
+          return response if path.include?(pattern)
+        end
+        nil
+      end
     end
+  end
+end
+
+module Minitest
+  class Test
+    include Teems::TestHelpers
   end
 end

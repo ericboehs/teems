@@ -23,7 +23,7 @@ module Teems
       end
 
       def display_name
-        topic || chat_type_label
+        (topic.nil? || topic.empty?) ? chat_type_label : topic
       end
 
       def chat_type_label

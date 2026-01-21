@@ -47,6 +47,7 @@ module Teems
       def save_config
         @paths.ensure_config_dir
         File.write(config_file, JSON.pretty_generate(data))
+        File.chmod(0o600, config_file)
       end
     end
   end

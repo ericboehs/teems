@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'open3'
+
 module Teems
   module Services
     # Extracts Teams authentication tokens using Safari automation
@@ -56,7 +58,7 @@ module Teems
             }
           } catch(e) {}
           return JSON.stringify({error: 'Exchange failed'});
-        })('%s')
+        })(%s)
       JS
 
       def initialize(output: nil)
@@ -201,12 +203,15 @@ module Teems
           skype_token: skype_token,
           chatsvc_token: nil
         }
-      rescue JSON::ParserError
+      rescue JSON::ParserError => e
+        log("Failed to parse token extraction result: #{e.message}")
         nil
       end
 
       def exchange_skype_token(skype_spaces_token)
-        exchange_js = format(EXCHANGE_TOKEN_JS, skype_spaces_token)
+        # JSON-encode token to safely embed in JavaScript (prevents injection)
+        safe_token = JSON.generate(skype_spaces_token)
+        exchange_js = format(EXCHANGE_TOKEN_JS, safe_token)
         script = <<~APPLESCRIPT
           tell application "Safari"
             if (count of windows) > 0 then
@@ -227,7 +232,8 @@ module Teems
           region: parsed['region'],
           chat_service: parsed['chat_service']
         }
-      rescue JSON::ParserError
+      rescue JSON::ParserError => e
+        log("Failed to parse token exchange result: #{e.message}")
         nil
       end
 
@@ -239,9 +245,17 @@ module Teems
       end
 
       def run_applescript(script)
-        output, _status = Open3.capture2('osascript', '-e', script)
+        output, status = Open3.capture2('osascript', '-e', script)
+        unless status.success?
+          log("AppleScript execution failed with status #{status.exitstatus}")
+          return nil
+        end
         output.strip
-      rescue StandardError
+      rescue Errno::ENOENT => e
+        log("osascript not found: #{e.message}")
+        nil
+      rescue IOError, SystemCallError => e
+        log("AppleScript I/O error: #{e.message}")
         nil
       end
 
@@ -251,5 +265,3 @@ module Teems
     end
   end
 end
-
-require 'open3'

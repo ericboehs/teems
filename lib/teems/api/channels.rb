@@ -11,12 +11,15 @@ module Teems
 
       # Get channels for a specific team
       def list_channels(team_id:)
-        get(:graph, "/v1.0/teams/#{team_id}/channels")
+        encoded_team = URI.encode_www_form_component(team_id)
+        get(:graph, "/v1.0/teams/#{encoded_team}/channels")
       end
 
       # Get details about a specific channel
       def get_channel(team_id:, channel_id:)
-        get(:graph, "/v1.0/teams/#{team_id}/channels/#{channel_id}")
+        encoded_team = URI.encode_www_form_component(team_id)
+        encoded_channel = URI.encode_www_form_component(channel_id)
+        get(:graph, "/v1.0/teams/#{encoded_team}/channels/#{encoded_channel}")
       end
     end
   end

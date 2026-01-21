@@ -17,7 +17,8 @@ module Teems
         end
 
         log_file
-      rescue SystemCallError, IOError
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not write error log: #{e.message}"
         nil
       end
     end

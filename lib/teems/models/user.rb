@@ -14,7 +14,7 @@ module Teems
       end
 
       def best_name
-        display_name || email || user_principal_name || id
+        [display_name, email, user_principal_name, id].find { |v| v && !v.empty? }
       end
 
       def to_s

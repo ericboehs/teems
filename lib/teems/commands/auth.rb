@@ -180,6 +180,10 @@ module Teems
         skype_token ||= auth_token
 
         save_extracted_tokens(auth_token, skype_token, data['chatsvc_token'])
+      rescue Errno::EACCES => e
+        error("Cannot read file: #{e.message}")
+      rescue Errno::EISDIR
+        error("Path is a directory, not a file: #{file_path}")
       rescue JSON::ParserError
         error('Invalid JSON file. Expected: {"auth_token": "..."}')
       end

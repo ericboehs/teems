@@ -33,6 +33,7 @@ module Teems
           'saved_at' => Time.now.iso8601
         }.compact
         File.write(tokens_file, JSON.pretty_generate(data))
+        File.chmod(0o600, tokens_file)
       end
 
       def clear
@@ -65,7 +66,8 @@ module Teems
         return {} unless File.exist?(tokens_file)
 
         JSON.parse(File.read(tokens_file))
-      rescue JSON::ParserError
+      rescue JSON::ParserError => e
+        warn "teems: Token file corrupted (#{e.message}), please re-authenticate with: teems auth login"
         {}
       end
     end

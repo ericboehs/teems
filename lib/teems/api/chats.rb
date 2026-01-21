@@ -11,12 +11,14 @@ module Teems
 
       # Get a specific chat
       def get_chat(chat_id:)
-        get(:graph, "/v1.0/me/chats/#{chat_id}")
+        encoded_id = URI.encode_www_form_component(chat_id)
+        get(:graph, "/v1.0/me/chats/#{encoded_id}")
       end
 
       # Get members of a chat
       def members(chat_id:)
-        get(:graph, "/v1.0/me/chats/#{chat_id}/members")
+        encoded_id = URI.encode_www_form_component(chat_id)
+        get(:graph, "/v1.0/me/chats/#{encoded_id}/members")
       end
     end
   end
