@@ -34,6 +34,10 @@ module Teems
         @io.print(message) unless @quiet
       end
 
+      def flush
+        @io.flush
+      end
+
       def error(message)
         @err.puts(colorize("#{red('Error:')} #{message}"))
       end

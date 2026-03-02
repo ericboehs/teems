@@ -42,6 +42,7 @@ module Teems
             #{output.cyan('channels')}     List joined teams and channels
             #{output.cyan('chats')}        List recent chats
             #{output.cyan('messages')}     Read messages from a channel or chat
+            #{output.cyan('sync')}         Sync chat history locally
         COMMANDS
       end
 

@@ -41,9 +41,11 @@ module Teems
       end
 
       # GET request to a specific endpoint
+      # path can be a relative path or a full URL (e.g., from pagination links)
       def get(endpoint_key, path, account:, params: {})
         base_url = ENDPOINTS[endpoint_key] or raise ArgumentError, "Unknown endpoint: #{endpoint_key}"
-        uri = build_uri("#{base_url}#{path}", params)
+        full_url = path.start_with?('http') ? path : "#{base_url}#{path}"
+        uri = build_uri(full_url, params)
 
         execute_request(path, endpoint_key) do |http|
           request = Net::HTTP::Get.new(uri)

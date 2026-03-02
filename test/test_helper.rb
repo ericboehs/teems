@@ -34,12 +34,15 @@ module Teems
       Dir.mktmpdir('teems-test') do |dir|
         old_config = ENV.fetch('XDG_CONFIG_HOME', nil)
         old_cache = ENV.fetch('XDG_CACHE_HOME', nil)
+        old_data = ENV.fetch('XDG_DATA_HOME', nil)
         ENV['XDG_CONFIG_HOME'] = dir
         ENV['XDG_CACHE_HOME'] = "#{dir}/cache"
+        ENV['XDG_DATA_HOME'] = "#{dir}/data"
         yield dir
       ensure
         ENV['XDG_CONFIG_HOME'] = old_config
         ENV['XDG_CACHE_HOME'] = old_cache
+        ENV['XDG_DATA_HOME'] = old_data
       end
     end
 
@@ -185,21 +188,34 @@ module Teems
         @calls = []
         @call_count = 0
         @responses = {}
+        @errors = {}
+        @transient_errors = {}
       end
 
       def stub(path, response)
         @responses[path] = response
       end
 
+      def stub_error(path, error)
+        @errors[path] = error
+      end
+
+      # Raise error only for the first N calls matching this path, then succeed
+      def stub_transient_error(path, error, times: 1)
+        @transient_errors[path] = { error: error, remaining: times }
+      end
+
       def get(_endpoint, path, account:, params: {})
         @calls << { method: :get, path: path, params: params }
         @call_count += 1
+        check_errors(path)
         find_response(path) || { 'value' => [] }
       end
 
       def post(_endpoint, path, account:, body: nil)
         @calls << { method: :post, path: path, body: body }
         @call_count += 1
+        check_errors(path)
         find_response(path) || {}
       end
 
@@ -208,6 +224,22 @@ module Teems
       end
 
       private
+
+      def check_errors(path)
+        # Check transient errors first (they expire after N calls)
+        @transient_errors.each do |pattern, info|
+          next unless path.include?(pattern)
+          next unless info[:remaining].positive?
+
+          info[:remaining] -= 1
+          raise info[:error]
+        end
+
+        # Permanent errors
+        @errors.each do |pattern, error|
+          raise error if path.include?(pattern)
+        end
+      end
 
       def find_response(path)
         # Try exact match first

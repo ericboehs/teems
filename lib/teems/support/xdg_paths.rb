@@ -2,7 +2,7 @@
 
 module Teems
   module Support
-    # XDG-compliant paths for config and cache directories
+    # XDG-compliant paths for config, cache, and data directories
     class XdgPaths
       def config_dir
         @config_dir ||= File.join(
@@ -18,12 +18,23 @@ module Teems
         )
       end
 
+      def data_dir
+        @data_dir ||= File.join(
+          ENV.fetch('XDG_DATA_HOME', File.join(Dir.home, '.local', 'share')),
+          'teems'
+        )
+      end
+
       def config_file(filename)
         File.join(config_dir, filename)
       end
 
       def cache_file(filename)
         File.join(cache_dir, filename)
+      end
+
+      def data_file(filename)
+        File.join(data_dir, filename)
       end
 
       def ensure_config_dir
@@ -37,6 +48,13 @@ module Teems
         FileUtils.mkdir_p(cache_dir)
       rescue SystemCallError => e
         warn "teems: Could not create cache directory #{cache_dir}: #{e.message}"
+        raise
+      end
+
+      def ensure_data_dir
+        FileUtils.mkdir_p(data_dir)
+      rescue SystemCallError => e
+        warn "teems: Could not create data directory #{data_dir}: #{e.message}"
         raise
       end
     end

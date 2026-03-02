@@ -38,12 +38,14 @@ module Teems
     autoload :TokenRefresher, 'teems/services/token_refresher'
     autoload :CacheStore, 'teems/services/cache_store'
     autoload :TeamsUrlParser, 'teems/services/teams_url_parser'
+    autoload :SyncStore, 'teems/services/sync_store'
   end
 
   # Output formatters for messages and terminal output
   module Formatters
     autoload :Output, 'teems/formatters/output'
     autoload :MessageFormatter, 'teems/formatters/message_formatter'
+    autoload :MarkdownFormatter, 'teems/formatters/markdown_formatter'
   end
 
   # CLI commands implementing user-facing functionality
@@ -53,6 +55,7 @@ module Teems
     autoload :Channels, 'teems/commands/channels'
     autoload :Chats, 'teems/commands/chats'
     autoload :Messages, 'teems/commands/messages'
+    autoload :Sync, 'teems/commands/sync'
     autoload :Help, 'teems/commands/help'
   end
 
