@@ -7,6 +7,7 @@ module Teems
       DEFAULT_SINCE_DAYS = 180
       API_DELAY_SECONDS = 0.5
       RETRY_DELAY_SECONDS = 2
+      MAX_PAGES = 500
 
       # System stream IDs that don't contain fetchable messages
       SKIP_PREFIXES = %w[48:].freeze
@@ -117,11 +118,10 @@ module Teems
       end
 
       def show_dry_run(chats)
-        since_days = @options[:since_days] || DEFAULT_SINCE_DAYS
-        since_time = Time.now - (since_days * 86_400)
-        syncable = chats.reject { |c| skip_chat?(c['id']) }
+        since = since_time
+        syncable = chats.reject { |c| skip_reason(c['id']) }
 
-        info("Dry run — would sync #{syncable.length} chat(s) since #{since_time.strftime('%Y-%m-%d')}")
+        info("Dry run — would sync #{syncable.length} chat(s) since #{since.strftime('%Y-%m-%d')}")
         skipped = chats.length - syncable.length
         info("  (#{skipped} system streams skipped)") if skipped.positive?
         puts
@@ -139,14 +139,12 @@ module Teems
       end
 
       def sync_chats(chats)
-        since_days = @options[:since_days] || DEFAULT_SINCE_DAYS
         total = chats.length
 
         chats.each_with_index do |chat_data, index|
           chat = Models::Chat.from_api(chat_data)
 
-          if skip_chat?(chat.id)
-            reason = skip_reason(chat.id)
+          if (reason = skip_reason(chat.id))
             debug("[#{index + 1}/#{total}] Skipping #{reason}: #{chat.display_name} (#{chat.id})")
             @stats[:skipped] += 1
             next
@@ -154,29 +152,7 @@ module Teems
 
           info("[#{index + 1}/#{total}] Syncing: #{chat.display_name}")
 
-          sync_single_chat(chat, since_days)
-        rescue ApiError => e
-          output.flush
-          if e.message.include?('404')
-            # Retry once — 404s can be transient (stale connection, token refresh needed)
-            debug("  Got 404, retrying in #{RETRY_DELAY_SECONDS}s...")
-            sleep(RETRY_DELAY_SECONDS)
-            begin
-              sync_single_chat(chat, since_days)
-            rescue ApiError => retry_error
-              if retry_error.message.include?('404')
-                mark_chat_unavailable(chat.id, chat.display_name)
-                warn("  Chat unavailable (404): '#{chat.display_name}' — will skip on future syncs")
-              else
-                warn("  Failed to sync '#{chat.display_name}': #{retry_error.message}")
-              end
-              @stats[:errors] += 1
-              next
-            end
-          else
-            warn("  Failed to sync '#{chat.display_name}': #{e.message}")
-            @stats[:errors] += 1
-          end
+          with_404_retry(chat) { sync_single_chat(chat) }
         rescue StandardError => e
           output.flush
           warn("  Unexpected error syncing '#{chat.display_name}': #{e.message}")
@@ -185,27 +161,46 @@ module Teems
         end
       end
 
-      def skip_chat?(chat_id)
-        return true if SKIP_PREFIXES.any? { |prefix| chat_id.start_with?(prefix) }
-        return true if @sync_store.chat_unavailable?(@state, chat_id)
-
-        false
-      end
-
+      # Returns nil if the chat should be synced, or a reason string if it should be skipped
       def skip_reason(chat_id)
         return 'system stream' if SKIP_PREFIXES.any? { |prefix| chat_id.start_with?(prefix) }
         return 'unavailable chat' if @sync_store.chat_unavailable?(@state, chat_id)
 
-        'unknown'
+        nil
       end
 
-      def sync_single_chat(chat, since_days)
+      # Retry once on 404 (can be transient), then mark unavailable on persistent 404
+      def with_404_retry(chat)
+        yield
+      rescue ApiError => e
+        output.flush
+        unless e.not_found?
+          warn("  Failed to sync '#{chat.display_name}': #{e.message}")
+          @stats[:errors] += 1
+          return
+        end
+
+        debug("  Got 404, retrying in #{RETRY_DELAY_SECONDS}s...")
+        sleep(RETRY_DELAY_SECONDS)
+        begin
+          yield
+        rescue ApiError => retry_error
+          if retry_error.not_found?
+            mark_chat_unavailable(chat.id, chat.display_name)
+            warn("  Chat unavailable (404): '#{chat.display_name}' — will skip on future syncs")
+          else
+            warn("  Failed to sync '#{chat.display_name}': #{retry_error.message}")
+          end
+          @stats[:errors] += 1
+        end
+      end
+
+      def sync_single_chat(chat)
         # Ensure human-readable directory name is set
         @sync_store.ensure_dir_name(@state, chat.id, chat.display_name)
 
         # Determine start time: last sync or N days ago
         last_sync = @sync_store.last_synced_time(@state, chat.id)
-        since_time = Time.now - (since_days * 86_400)
         start_time = last_sync || since_time
 
         # Fetch all messages since start_time with pagination
@@ -258,6 +253,11 @@ module Teems
 
           page_count += 1
           debug("  Page #{page_count}: #{page_messages.length} message(s)")
+
+          if page_count >= MAX_PAGES
+            debug("  Reached max pages (#{MAX_PAGES}), stopping pagination")
+            break
+          end
 
           # Check if we've gone past our cutoff
           parsed_messages = page_messages.map { |m| Models::Message.from_api(m) }
@@ -359,7 +359,13 @@ module Teems
       def save_state_safely
         @sync_store.save_state(@state)
       rescue StandardError => e
+        @stats[:errors] += 1
         error("Warning: Failed to save sync state: #{e.message}")
+      end
+
+      def since_time
+        since_days = @options[:since_days] || DEFAULT_SINCE_DAYS
+        Time.now - (since_days * 86_400)
       end
 
       def mark_chat_unavailable(chat_id, display_name)

@@ -11,7 +11,20 @@ require 'io/console'
 # Microsoft Teams CLI - A command-line interface for Microsoft Teams
 module Teems
   class Error < StandardError; end
-  class ApiError < Error; end
+
+  class ApiError < Error
+    attr_reader :status_code
+
+    def initialize(message = nil, status_code: nil)
+      @status_code = status_code
+      super(message)
+    end
+
+    def not_found? = status_code == 404
+    def unauthorized? = status_code == 401
+    def forbidden? = status_code == 403
+    def rate_limited? = status_code == 429
+  end
   class ConfigError < Error; end
   class AuthError < Error; end
   class TokenStoreError < Error; end

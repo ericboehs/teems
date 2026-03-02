@@ -26,6 +26,7 @@ module Teems
 
         JSON.parse(File.read(path))
       rescue JSON::ParserError
+        backup_corrupt_file(path)
         {}
       end
 
@@ -48,9 +49,7 @@ module Teems
 
       # Update per-chat metadata in the state hash (in-memory, call save_state to persist)
       def update_chat_state(state, chat_id, last_synced_at:, message_count:, display_name: nil)
-        state['chats'] ||= {}
-        state['chats'][chat_id] ||= {}
-        state['chats'][chat_id].merge!(
+        ensure_chat_entry(state, chat_id).merge!(
           'last_synced_at' => last_synced_at.iso8601,
           'message_count' => message_count,
           'display_name' => display_name,
@@ -61,13 +60,12 @@ module Teems
 
       # Mark a chat as unavailable (e.g. 404) so it gets skipped on future syncs
       def mark_unavailable(state, chat_id, display_name: nil)
-        state['chats'] ||= {}
-        state['chats'][chat_id] ||= {}
-        state['chats'][chat_id]['unavailable'] = true
-        state['chats'][chat_id]['unavailable_at'] = Time.now.iso8601
+        entry = ensure_chat_entry(state, chat_id)
+        entry['unavailable'] = true
+        entry['unavailable_at'] = Time.now.iso8601
         if display_name
-          state['chats'][chat_id]['display_name'] = display_name
-          state['chats'][chat_id]['dir_name'] = build_dir_name(chat_id, display_name)
+          entry['display_name'] = display_name
+          entry['dir_name'] = build_dir_name(chat_id, display_name)
         end
         state
       end
@@ -101,13 +99,15 @@ module Teems
         atomic_write(File.join(dir, 'chat_metadata.json'), JSON.pretty_generate(metadata))
       end
 
-      # Read existing messages.json for a chat, returns array or empty array
+      # Read existing messages.json for a chat, returns array or empty array.
+      # Backs up corrupt files to prevent data loss on re-sync.
       def read_messages_json(chat_id, state: nil)
         path = File.join(chat_dir(chat_id, state: state), 'messages.json')
         return [] unless File.exist?(path)
 
         JSON.parse(File.read(path))
       rescue JSON::ParserError
+        backup_corrupt_file(path)
         []
       end
 
@@ -116,9 +116,8 @@ module Teems
       # Returns the dir_name that was set.
       def ensure_dir_name(state, chat_id, display_name)
         new_dir_name = build_dir_name(chat_id, display_name)
-        state['chats'] ||= {}
-        state['chats'][chat_id] ||= {}
-        current_dir_name = state['chats'][chat_id]['dir_name']
+        entry = ensure_chat_entry(state, chat_id)
+        current_dir_name = entry['dir_name']
 
         if current_dir_name.nil?
           # Legacy directory: check if old sanitized-ID dir exists and rename it
@@ -128,7 +127,7 @@ module Teems
           rename_chat_dir(current_dir_name, new_dir_name)
         end
 
-        state['chats'][chat_id]['dir_name'] = new_dir_name
+        entry['dir_name'] = new_dir_name
         new_dir_name
       end
 
@@ -147,6 +146,12 @@ module Teems
 
       def ensure_sync_dir
         FileUtils.mkdir_p(sync_dir)
+      end
+
+      # Ensure state has a chats hash and an entry for this chat_id, return the entry
+      def ensure_chat_entry(state, chat_id)
+        state['chats'] ||= {}
+        state['chats'][chat_id] ||= {}
       end
 
       # Sanitize a chat ID for use as a directory name
@@ -204,6 +209,15 @@ module Teems
         tmp_path = "#{path}.tmp"
         File.write(tmp_path, content)
         File.rename(tmp_path, path)
+      end
+
+      # Back up a corrupt file so data isn't lost, and warn the user
+      def backup_corrupt_file(path)
+        backup_path = "#{path}.corrupt.#{Time.now.strftime('%Y%m%d%H%M%S')}"
+        File.rename(path, backup_path)
+      rescue StandardError
+        # If backup fails, still continue with empty state
+        nil
       end
     end
   end

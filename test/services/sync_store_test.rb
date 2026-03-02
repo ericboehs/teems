@@ -156,6 +156,7 @@ class SyncStoreTest < Minitest::Test
                            messages_md: '# Test',
                            messages_json: 'not json{{{')
 
+      # Returns empty array and backs up the corrupt file
       assert_equal [], store.read_messages_json(chat_id)
     end
   end
@@ -417,6 +418,93 @@ class SyncStoreTest < Minitest::Test
       # Verify read_messages_json also uses state
       loaded = store.read_messages_json(chat_id, state: state)
       assert_equal messages, loaded
+    end
+  end
+
+  def test_long_display_name_is_truncated
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      chat_id = '19:abc@thread.v2'
+      state = { 'chats' => {} }
+      long_name = 'A' * 200
+
+      dir_name = store.ensure_dir_name(state, chat_id, long_name)
+
+      assert_operator dir_name.length, :<=, Teems::Services::SyncStore::MAX_DIR_NAME_LENGTH
+    end
+  end
+
+  def test_rename_collision_does_not_overwrite_existing_dir
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      chat_id = '19:abc@thread.v2'
+      state = { 'chats' => { chat_id => { 'dir_name' => 'Old Name' } } }
+
+      # Create both old and new directories with different content
+      old_dir = File.join(store.sync_dir, 'chats', 'Old Name')
+      new_dir = File.join(store.sync_dir, 'chats', 'New Name')
+      FileUtils.mkdir_p(old_dir)
+      FileUtils.mkdir_p(new_dir)
+      File.write(File.join(old_dir, 'messages.md'), '# Old content')
+      File.write(File.join(new_dir, 'messages.md'), '# Existing content')
+
+      # ensure_dir_name should NOT overwrite the existing "New Name" dir
+      store.ensure_dir_name(state, chat_id, 'New Name')
+
+      # Both directories should still exist with original content
+      assert File.directory?(old_dir), 'Old dir should still exist since rename was skipped'
+      assert_equal '# Existing content', File.read(File.join(new_dir, 'messages.md'))
+    end
+  end
+
+  def test_corrupt_state_backs_up_file
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      FileUtils.mkdir_p(store.sync_dir)
+      state_path = File.join(store.sync_dir, 'sync_state.json')
+      File.write(state_path, 'not json{{{')
+
+      result = store.load_state
+
+      assert_equal({}, result)
+      # Original file should be renamed to a backup
+      refute File.exist?(state_path), 'Corrupt file should be moved to backup'
+      backups = Dir.glob(File.join(store.sync_dir, 'sync_state.json.corrupt.*'))
+      assert_equal 1, backups.length, 'Should have one backup file'
+    end
+  end
+
+  def test_corrupt_messages_json_backs_up_file
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      chat_id = '19:test@thread.v2'
+
+      store.write_messages(chat_id,
+                           messages_md: '# Test',
+                           messages_json: 'not json{{{')
+
+      result = store.read_messages_json(chat_id)
+
+      assert_equal [], result
+      # Original file should be renamed to a backup
+      dir = store.chat_dir(chat_id)
+      refute File.exist?(File.join(dir, 'messages.json')), 'Corrupt file should be moved to backup'
+      backups = Dir.glob(File.join(dir, 'messages.json.corrupt.*'))
+      assert_equal 1, backups.length, 'Should have one backup file'
+    end
+  end
+
+  def test_trailing_dots_and_spaces_stripped_from_dir_name
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      chat_id = '19:abc@thread.v2'
+      state = { 'chats' => {} }
+
+      dir_name = store.ensure_dir_name(state, chat_id, 'My Chat...')
+
+      refute dir_name.end_with?('.'), 'Dir name should not end with dots'
+      refute dir_name.end_with?(' '), 'Dir name should not end with spaces'
+      assert_equal 'My Chat', dir_name
     end
   end
 end

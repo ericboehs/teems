@@ -256,7 +256,7 @@ class SyncCommandTest < Minitest::Test
         runner.api_client.stub('conversations', {
           'conversations' => [sample_ngmsg_chat]
         })
-        runner.api_client.stub_error('messages', Teems::ApiError.new('HTTP 404: Not Found'))
+        runner.api_client.stub_error('messages', Teems::ApiError.new('HTTP 404: Not Found', status_code: 404))
 
         cmd = Teems::Commands::Sync.new([], runner: runner)
         # Stub sleep to avoid 2s retry delay in tests
@@ -287,7 +287,7 @@ class SyncCommandTest < Minitest::Test
           'conversations' => [sample_ngmsg_chat]
         })
         # Stub messages to raise 404 — but it should never be called
-        runner.api_client.stub_error('messages', Teems::ApiError.new('HTTP 404: Not Found'))
+        runner.api_client.stub_error('messages', Teems::ApiError.new('HTTP 404: Not Found', status_code: 404))
 
         cmd = Teems::Commands::Sync.new([], runner: runner)
         exit_code = cmd.execute
@@ -309,7 +309,7 @@ class SyncCommandTest < Minitest::Test
           'conversations' => [sample_ngmsg_chat]
         })
         # First messages call raises 404, second succeeds
-        runner.api_client.stub_transient_error('messages', Teems::ApiError.new('HTTP 404: Not Found'), times: 1)
+        runner.api_client.stub_transient_error('messages', Teems::ApiError.new('HTTP 404: Not Found', status_code: 404), times: 1)
         runner.api_client.stub('messages', {
           'messages' => [sample_ng_msg_message],
           '_metadata' => {}
@@ -329,6 +329,145 @@ class SyncCommandTest < Minitest::Test
       store = Teems::Services::SyncStore.new
       state = store.load_state
       refute store.chat_unavailable?(state, '19:chat123@thread.v2')
+    end
+  end
+
+  def test_sync_non_404_api_error_reports_failure
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+          'conversations' => [sample_ngmsg_chat]
+        })
+        runner.api_client.stub_error('messages', Teems::ApiError.new('HTTP 500: Internal Server Error', status_code: 500))
+
+        cmd = Teems::Commands::Sync.new([], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/Failed to sync/, result[:stderr])
+      assert_match(/500/, result[:stderr])
+      # Should still complete
+      assert_match(/Sync complete/, result[:stdout])
+    end
+  end
+
+  def test_sync_returns_nonzero_exit_code_on_errors
+    with_temp_config do
+      exit_code = nil
+      capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+          'conversations' => [sample_ngmsg_chat]
+        })
+        runner.api_client.stub_error('messages', Teems::ApiError.new('HTTP 500: Internal Server Error', status_code: 500))
+
+        cmd = Teems::Commands::Sync.new([], runner: runner)
+        exit_code = cmd.execute
+      end
+
+      assert_equal 1, exit_code
+    end
+  end
+
+  def test_fetch_chat_list_failure_returns_exit_code_1
+    with_temp_config do
+      exit_code = nil
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub_error('conversations', Teems::ApiError.new('Network error: connection refused'))
+
+        cmd = Teems::Commands::Sync.new([], runner: runner)
+        exit_code = cmd.execute
+      end
+
+      assert_equal 1, exit_code
+      assert_match(/Failed to fetch chats/, result[:stderr])
+    end
+  end
+
+  def test_sync_skips_system_streams
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+          'conversations' => [
+            sample_ngmsg_chat,
+            { 'id' => '48:notifications', 'threadProperties' => { 'threadType' => 'chat' } }
+          ]
+        })
+        runner.api_client.stub('messages', {
+          'messages' => [sample_ng_msg_message],
+          '_metadata' => {}
+        })
+
+        cmd = Teems::Commands::Sync.new(['-v'], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/Sync complete/, result[:stdout])
+      assert_match(/Chats synced: 1/, result[:stdout])
+    end
+  end
+
+  def test_merge_deduplicates_by_message_id
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      chat_id = '19:test@thread.v2'
+
+      # Pre-populate with a message that has the same ID as the one from the API
+      existing = [{
+        'id' => '1768935087318', # Same ID as sample_ng_msg_message
+        'sender_id' => 'user-1',
+        'sender_name' => 'Old Name',
+        'content' => 'Old content',
+        'created_at' => '2026-01-20T12:00:00+00:00',
+        'message_type' => 'RichText/Html',
+        'reactions' => [],
+        'attachments' => []
+      }]
+      store.write_messages(chat_id,
+                           messages_md: '# old',
+                           messages_json: JSON.generate(existing))
+
+      capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', {
+          'messages' => [sample_ng_msg_message],
+          '_metadata' => {}
+        })
+
+        cmd = Teems::Commands::Sync.new(['--chat', chat_id], runner: runner)
+        cmd.execute
+      end
+
+      state = store.load_state
+      messages = store.read_messages_json(chat_id, state: state)
+
+      # Should have exactly 1 message (deduplicated), with new content overwriting old
+      assert_equal 1, messages.length
+      assert_equal '1768935087318', messages.first['id']
+      assert_equal 'Jane Smith', messages.first['sender_name']
+    end
+  end
+
+  def test_api_error_status_code_used_for_404_detection
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+          'conversations' => [sample_ngmsg_chat]
+        })
+        # Use an error with "404" in message but non-404 status code
+        runner.api_client.stub_error('messages', Teems::ApiError.new('Error 404 in URL path', status_code: 500))
+
+        cmd = Teems::Commands::Sync.new([], runner: runner)
+        cmd.execute
+      end
+
+      # Should NOT trigger 404 retry logic — should be treated as a regular error
+      assert_match(/Failed to sync/, result[:stderr])
+      refute_match(/Chat unavailable/, result[:stderr])
     end
   end
 

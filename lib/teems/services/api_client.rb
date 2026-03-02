@@ -147,18 +147,18 @@ module Teems
       def handle_response(response, _path)
         case response
         when Net::HTTPSuccess then parse_success_response(response)
-        when Net::HTTPUnauthorized then raise ApiError, 'Invalid token or session expired'
-        when Net::HTTPForbidden then raise ApiError, 'Access forbidden'
+        when Net::HTTPUnauthorized then raise ApiError.new('Invalid token or session expired', status_code: 401)
+        when Net::HTTPForbidden then raise ApiError.new('Access forbidden', status_code: 403)
         when Net::HTTPTooManyRequests then handle_rate_limit(response)
-        else raise ApiError, "HTTP #{response.code}: #{response.message}"
+        else raise ApiError.new("HTTP #{response.code}: #{response.message}", status_code: response.code.to_i)
         end
       end
 
       def handle_rate_limit(response)
         retry_after = response['Retry-After']
-        raise ApiError, "Rate limited - retry after #{retry_after} seconds" if retry_after
+        raise ApiError.new("Rate limited - retry after #{retry_after} seconds", status_code: 429) if retry_after
 
-        raise ApiError, 'Rate limited - please wait and try again'
+        raise ApiError.new('Rate limited - please wait and try again', status_code: 429)
       end
 
       def parse_success_response(response)
