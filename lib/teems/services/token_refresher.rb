@@ -11,8 +11,8 @@ module Teems
     class TokenRefresher
       AUTHSVC_URL = 'https://teams.microsoft.com/api/authsvc/v1.0/authz'
 
-      # Network errors that are expected during token exchange
-      NETWORK_ERRORS = [
+      # Recoverable errors during token exchange (network issues or malformed responses)
+      RECOVERABLE_ERRORS = [
         SocketError,
         Errno::ECONNREFUSED,
         Errno::ECONNRESET,
@@ -49,7 +49,7 @@ module Teems
           log('Token refresh failed - skype_spaces_token may be expired')
           false
         end
-      rescue *NETWORK_ERRORS => e
+      rescue *RECOVERABLE_ERRORS => e
         log("Token exchange error: #{e.class}: #{e.message}")
         false
       end

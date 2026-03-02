@@ -55,7 +55,8 @@ module Teems
             context_type: context['contextType'],
             team_id: context['teamId']
           }
-        rescue JSON::ParserError
+        rescue JSON::ParserError => e
+          warn "teems: Could not parse Teams URL context: #{e.message}"
           {}
         end
       end

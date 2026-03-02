@@ -55,10 +55,6 @@ module Teems
             -q, --quiet      Suppress output
             --json           Output as JSON
 
-          #{output.bold('NOTE:')}
-            Currently supports chat messages (thread.v2 format).
-            Team channel messages (thread.tacv2) are not yet supported.
-
           #{output.bold('EXAMPLES:')}
             teems messages 19:abc123@thread.v2         # Read chat messages
             teems messages 19:abc123@thread.v2 -n 50   # Show 50 messages

@@ -61,6 +61,12 @@ module Teems
         })(%s)
       JS
 
+      # Maximum seconds to wait for tokens to appear in localStorage after page loads.
+      # Teams SPA populates localStorage asynchronously after the URL changes,
+      # so we retry extraction to handle the delay.
+      TOKEN_POLL_MAX_SECONDS = 15
+      TOKEN_POLL_INTERVAL = 1
+
       def initialize(output: nil)
         @output = output
       end
@@ -80,7 +86,7 @@ module Teems
         wait_for_login
 
         log('Extracting tokens...')
-        tokens = extract_tokens_from_safari
+        tokens = wait_for_tokens
 
         if tokens && tokens[:auth_token]
           log('Tokens extracted successfully')
@@ -169,6 +175,22 @@ module Teems
 
         url = run_applescript(script).to_s.strip
         url.include?('teams.microsoft.com') && !url.include?('login')
+      end
+
+      # Polls Safari for tokens, retrying until they appear in localStorage
+      # or the timeout is reached. Teams SPA needs time after the URL changes
+      # to initialize MSAL and populate localStorage with access tokens.
+      def wait_for_tokens
+        TOKEN_POLL_MAX_SECONDS.times do |attempt|
+          tokens = extract_tokens_from_safari
+          return tokens if tokens && tokens[:auth_token]
+
+          log("Tokens not yet available, retrying... (#{attempt + 1}s)")
+          sleep TOKEN_POLL_INTERVAL
+        end
+
+        log("Timed out waiting for tokens after #{TOKEN_POLL_MAX_SECONDS}s")
+        nil
       end
 
       def extract_tokens_from_safari

@@ -35,6 +35,9 @@ module Teems
         )
       end
 
+      # Normalize ng.msg threadType to Graph API chatType format.
+      # ng.msg uses: 'chat' (group), 'meeting', 'topic' (1:1)
+      # Graph API uses: 'group', 'meeting', 'oneOnOne'
       def self.normalize_chat_type(type)
         case type&.downcase
         when 'chat' then 'group'

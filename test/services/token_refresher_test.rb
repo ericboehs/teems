@@ -3,8 +3,8 @@
 require 'test_helper'
 
 class TokenRefresherTest < Minitest::Test
-  def test_network_errors_constant_defined
-    errors = Teems::Services::TokenRefresher::NETWORK_ERRORS
+  def test_recoverable_errors_constant_defined
+    errors = Teems::Services::TokenRefresher::RECOVERABLE_ERRORS
 
     assert_includes errors, SocketError
     assert_includes errors, Errno::ECONNREFUSED
@@ -166,7 +166,7 @@ class TokenRefresherExchangeTokenTest < Minitest::Test
 
       # Mock HTTP to return invalid JSON - we can't easily do this without
       # a full HTTP mock library, so we test the error handling constant
-      errors = Teems::Services::TokenRefresher::NETWORK_ERRORS
+      errors = Teems::Services::TokenRefresher::RECOVERABLE_ERRORS
       assert_includes errors, JSON::ParserError
     end
   end

@@ -122,4 +122,95 @@ class ChatTest < Minitest::Test
     assert_nil chat.created_at
     assert_nil chat.last_updated
   end
+
+  # ng.msg API format tests
+
+  def test_from_api_detects_ngmsg_format
+    ngmsg_data = {
+      'id' => '19:abc@thread.v2',
+      'threadProperties' => { 'topic' => 'Ng Test', 'threadType' => 'chat' }
+    }
+    chat = Teems::Models::Chat.from_api(ngmsg_data)
+
+    assert_equal '19:abc@thread.v2', chat.id
+    assert_equal 'Ng Test', chat.topic
+    assert_equal 'group', chat.chat_type
+  end
+
+  def test_from_ngmsg_extracts_topic_from_thread_properties
+    ngmsg_data = {
+      'id' => '19:ngmsg123@thread.v2',
+      'threadProperties' => {
+        'topic' => 'Ng.msg Topic',
+        'threadType' => 'chat',
+        'createdat' => '2026-01-15T10:00:00Z'
+      },
+      'properties' => {
+        'lastimreceivedtime' => '2026-01-20T12:00:00Z'
+      }
+    }
+    chat = Teems::Models::Chat.from_api(ngmsg_data)
+
+    assert_equal 'Ng.msg Topic', chat.topic
+    assert_instance_of Time, chat.created_at
+    assert_instance_of Time, chat.last_updated
+  end
+
+  def test_normalize_chat_type_chat_to_group
+    assert_equal 'group', Teems::Models::Chat.normalize_chat_type('chat')
+    assert_equal 'group', Teems::Models::Chat.normalize_chat_type('Chat')
+    assert_equal 'group', Teems::Models::Chat.normalize_chat_type('CHAT')
+  end
+
+  def test_normalize_chat_type_meeting_unchanged
+    assert_equal 'meeting', Teems::Models::Chat.normalize_chat_type('meeting')
+    assert_equal 'meeting', Teems::Models::Chat.normalize_chat_type('Meeting')
+  end
+
+  def test_normalize_chat_type_topic_to_one_on_one
+    assert_equal 'oneOnOne', Teems::Models::Chat.normalize_chat_type('topic')
+    assert_equal 'oneOnOne', Teems::Models::Chat.normalize_chat_type('Topic')
+  end
+
+  def test_normalize_chat_type_passes_through_unknown
+    assert_equal 'somethingNew', Teems::Models::Chat.normalize_chat_type('somethingNew')
+  end
+
+  def test_normalize_chat_type_handles_nil
+    assert_nil Teems::Models::Chat.normalize_chat_type(nil)
+  end
+
+  def test_from_ngmsg_one_on_one_chat
+    ngmsg_data = {
+      'id' => '19:one-on-one@thread.v2',
+      'threadProperties' => { 'threadType' => 'topic' }
+    }
+    chat = Teems::Models::Chat.from_api(ngmsg_data)
+
+    assert chat.one_on_one?
+    refute chat.group?
+  end
+
+  def test_from_ngmsg_meeting_chat
+    ngmsg_data = {
+      'id' => '19:meeting@thread.v2',
+      'threadProperties' => { 'threadType' => 'meeting' }
+    }
+    chat = Teems::Models::Chat.from_api(ngmsg_data)
+
+    assert chat.meeting?
+    refute chat.group?
+  end
+
+  def test_from_ngmsg_handles_missing_thread_properties_fields
+    ngmsg_data = {
+      'id' => '19:minimal@thread.v2',
+      'threadProperties' => {}
+    }
+    chat = Teems::Models::Chat.from_api(ngmsg_data)
+
+    assert_equal '19:minimal@thread.v2', chat.id
+    assert_nil chat.topic
+    assert_nil chat.chat_type
+  end
 end

@@ -35,6 +35,10 @@ module Teems
         }.compact
         File.write(tokens_file, JSON.pretty_generate(data))
         File.chmod(0o600, tokens_file)
+        true
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not save tokens: #{e.message}"
+        false
       end
 
       # Update just the skype_token (used during refresh)
@@ -47,6 +51,9 @@ module Teems
         File.write(tokens_file, JSON.pretty_generate(data))
         File.chmod(0o600, tokens_file)
         true
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not update token file: #{e.message}"
+        false
       end
 
       # Get the skype_spaces_token for refresh

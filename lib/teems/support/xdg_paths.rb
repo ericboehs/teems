@@ -28,10 +28,16 @@ module Teems
 
       def ensure_config_dir
         FileUtils.mkdir_p(config_dir)
+      rescue SystemCallError => e
+        warn "teems: Could not create config directory #{config_dir}: #{e.message}"
+        raise
       end
 
       def ensure_cache_dir
         FileUtils.mkdir_p(cache_dir)
+      rescue SystemCallError => e
+        warn "teems: Could not create cache directory #{cache_dir}: #{e.message}"
+        raise
       end
     end
   end
