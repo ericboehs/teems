@@ -84,7 +84,7 @@ class SyncStoreTest < Minitest::Test
       store = Teems::Services::SyncStore.new
       dir = store.chat_dir('19:abc123@thread.v2')
 
-      assert_includes dir, '19_abc123_thread.v2'
+      assert_includes dir, 'other/19_abc123_thread.v2'
       refute_includes dir, ':'
       refute_includes dir, '@'
     end
@@ -287,11 +287,11 @@ class SyncStoreTest < Minitest::Test
     with_temp_config do
       store = Teems::Services::SyncStore.new
       chat_id = '19:abc@thread.v2'
-      state = { 'chats' => { chat_id => { 'dir_name' => 'My Cool Chat' } } }
+      state = { 'chats' => { chat_id => { 'dir_name' => 'My Cool Chat', 'chat_type' => 'group' } } }
 
       dir = store.chat_dir(chat_id, state: state)
 
-      assert dir.end_with?('chats/My Cool Chat')
+      assert dir.end_with?('chats/groups/My Cool Chat')
     end
   end
 
@@ -302,29 +302,7 @@ class SyncStoreTest < Minitest::Test
 
       dir = store.chat_dir(chat_id)
 
-      assert dir.end_with?('chats/19_abc_thread.v2')
-    end
-  end
-
-  def test_ensure_dir_name_renames_legacy_dir
-    with_temp_config do
-      store = Teems::Services::SyncStore.new
-      chat_id = '19:abc@thread.v2'
-      state = { 'chats' => {} }
-
-      # Create a legacy directory using the old sanitized-ID naming
-      legacy_dir = File.join(store.sync_dir, 'chats', '19_abc_thread.v2')
-      FileUtils.mkdir_p(legacy_dir)
-      File.write(File.join(legacy_dir, 'messages.md'), '# Test')
-
-      # ensure_dir_name should rename it
-      dir_name = store.ensure_dir_name(state, chat_id, 'Engineering Win Prep')
-
-      assert_equal 'Engineering Win Prep', dir_name
-      new_dir = File.join(store.sync_dir, 'chats', 'Engineering Win Prep')
-      assert File.directory?(new_dir), 'New directory should exist'
-      assert File.exist?(File.join(new_dir, 'messages.md')), 'Files should have been moved'
-      refute File.directory?(legacy_dir), 'Old directory should not exist'
+      assert dir.end_with?('chats/other/19_abc_thread.v2')
     end
   end
 
@@ -332,55 +310,41 @@ class SyncStoreTest < Minitest::Test
     with_temp_config do
       store = Teems::Services::SyncStore.new
       chat_id = '19:abc@thread.v2'
-      state = { 'chats' => { chat_id => { 'dir_name' => 'Old Topic' } } }
+      state = { 'chats' => { chat_id => { 'dir_name' => 'Old Topic', 'chat_type' => 'group' } } }
 
-      # Create old directory
-      old_dir = File.join(store.sync_dir, 'chats', 'Old Topic')
+      # Create old directory in type subdir
+      old_dir = File.join(store.sync_dir, 'chats', 'groups', 'Old Topic')
       FileUtils.mkdir_p(old_dir)
       File.write(File.join(old_dir, 'messages.md'), '# Test')
 
-      # ensure_dir_name should rename it
-      dir_name = store.ensure_dir_name(state, chat_id, 'New Topic')
+      # ensure_dir_name should rename it within the type subdir
+      dir_name = store.ensure_dir_name(state, chat_id, 'New Topic', chat_type: 'group')
 
       assert_equal 'New Topic', dir_name
-      new_dir = File.join(store.sync_dir, 'chats', 'New Topic')
+      new_dir = File.join(store.sync_dir, 'chats', 'groups', 'New Topic')
       assert File.directory?(new_dir), 'New directory should exist'
       refute File.directory?(old_dir), 'Old directory should not exist'
     end
   end
 
-  def test_migrate_directories_renames_all
+  def test_ensure_dir_name_moves_dir_on_type_change
     with_temp_config do
       store = Teems::Services::SyncStore.new
-      chat1 = '19:aaa@thread.v2'
-      chat2 = '19:bbb@thread.v2'
+      chat_id = '19:abc@thread.v2'
+      state = { 'chats' => { chat_id => { 'dir_name' => 'Sprint Planning', 'chat_type' => 'group' } } }
 
-      state = {
-        'chats' => {
-          chat1 => { 'display_name' => 'Alpha Chat' },
-          chat2 => { 'display_name' => 'Beta Chat' }
-        }
-      }
+      # Create directory in groups/
+      old_dir = File.join(store.sync_dir, 'chats', 'groups', 'Sprint Planning')
+      FileUtils.mkdir_p(old_dir)
+      File.write(File.join(old_dir, 'messages.md'), '# Test')
 
-      # Create legacy directories
-      [chat1, chat2].each do |cid|
-        sanitized = cid.gsub(/[:@]/, '_')
-        dir = File.join(store.sync_dir, 'chats', sanitized)
-        FileUtils.mkdir_p(dir)
-        File.write(File.join(dir, 'messages.md'), '# Test')
-      end
+      # Change type to meeting
+      store.ensure_dir_name(state, chat_id, 'Sprint Planning', chat_type: 'meeting')
 
-      store.migrate_directories!(state)
-
-      # Verify directories were renamed
-      assert File.directory?(File.join(store.sync_dir, 'chats', 'Alpha Chat'))
-      assert File.directory?(File.join(store.sync_dir, 'chats', 'Beta Chat'))
-      refute File.directory?(File.join(store.sync_dir, 'chats', '19_aaa_thread.v2'))
-      refute File.directory?(File.join(store.sync_dir, 'chats', '19_bbb_thread.v2'))
-
-      # Verify state was updated
-      assert_equal 'Alpha Chat', state.dig('chats', chat1, 'dir_name')
-      assert_equal 'Beta Chat', state.dig('chats', chat2, 'dir_name')
+      new_dir = File.join(store.sync_dir, 'chats', 'meetings', 'Sprint Planning')
+      assert File.directory?(new_dir), 'Directory should be in meetings/ subdir'
+      refute File.directory?(old_dir), 'Old groups/ directory should not exist'
+      assert_equal 'meeting', state.dig('chats', chat_id, 'chat_type')
     end
   end
 
@@ -393,9 +357,11 @@ class SyncStoreTest < Minitest::Test
       store.update_chat_state(state, 'chat1',
                               last_synced_at: now,
                               message_count: 42,
-                              display_name: 'My Project Chat')
+                              display_name: 'My Project Chat',
+                              chat_type: 'group')
 
       assert_equal 'My Project Chat', state['chats']['chat1']['dir_name']
+      assert_equal 'group', state['chats']['chat1']['chat_type']
     end
   end
 
@@ -403,7 +369,7 @@ class SyncStoreTest < Minitest::Test
     with_temp_config do
       store = Teems::Services::SyncStore.new
       chat_id = '19:test@thread.v2'
-      state = { 'chats' => { chat_id => { 'dir_name' => 'Human Readable Name' } } }
+      state = { 'chats' => { chat_id => { 'dir_name' => 'Human Readable Name', 'chat_type' => 'group' } } }
       messages = [{ 'id' => '1', 'content' => 'hello' }]
 
       store.write_messages(chat_id,
@@ -411,8 +377,9 @@ class SyncStoreTest < Minitest::Test
                            messages_json: JSON.generate(messages),
                            state: state)
 
-      # Verify file was written to human-readable dir
+      # Verify file was written to human-readable dir in type subdir
       dir = store.chat_dir(chat_id, state: state)
+      assert_includes dir, 'chats/groups/Human Readable Name'
       assert File.exist?(File.join(dir, 'messages.json'))
 
       # Verify read_messages_json also uses state
@@ -438,18 +405,18 @@ class SyncStoreTest < Minitest::Test
     with_temp_config do
       store = Teems::Services::SyncStore.new
       chat_id = '19:abc@thread.v2'
-      state = { 'chats' => { chat_id => { 'dir_name' => 'Old Name' } } }
+      state = { 'chats' => { chat_id => { 'dir_name' => 'Old Name', 'chat_type' => 'group' } } }
 
-      # Create both old and new directories with different content
-      old_dir = File.join(store.sync_dir, 'chats', 'Old Name')
-      new_dir = File.join(store.sync_dir, 'chats', 'New Name')
+      # Create both old and new directories with different content in type subdir
+      old_dir = File.join(store.sync_dir, 'chats', 'groups', 'Old Name')
+      new_dir = File.join(store.sync_dir, 'chats', 'groups', 'New Name')
       FileUtils.mkdir_p(old_dir)
       FileUtils.mkdir_p(new_dir)
       File.write(File.join(old_dir, 'messages.md'), '# Old content')
       File.write(File.join(new_dir, 'messages.md'), '# Existing content')
 
       # ensure_dir_name should NOT overwrite the existing "New Name" dir
-      store.ensure_dir_name(state, chat_id, 'New Name')
+      store.ensure_dir_name(state, chat_id, 'New Name', chat_type: 'group')
 
       # Both directories should still exist with original content
       assert File.directory?(old_dir), 'Old dir should still exist since rename was skipped'
@@ -505,6 +472,90 @@ class SyncStoreTest < Minitest::Test
       refute dir_name.end_with?('.'), 'Dir name should not end with dots'
       refute dir_name.end_with?(' '), 'Dir name should not end with spaces'
       assert_equal 'My Chat', dir_name
+    end
+  end
+
+  # --- Type subdirectory tests ---
+
+  def test_chat_dir_includes_type_subdirectory
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      chat_id = '19:abc@thread.v2'
+
+      { 'group' => 'groups', 'oneOnOne' => 'dms', 'meeting' => 'meetings',
+        'channel' => 'channels', 'space' => 'spaces' }.each do |chat_type, subdir|
+        state = { 'chats' => { chat_id => { 'dir_name' => 'Some Chat', 'chat_type' => chat_type } } }
+        dir = store.chat_dir(chat_id, state: state)
+
+        assert_includes dir, "chats/#{subdir}/Some Chat", "chat_type '#{chat_type}' should use '#{subdir}/' subdirectory"
+      end
+    end
+  end
+
+  def test_unknown_chat_type_uses_other_dir
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      chat_id = '19:abc@thread.v2'
+
+      [nil, 'unknown', 'something_else'].each do |chat_type|
+        state = { 'chats' => { chat_id => { 'dir_name' => 'Some Chat', 'chat_type' => chat_type } } }
+        dir = store.chat_dir(chat_id, state: state)
+
+        assert_includes dir, 'chats/other/Some Chat', "chat_type #{chat_type.inspect} should use 'other/' subdirectory"
+      end
+    end
+  end
+
+  def test_type_dir_mapping
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+
+      assert_equal 'dms', store.type_dir('oneOnOne')
+      assert_equal 'groups', store.type_dir('group')
+      assert_equal 'meetings', store.type_dir('meeting')
+      assert_equal 'channels', store.type_dir('channel')
+      assert_equal 'spaces', store.type_dir('space')
+      assert_equal 'other', store.type_dir(nil)
+      assert_equal 'other', store.type_dir('unknown')
+    end
+  end
+
+  def test_update_chat_state_stores_chat_type
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      state = {}
+      now = Time.now
+
+      store.update_chat_state(state, 'chat1',
+                              last_synced_at: now,
+                              message_count: 10,
+                              display_name: 'DM Chat',
+                              chat_type: 'oneOnOne')
+
+      assert_equal 'oneOnOne', state['chats']['chat1']['chat_type']
+    end
+  end
+
+  def test_mark_unavailable_stores_chat_type
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      state = {}
+
+      store.mark_unavailable(state, 'chat1', display_name: 'Dead Chat', chat_type: 'meeting')
+
+      assert_equal 'meeting', state.dig('chats', 'chat1', 'chat_type')
+    end
+  end
+
+  def test_ensure_dir_name_stores_chat_type_in_state
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      chat_id = '19:abc@thread.v2'
+      state = { 'chats' => {} }
+
+      store.ensure_dir_name(state, chat_id, 'My Chat', chat_type: 'group')
+
+      assert_equal 'group', state.dig('chats', chat_id, 'chat_type')
     end
   end
 end

@@ -73,8 +73,6 @@ module Teems
         @state = @sync_store.load_state
         @stats = { synced: 0, skipped: 0, errors: 0, messages_total: 0 }
 
-        @sync_store.migrate_directories!(@state)
-
         setup_api_logging
 
         chats = fetch_chat_list
@@ -186,7 +184,7 @@ module Teems
           yield
         rescue ApiError => retry_error
           if retry_error.not_found?
-            mark_chat_unavailable(chat.id, chat.display_name)
+            mark_chat_unavailable(chat.id, chat.display_name, chat.chat_type)
             warn("  Chat unavailable (404): '#{chat.display_name}' — will skip on future syncs")
           else
             warn("  Failed to sync '#{chat.display_name}': #{retry_error.message}")
@@ -197,7 +195,7 @@ module Teems
 
       def sync_single_chat(chat)
         # Ensure human-readable directory name is set
-        @sync_store.ensure_dir_name(@state, chat.id, chat.display_name)
+        @sync_store.ensure_dir_name(@state, chat.id, chat.display_name, chat_type: chat.chat_type)
 
         # Determine start time: last sync or N days ago
         last_sync = @sync_store.last_synced_time(@state, chat.id)
@@ -226,7 +224,8 @@ module Teems
           @state, chat.id,
           last_synced_at: Time.now,
           message_count: all_messages.length,
-          display_name: chat.display_name
+          display_name: chat.display_name,
+          chat_type: chat.chat_type
         )
 
         @stats[:synced] += 1
@@ -368,8 +367,8 @@ module Teems
         Time.now - (since_days * 86_400)
       end
 
-      def mark_chat_unavailable(chat_id, display_name)
-        @sync_store.mark_unavailable(@state, chat_id, display_name: display_name)
+      def mark_chat_unavailable(chat_id, display_name, chat_type)
+        @sync_store.mark_unavailable(@state, chat_id, display_name: display_name, chat_type: chat_type)
       end
 
       def setup_api_logging

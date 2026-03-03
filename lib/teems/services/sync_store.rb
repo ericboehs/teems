@@ -8,8 +8,12 @@ module Teems
       SYNC_DIR = 'sync'
       STATE_FILE = 'sync_state.json'
       CHATS_DIR = 'chats'
-      GENERIC_LABELS = ['Group Chat', '1:1 Chat', 'Meeting Chat'].freeze
+      GENERIC_LABELS = ['Group Chat', '1:1 Chat', 'Meeting Chat', 'Channel', 'Space'].freeze
       MAX_DIR_NAME_LENGTH = 100
+      TYPE_DIRS = {
+        'oneOnOne' => 'dms', 'group' => 'groups', 'meeting' => 'meetings',
+        'channel' => 'channels', 'space' => 'spaces'
+      }.freeze
 
       def initialize(xdg_paths: nil)
         @xdg_paths = xdg_paths || Support::XdgPaths.new
@@ -17,6 +21,11 @@ module Teems
 
       def sync_dir
         @sync_dir ||= File.join(@xdg_paths.data_dir, SYNC_DIR)
+      end
+
+      # Map chat_type to subdirectory name
+      def type_dir(chat_type)
+        TYPE_DIRS[chat_type] || 'other'
       end
 
       # Load the global sync state from disk
@@ -48,21 +57,23 @@ module Teems
       end
 
       # Update per-chat metadata in the state hash (in-memory, call save_state to persist)
-      def update_chat_state(state, chat_id, last_synced_at:, message_count:, display_name: nil)
+      def update_chat_state(state, chat_id, last_synced_at:, message_count:, display_name: nil, chat_type: nil)
         ensure_chat_entry(state, chat_id).merge!(
           'last_synced_at' => last_synced_at.iso8601,
           'message_count' => message_count,
           'display_name' => display_name,
-          'dir_name' => build_dir_name(chat_id, display_name)
+          'dir_name' => build_dir_name(chat_id, display_name),
+          'chat_type' => chat_type
         )
         state
       end
 
       # Mark a chat as unavailable (e.g. 404) so it gets skipped on future syncs
-      def mark_unavailable(state, chat_id, display_name: nil)
+      def mark_unavailable(state, chat_id, display_name: nil, chat_type: nil)
         entry = ensure_chat_entry(state, chat_id)
         entry['unavailable'] = true
         entry['unavailable_at'] = Time.now.iso8601
+        entry['chat_type'] = chat_type if chat_type
         if display_name
           entry['display_name'] = display_name
           entry['dir_name'] = build_dir_name(chat_id, display_name)
@@ -76,10 +87,13 @@ module Teems
       end
 
       # Return the directory path for a specific chat
-      # When state is provided, uses the human-readable dir_name; falls back to sanitized ID
+      # When state is provided, uses the human-readable dir_name and type subdirectory;
+      # falls back to sanitized ID in 'other/' when state is not available
       def chat_dir(chat_id, state: nil)
         dir_name = state&.dig('chats', chat_id, 'dir_name') || sanitize_id(chat_id)
-        File.join(sync_dir, CHATS_DIR, dir_name)
+        chat_type = state&.dig('chats', chat_id, 'chat_type')
+        type_subdir = type_dir(chat_type)
+        File.join(sync_dir, CHATS_DIR, type_subdir, dir_name)
       end
 
       # Write messages.md and messages.json for a chat (atomic writes)
@@ -111,35 +125,25 @@ module Teems
         []
       end
 
-      # Ensure a chat has the correct human-readable directory name.
-      # Handles three cases: legacy dir (no dir_name in state yet), topic changed, or no change.
+      # Ensure a chat has the correct human-readable directory name within its type subdirectory.
+      # Handles topic rename, type change, or no change needed.
       # Returns the dir_name that was set.
-      def ensure_dir_name(state, chat_id, display_name)
+      def ensure_dir_name(state, chat_id, display_name, chat_type: nil)
         new_dir_name = build_dir_name(chat_id, display_name)
         entry = ensure_chat_entry(state, chat_id)
         current_dir_name = entry['dir_name']
+        old_chat_type = entry['chat_type']
 
-        if current_dir_name.nil?
-          # Legacy directory: check if old sanitized-ID dir exists and rename it
-          rename_chat_dir(sanitize_id(chat_id), new_dir_name)
-        elsif current_dir_name != new_dir_name
-          # Topic changed: rename from old dir_name to new
-          rename_chat_dir(current_dir_name, new_dir_name)
+        if current_dir_name && (current_dir_name != new_dir_name || old_chat_type != chat_type)
+          rename_chat_dir(
+            current_dir_name, new_dir_name,
+            old_type: type_dir(old_chat_type), new_type: type_dir(chat_type)
+          )
         end
 
         entry['dir_name'] = new_dir_name
+        entry['chat_type'] = chat_type
         new_dir_name
-      end
-
-      # Migrate all existing chat directories to human-readable names.
-      # Idempotent — safe to run repeatedly.
-      def migrate_directories!(state)
-        return unless state['chats']
-
-        state['chats'].each do |chat_id, chat_state|
-          display_name = chat_state['display_name']
-          ensure_dir_name(state, chat_id, display_name)
-        end
       end
 
       private
@@ -188,19 +192,17 @@ module Teems
         end
       end
 
-      # Rename a chat directory from old_name to new_name (within the chats dir).
-      # No-op if old doesn't exist, new already exists, or names are the same.
-      def rename_chat_dir(old_name, new_name)
-        return if old_name == new_name
-
+      # Rename/move a chat directory across type subdirectories.
+      # No-op if old doesn't exist, new already exists, or paths are the same.
+      def rename_chat_dir(old_name, new_name, old_type:, new_type:)
         chats_path = File.join(sync_dir, CHATS_DIR)
-        old_path = File.join(chats_path, old_name)
-        new_path = File.join(chats_path, new_name)
-
+        old_path = File.join(chats_path, old_type, old_name)
+        new_path = File.join(chats_path, new_type, new_name)
+        return if old_path == new_path
         return unless File.directory?(old_path)
         return if File.exist?(new_path)
 
-        FileUtils.mkdir_p(chats_path)
+        FileUtils.mkdir_p(File.join(chats_path, new_type))
         File.rename(old_path, new_path)
       end
 
