@@ -64,7 +64,7 @@ module Teems
       # Maximum seconds to wait for tokens to appear in localStorage after page loads.
       # Teams SPA populates localStorage asynchronously after the URL changes,
       # so we retry extraction to handle the delay.
-      TOKEN_POLL_MAX_SECONDS = 15
+      TOKEN_POLL_MAX_SECONDS = 30
       TOKEN_POLL_INTERVAL = 1
 
       def initialize(output: nil)
@@ -146,8 +146,14 @@ module Teems
       end
 
       def wait_for_login
-        # Wait for user to complete login
-        # We poll until we detect the page has loaded with auth
+        # First, wait for the navigation to start. If Safari was already on
+        # teams.microsoft.com, page_ready? would return true immediately
+        # before the new page load has begun, causing us to try token
+        # extraction against a stale page. Give Safari time to initiate
+        # the navigation so the URL transitions through a non-ready state.
+        wait_for_navigation_start
+
+        # Now wait for the page to finish loading with auth
         max_attempts = 60 # 60 seconds max
         attempts = 0
 
@@ -159,6 +165,18 @@ module Teems
           break if attempts >= max_attempts
 
           log("Waiting... (#{attempts}s)") if (attempts % 10).zero?
+        end
+      end
+
+      def wait_for_navigation_start
+        # Wait up to 5 seconds for the page to enter a non-ready state,
+        # indicating navigation has begun. If the page was already on a
+        # login URL or a different site, it won't be "ready" and we skip
+        # this wait immediately.
+        5.times do
+          break unless page_ready?
+
+          sleep 1
         end
       end
 
