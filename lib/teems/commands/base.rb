@@ -145,7 +145,7 @@ module Teems
       def with_token_refresh
         yield
       rescue ApiError => e
-        raise unless e.message.include?('Invalid token') || e.message.include?('expired')
+        raise unless e.unauthorized? || e.message.include?('expired')
 
         debug('Token expired, attempting refresh...')
         if runner.refresh_tokens

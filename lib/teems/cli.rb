@@ -8,6 +8,7 @@ module Teems
       'channels' => Commands::Channels,
       'chats' => Commands::Chats,
       'messages' => Commands::Messages,
+      'sync' => Commands::Sync,
       'help' => Commands::Help
     }.freeze
 
@@ -104,9 +105,15 @@ module Teems
 
     def build_runner(args)
       verbose = verbose_mode?(args)
-      output = @output || Formatters::Output.new(verbose: verbose)
-      runner = Runner.new(output: output)
-      setup_verbose_logging(runner, output) if verbose
+      out = if verbose && @output
+              @output.with_verbose(true)
+            elsif verbose
+              Formatters::Output.new(verbose: true)
+            else
+              @output || Formatters::Output.new
+            end
+      runner = Runner.new(output: out)
+      setup_verbose_logging(runner, out) if verbose
       runner
     end
 

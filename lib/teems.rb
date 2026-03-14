@@ -11,7 +11,20 @@ require 'io/console'
 # Microsoft Teams CLI - A command-line interface for Microsoft Teams
 module Teems
   class Error < StandardError; end
-  class ApiError < Error; end
+
+  class ApiError < Error
+    attr_reader :status_code
+
+    def initialize(message = nil, status_code: nil)
+      @status_code = status_code
+      super(message)
+    end
+
+    def not_found? = status_code == 404
+    def unauthorized? = status_code == 401
+    def forbidden? = status_code == 403
+    def rate_limited? = status_code == 429
+  end
   class ConfigError < Error; end
   class AuthError < Error; end
   class TokenStoreError < Error; end
@@ -38,12 +51,14 @@ module Teems
     autoload :TokenRefresher, 'teems/services/token_refresher'
     autoload :CacheStore, 'teems/services/cache_store'
     autoload :TeamsUrlParser, 'teems/services/teams_url_parser'
+    autoload :SyncStore, 'teems/services/sync_store'
   end
 
   # Output formatters for messages and terminal output
   module Formatters
     autoload :Output, 'teems/formatters/output'
     autoload :MessageFormatter, 'teems/formatters/message_formatter'
+    autoload :MarkdownFormatter, 'teems/formatters/markdown_formatter'
   end
 
   # CLI commands implementing user-facing functionality
@@ -53,6 +68,7 @@ module Teems
     autoload :Channels, 'teems/commands/channels'
     autoload :Chats, 'teems/commands/chats'
     autoload :Messages, 'teems/commands/messages'
+    autoload :Sync, 'teems/commands/sync'
     autoload :Help, 'teems/commands/help'
   end
 

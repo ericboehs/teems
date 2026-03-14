@@ -334,7 +334,7 @@ class WithTokenRefreshTest < Minitest::Test
       assert_raises(Teems::ApiError) do
         cmd.test_with_token_refresh do
           call_count += 1
-          raise Teems::ApiError, 'Invalid token or session expired'
+          raise Teems::ApiError.new('Invalid token or session expired', status_code: 401)
         end
       end
 
@@ -383,7 +383,7 @@ class WithTokenRefreshTest < Minitest::Test
       assert_raises(Teems::ApiError) do
         cmd.test_with_token_refresh do
           call_count += 1
-          raise Teems::ApiError, 'Invalid token'
+          raise Teems::ApiError.new('Invalid token', status_code: 401)
         end
       end
 
@@ -407,7 +407,7 @@ class WithTokenRefreshTest < Minitest::Test
 
       result = cmd.test_with_token_refresh do
         call_count += 1
-        raise Teems::ApiError, 'Invalid token' if call_count == 1
+        raise Teems::ApiError.new('Invalid token', status_code: 401) if call_count == 1
 
         'success after refresh'
       end

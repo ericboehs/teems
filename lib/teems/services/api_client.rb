@@ -41,9 +41,11 @@ module Teems
       end
 
       # GET request to a specific endpoint
+      # path can be a relative path or a full URL (e.g., from pagination links)
       def get(endpoint_key, path, account:, params: {})
         base_url = ENDPOINTS[endpoint_key] or raise ArgumentError, "Unknown endpoint: #{endpoint_key}"
-        uri = build_uri("#{base_url}#{path}", params)
+        full_url = path.start_with?('http') ? path : "#{base_url}#{path}"
+        uri = build_uri(full_url, params)
 
         execute_request(path, endpoint_key) do |http|
           request = Net::HTTP::Get.new(uri)
@@ -145,18 +147,18 @@ module Teems
       def handle_response(response, _path)
         case response
         when Net::HTTPSuccess then parse_success_response(response)
-        when Net::HTTPUnauthorized then raise ApiError, 'Invalid token or session expired'
-        when Net::HTTPForbidden then raise ApiError, 'Access forbidden'
+        when Net::HTTPUnauthorized then raise ApiError.new('Invalid token or session expired', status_code: 401)
+        when Net::HTTPForbidden then raise ApiError.new('Access forbidden', status_code: 403)
         when Net::HTTPTooManyRequests then handle_rate_limit(response)
-        else raise ApiError, "HTTP #{response.code}: #{response.message}"
+        else raise ApiError.new("HTTP #{response.code}: #{response.message}", status_code: response.code.to_i)
         end
       end
 
       def handle_rate_limit(response)
         retry_after = response['Retry-After']
-        raise ApiError, "Rate limited - retry after #{retry_after} seconds" if retry_after
+        raise ApiError.new("Rate limited - retry after #{retry_after} seconds", status_code: 429) if retry_after
 
-        raise ApiError, 'Rate limited - please wait and try again'
+        raise ApiError.new('Rate limited - please wait and try again', status_code: 429)
       end
 
       def parse_success_response(response)

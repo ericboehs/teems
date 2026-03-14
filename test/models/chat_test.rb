@@ -167,9 +167,14 @@ class ChatTest < Minitest::Test
     assert_equal 'meeting', Teems::Models::Chat.normalize_chat_type('Meeting')
   end
 
-  def test_normalize_chat_type_topic_to_one_on_one
-    assert_equal 'oneOnOne', Teems::Models::Chat.normalize_chat_type('topic')
-    assert_equal 'oneOnOne', Teems::Models::Chat.normalize_chat_type('Topic')
+  def test_normalize_chat_type_topic_to_channel
+    assert_equal 'channel', Teems::Models::Chat.normalize_chat_type('topic')
+    assert_equal 'channel', Teems::Models::Chat.normalize_chat_type('Topic')
+  end
+
+  def test_normalize_chat_type_space
+    assert_equal 'space', Teems::Models::Chat.normalize_chat_type('space')
+    assert_equal 'space', Teems::Models::Chat.normalize_chat_type('Space')
   end
 
   def test_normalize_chat_type_passes_through_unknown
@@ -180,15 +185,16 @@ class ChatTest < Minitest::Test
     assert_nil Teems::Models::Chat.normalize_chat_type(nil)
   end
 
-  def test_from_ngmsg_one_on_one_chat
+  def test_from_ngmsg_channel
     ngmsg_data = {
-      'id' => '19:one-on-one@thread.v2',
-      'threadProperties' => { 'threadType' => 'topic' }
+      'id' => '19:channel123@thread.tacv2',
+      'threadProperties' => { 'threadType' => 'topic', 'topic' => 'General' }
     }
     chat = Teems::Models::Chat.from_api(ngmsg_data)
 
-    assert chat.one_on_one?
+    assert chat.channel?
     refute chat.group?
+    assert_equal 'General', chat.topic
   end
 
   def test_from_ngmsg_meeting_chat

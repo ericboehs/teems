@@ -129,6 +129,7 @@ class ApiClientResponseHandlingTest < Minitest::Test
     end
 
     assert_match(/retry after 60/, error.message)
+    assert_equal 429, error.status_code
   end
 
   def test_handle_rate_limit_without_retry_after
@@ -140,6 +141,7 @@ class ApiClientResponseHandlingTest < Minitest::Test
     end
 
     assert_match(/Rate limited/, error.message)
+    assert_equal 429, error.status_code
   end
 
   # Simple mocks for response body testing
@@ -159,5 +161,49 @@ class ApiClientResponseHandlingTest < Minitest::Test
     def [](key)
       @retry_after if key == 'Retry-After'
     end
+  end
+end
+
+class ApiErrorTest < Minitest::Test
+  def test_status_code_is_nil_by_default
+    error = Teems::ApiError.new('Some error')
+    assert_nil error.status_code
+  end
+
+  def test_status_code_can_be_set
+    error = Teems::ApiError.new('Not Found', status_code: 404)
+    assert_equal 404, error.status_code
+  end
+
+  def test_not_found_predicate
+    assert Teems::ApiError.new('Not Found', status_code: 404).not_found?
+    refute Teems::ApiError.new('Server Error', status_code: 500).not_found?
+    refute Teems::ApiError.new('No status').not_found?
+  end
+
+  def test_unauthorized_predicate
+    assert Teems::ApiError.new('Unauthorized', status_code: 401).unauthorized?
+    refute Teems::ApiError.new('Not Found', status_code: 404).unauthorized?
+  end
+
+  def test_forbidden_predicate
+    assert Teems::ApiError.new('Forbidden', status_code: 403).forbidden?
+    refute Teems::ApiError.new('Not Found', status_code: 404).forbidden?
+  end
+
+  def test_rate_limited_predicate
+    assert Teems::ApiError.new('Rate limited', status_code: 429).rate_limited?
+    refute Teems::ApiError.new('Not Found', status_code: 404).rate_limited?
+  end
+
+  def test_message_is_preserved
+    error = Teems::ApiError.new('HTTP 404: Not Found', status_code: 404)
+    assert_equal 'HTTP 404: Not Found', error.message
+  end
+
+  def test_backwards_compatible_with_positional_message
+    error = Teems::ApiError.new('Legacy error')
+    assert_equal 'Legacy error', error.message
+    assert_nil error.status_code
   end
 end

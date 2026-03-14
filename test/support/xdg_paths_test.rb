@@ -60,4 +60,33 @@ class XdgPathsTest < Minitest::Test
       assert File.directory?(cache_dir)
     end
   end
+
+  def test_data_dir_uses_xdg_data_home
+    with_temp_config do |dir|
+      paths = Teems::Support::XdgPaths.new
+
+      assert_equal "#{dir}/data/teems", paths.data_dir
+    end
+  end
+
+  def test_data_file_joins_with_data_dir
+    with_temp_config do |dir|
+      paths = Teems::Support::XdgPaths.new
+
+      assert_equal "#{dir}/data/teems/sync_state.json", paths.data_file('sync_state.json')
+    end
+  end
+
+  def test_ensure_data_dir_creates_directory
+    with_temp_config do |dir|
+      paths = Teems::Support::XdgPaths.new
+      data_dir = "#{dir}/data/teems"
+
+      refute File.exist?(data_dir)
+
+      paths.ensure_data_dir
+
+      assert File.directory?(data_dir)
+    end
+  end
 end
