@@ -16,6 +16,9 @@ module Teems
         result = validate_options
         return result if result
 
+        login_result = login_if_requested
+        return login_result if login_result
+
         auth_result = require_auth
         return auth_result if auth_result
 
@@ -35,6 +38,9 @@ module Teems
         when '--dry-run'
           @options[:dry_run] = true
           true
+        when '--auth'
+          @options[:auth] = true
+          true
         else
           super
         end
@@ -50,6 +56,7 @@ module Teems
           #{output.bold('OPTIONS:')}
             --since DAYS     Number of days of history to sync (default: 180)
             --chat CHAT_ID   Sync only this chat
+            --auth           Authenticate via Safari before syncing
             --dry-run        Show what would be synced without writing files
             -v, --verbose    Show debug output
             -q, --quiet      Suppress output
@@ -67,6 +74,33 @@ module Teems
       end
 
       private
+
+      def login_if_requested
+        return unless @options[:auth]
+
+        extractor = runner.token_extractor
+        tokens = extractor.extract
+
+        if tokens && tokens[:auth_token]
+          saved = token_store.save(
+            name: 'default',
+            auth_token: tokens[:auth_token],
+            skype_token: tokens[:skype_token],
+            skype_spaces_token: tokens[:skype_spaces_token],
+            chatsvc_token: tokens[:chatsvc_token]
+          )
+          unless saved
+            error('Authentication tokens extracted but failed to save')
+            return 1
+          end
+          success('Authentication successful!')
+        else
+          error('Failed to authenticate via Safari')
+          return 1
+        end
+
+        nil
+      end
 
       def run_sync
         @sync_store = Services::SyncStore.new

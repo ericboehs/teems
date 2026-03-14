@@ -93,6 +93,12 @@ module Teems
       def status
         if token_store.configured?
           account = token_store.account
+          unless account
+            puts "#{output.yellow('⚠')} Token file exists but is incomplete"
+            puts 'Run: teems auth login'
+            return 0
+          end
+
           puts "#{output.green('✓')} Authenticated as: #{account.name}"
 
           age = token_store.token_age
