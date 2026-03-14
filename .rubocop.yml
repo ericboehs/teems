@@ -1,9 +1,3 @@
-inherit_from: .rubocop_todo.yml
-
-inherit_mode:
-  merge:
-    - Exclude
-
 AllCops:
   TargetRubyVersion: 3.2
   NewCops: enable
@@ -53,8 +47,14 @@ Naming/MethodName:
     - 'test/**/*'
 
 Naming/VariableNumber:
+  AllowedPatterns:
+    - '_\d{3}$'  # HTTP status codes (e.g., retry_after_404)
   Exclude:
     - 'test/**/*'
+
+# Conservative mode flags private helper methods as false positives
+Naming/PredicateMethod:
+  Enabled: false
 
 Lint/UnusedMethodArgument:
   Exclude:

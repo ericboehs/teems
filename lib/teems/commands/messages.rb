@@ -2,6 +2,28 @@
 
 module Teems
   module Commands
+    MESSAGES_HELP = <<~HELP
+      teems messages - Read messages from a channel or chat
+
+      USAGE:
+        teems messages <target> [options]
+
+      ARGUMENTS:
+        target           Chat ID, channel ID, or Teams message URL
+
+      OPTIONS:
+        -t, --team ID    Team ID (required for channel messages)
+        -n, --limit N    Number of messages (default: 20)
+        -v, --verbose    Show debug output
+        -q, --quiet      Suppress output
+        --json           Output as JSON
+
+      EXAMPLES:
+        teems messages 19:abc123@thread.v2         # Read chat messages
+        teems messages 19:abc123@thread.v2 -n 50   # Show 50 messages
+        teems messages "https://teams.microsoft.com/l/message/19:abc@thread.v2/123?context=..."
+    HELP
+
     # Read messages from a channel or chat
     class Messages < Base
       def execute
@@ -21,37 +43,12 @@ module Teems
 
       def handle_option(arg, args, _remaining)
         case arg
-        when '-t', '--team'
-          @options[:team_id] = args.shift
-          true
-        else
-          super
+        when '-t', '--team' then @options[:team_id] = args.shift
+        else super
         end
       end
 
-      def help_text
-        <<~HELP
-          #{output.bold('teems messages')} - Read messages from a channel or chat
-
-          #{output.bold('USAGE:')}
-            teems messages <target> [options]
-
-          #{output.bold('ARGUMENTS:')}
-            target           Chat ID, channel ID, or Teams message URL
-
-          #{output.bold('OPTIONS:')}
-            -t, --team ID    Team ID (required for channel messages)
-            -n, --limit N    Number of messages (default: 20)
-            -v, --verbose    Show debug output
-            -q, --quiet      Suppress output
-            --json           Output as JSON
-
-          #{output.bold('EXAMPLES:')}
-            teems messages 19:abc123@thread.v2         # Read chat messages
-            teems messages 19:abc123@thread.v2 -n 50   # Show 50 messages
-            teems messages "https://teams.microsoft.com/l/message/19:abc@thread.v2/123?context=..."
-        HELP
-      end
+      def help_text = MESSAGES_HELP
 
       private
 
@@ -71,29 +68,18 @@ module Teems
       end
 
       def parse_teams_url_if_needed(target)
-        return target unless looks_like_url?(target)
+        return target unless target.start_with?('https://')
 
         result = Services::TeamsUrlParser.parse(target)
-        unless result
-          error('Invalid Teams URL format')
-          return nil
-        end
+        return error('Invalid Teams URL format') || nil unless result
 
         debug("Parsed URL: conversation=#{result.conversation_id}, team=#{result.team_id}")
         @options[:team_id] = result.team_id if result.team_id
         result.conversation_id
       end
 
-      def looks_like_url?(str)
-        str&.start_with?('https://')
-      end
-
       def fetch_messages(target)
-        if @options[:team_id]
-          fetch_channel_messages(target)
-        else
-          fetch_chat_messages(target)
-        end
+        @options[:team_id] ? fetch_channel_messages(target) : fetch_chat_messages(target)
       end
 
       def fetch_channel_messages(channel_id)
@@ -105,7 +91,6 @@ module Teems
         display_messages(extract_messages_data(response))
       rescue ApiError => e
         error("Failed to fetch channel messages: #{e.message}")
-        1
       end
 
       def fetch_chat_messages(chat_id)
@@ -115,25 +100,16 @@ module Teems
         display_messages(extract_messages_data(response))
       rescue ApiError => e
         error("Failed to fetch chat messages: #{e.message}")
-        1
       end
 
-      def extract_messages_data(response)
-        response['messages'] || response['posts'] || response['value'] || []
-      end
+      def extract_messages_data(response) = response['messages'] || response['posts'] || response['value'] || []
 
       def display_messages(messages_data)
         return (puts('No messages found') || true) && 0 if messages_data.empty?
 
-        messages = parse_and_filter(messages_data)
+        messages = messages_data.map { |m| Models::Message.from_api(m) }.reject(&:system_message?).reverse
         render_messages(messages)
         0
-      end
-
-      def parse_and_filter(messages_data)
-        messages_data.map { |m| Models::Message.from_api(m) }
-                     .reject(&:system_message?)
-                     .reverse
       end
 
       def render_messages(messages)

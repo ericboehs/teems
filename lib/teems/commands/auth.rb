@@ -2,8 +2,111 @@
 
 module Teems
   module Commands
+    AUTH_HELP = <<~HELP
+      teems auth - Manage Teams authentication
+
+      USAGE:
+        teems auth [action]
+
+      ACTIONS:
+        login       Authenticate via Safari (opens browser)
+        logout      Remove stored tokens
+        status      Show current authentication status
+        manual      Show manual token extraction instructions
+        set-tokens  Manually enter tokens from browser
+
+      EXAMPLES:
+        teems auth login      # Open Safari and extract tokens
+        teems auth status     # Check if authenticated
+        teems auth logout     # Clear stored tokens
+    HELP
+
+    # Token input methods for manual token entry and file import
+    module AuthTokenInput
+      def set_tokens
+        return import_tokens_from_file(positional_args[1]) if positional_args[1]
+
+        prompt_and_save_tokens
+      end
+
+      private
+
+      def prompt_and_save_tokens
+        puts 'Enter your Teams tokens.'
+        puts '(Tokens are long - you can also use: teems auth set-tokens <file>)'
+        puts
+        auth_token = prompt_for_token('Auth token (from Authorization: Bearer header or authtoken cookie)')
+        return error('Auth token is required') if auth_token.nil? || auth_token.empty?
+
+        save_extracted_tokens(auth_token, prompt_for_skype_token)
+      end
+
+      def prompt_for_skype_token
+        puts
+        puts 'Skype token is optional (needed for some chat APIs).'
+        puts 'Press Enter twice to skip, or paste the skypetoken_asm cookie value:'
+        prompt_for_token('Skype token (optional)')
+      end
+
+      def prompt_for_token(label)
+        puts "#{label}:"
+        puts '(paste token, then press Enter twice or Ctrl-D)'
+        read_multiline_token
+      end
+
+      def read_multiline_token
+        lines = []
+        while (line = $stdin.gets)
+          break if line.strip.empty?
+
+          lines << line.chomp
+        end
+        clean_token(lines.join)
+      end
+
+      def clean_token(token) = token.sub(/^Bearer\s+/i, '').sub(/^skypetoken=/i, '').strip
+
+      def import_tokens_from_file(file_path)
+        return error("File not found: #{file_path}") unless File.exist?(file_path)
+
+        data = parse_token_file(file_path)
+        return data if data.is_a?(Integer)
+
+        build_and_save_file_tokens(data)
+      rescue Errno::EACCES => e
+        error("Cannot read file: #{e.message}")
+      rescue Errno::EISDIR
+        error("Path is a directory, not a file: #{file_path}")
+      end
+
+      def parse_token_file(file_path)
+        JSON.parse(File.read(file_path))
+      rescue JSON::ParserError
+        error('Invalid JSON file. Expected: {"auth_token": "..."}')
+      end
+
+      def build_and_save_file_tokens(data)
+        auth_token = data['auth_token'] || data['authtoken']
+        return error('File must contain auth_token key') unless auth_token
+
+        save_extracted_tokens(auth_token, data['skype_token'] || data['skypetoken'] || auth_token,
+                              data['chatsvc_token'])
+      end
+
+      def save_extracted_tokens(auth_token, skype_token, chatsvc_token = nil)
+        token_store.save(
+          name: 'default', auth_token: clean_token(auth_token),
+          skype_token: clean_token(skype_token), chatsvc_token: chatsvc_token
+        )
+        success('Tokens saved successfully!')
+        0
+      end
+    end
+
     # Manages authentication with Microsoft Teams
     class Auth < Base
+      include AuthTokenInput
+
       def execute
         result = validate_options
         return result if result
@@ -13,26 +116,7 @@ module Teems
 
       protected
 
-      def help_text
-        <<~HELP
-          #{output.bold('teems auth')} - Manage Teams authentication
-
-          #{output.bold('USAGE:')}
-            teems auth [action]
-
-          #{output.bold('ACTIONS:')}
-            login       Authenticate via Safari (opens browser)
-            logout      Remove stored tokens
-            status      Show current authentication status
-            manual      Show manual token extraction instructions
-            set-tokens  Manually enter tokens from browser
-
-          #{output.bold('EXAMPLES:')}
-            teems auth login      # Open Safari and extract tokens
-            teems auth status     # Check if authenticated
-            teems auth logout     # Clear stored tokens
-        HELP
-      end
+      def help_text = AUTH_HELP
 
       private
 
@@ -78,19 +162,14 @@ module Teems
 
       def suggest_manual_auth
         error('Failed to extract tokens automatically')
-        puts
-        puts 'Try manual extraction instead:'
-        puts '  teems auth manual'
+        puts "\nTry manual extraction instead:\n  teems auth manual"
         1
       end
 
       def save_tokens(tokens)
         token_store.save(
-          name: 'default',
-          auth_token: tokens[:auth_token],
-          skype_token: tokens[:skype_token],
-          skype_spaces_token: tokens[:skype_spaces_token],
-          chatsvc_token: tokens[:chatsvc_token]
+          name: 'default', auth_token: tokens[:auth_token], skype_token: tokens[:skype_token],
+          skype_spaces_token: tokens[:skype_spaces_token], chatsvc_token: tokens[:chatsvc_token]
         )
       end
 
@@ -117,7 +196,6 @@ module Teems
           puts 'Run: teems auth login'
           return 0
         end
-
         puts "#{output.green('✓')} Authenticated as: #{account.name}"
         display_token_age
         0
@@ -136,102 +214,13 @@ module Teems
       end
 
       def display_unauthenticated_status
-        puts "#{output.red('✗')} Not authenticated"
-        puts
-        puts 'Run: teems auth login'
+        puts "#{output.red('✗')} Not authenticated\n\nRun: teems auth login"
         0
       end
 
       def show_manual_instructions
         puts runner.token_extractor.manual_instructions
-        puts
-        puts 'Once you have the tokens, you can set them manually:'
-        puts '  teems auth set-tokens'
-        0
-      end
-
-      def set_tokens
-        return import_tokens_from_file(positional_args[1]) if positional_args[1]
-
-        prompt_and_save_tokens
-      end
-
-      def prompt_and_save_tokens
-        puts 'Enter your Teams tokens.'
-        puts '(Tokens are long - you can also use: teems auth set-tokens <file>)'
-        puts
-
-        auth_token = prompt_for_token('Auth token (from Authorization: Bearer header or authtoken cookie)')
-        return error('Auth token is required') if auth_token.nil? || auth_token.empty?
-
-        skype_token = prompt_for_skype_token
-        save_extracted_tokens(auth_token, skype_token)
-      end
-
-      def prompt_for_skype_token
-        puts
-        puts 'Skype token is optional (needed for some chat APIs).'
-        puts 'Press Enter twice to skip, or paste the skypetoken_asm cookie value:'
-        prompt_for_token('Skype token (optional)')
-      end
-
-      def prompt_for_token(label)
-        puts "#{label}:"
-        puts '(paste token, then press Enter twice or Ctrl-D)'
-        read_multiline_token
-      end
-
-      def read_multiline_token
-        lines = []
-        while (line = $stdin.gets)
-          break if line.strip.empty?
-
-          lines << line.chomp
-        end
-        clean_token(lines.join)
-      end
-
-      def clean_token(token)
-        token.sub(/^Bearer\s+/i, '')
-             .sub(/^skypetoken=/i, '')
-             .strip
-      end
-
-      def import_tokens_from_file(file_path)
-        return error("File not found: #{file_path}") unless File.exist?(file_path)
-
-        data = parse_token_file(file_path)
-        return data if data.is_a?(Integer)
-
-        build_and_save_file_tokens(data)
-      rescue Errno::EACCES => e
-        error("Cannot read file: #{e.message}")
-      rescue Errno::EISDIR
-        error("Path is a directory, not a file: #{file_path}")
-      end
-
-      def parse_token_file(file_path)
-        JSON.parse(File.read(file_path))
-      rescue JSON::ParserError
-        error('Invalid JSON file. Expected: {"auth_token": "..."}')
-      end
-
-      def build_and_save_file_tokens(data)
-        auth_token = data['auth_token'] || data['authtoken']
-        return error('File must contain auth_token key') unless auth_token
-
-        skype_token = data['skype_token'] || data['skypetoken'] || auth_token
-        save_extracted_tokens(auth_token, skype_token, data['chatsvc_token'])
-      end
-
-      def save_extracted_tokens(auth_token, skype_token, chatsvc_token = nil)
-        token_store.save(
-          name: 'default',
-          auth_token: clean_token(auth_token),
-          skype_token: clean_token(skype_token),
-          chatsvc_token: chatsvc_token
-        )
-        success('Tokens saved successfully!')
+        puts "\nOnce you have the tokens, you can set them manually:\n  teems auth set-tokens"
         0
       end
     end

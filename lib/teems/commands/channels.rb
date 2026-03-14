@@ -71,14 +71,16 @@ module Teems
 
       def display_team_channels(api, team_data)
         channels = api.list_channels(team_id: team_data['id'])['value'] || []
-        channels.each do |channel_data|
-          channel = Models::Channel.from_api(channel_data, team_id: team_data['id'],
-                                                           team_name: team_data['displayName'])
-          prefix = channel.private? ? output.yellow('🔒') : '  '
-          puts "  #{prefix} #{channel.name} (#{channel.id})"
-        end
+        channels.each { |c| display_channel(c, team_data) }
       rescue ApiError => e
         puts "  #{output.red('Error:')} #{e.message}"
+      end
+
+      def display_channel(channel_data, team_data)
+        channel = Models::Channel.from_api(channel_data, team_id: team_data['id'],
+                                                         team_name: team_data['displayName'])
+        prefix = channel.private? ? output.yellow('🔒') : '  '
+        puts "  #{prefix} #{channel.name} (#{channel.id})"
       end
 
       def build_json_output(teams)

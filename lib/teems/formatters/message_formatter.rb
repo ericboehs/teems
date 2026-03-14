@@ -10,18 +10,22 @@ module Teems
       end
 
       def format(message)
+        [format_header(message), "  #{message.content}", format_reactions(message)].compact.join("\n")
+      end
+
+      private
+
+      def format_header(message)
         time_str = message.created_at&.strftime('%Y-%m-%d %H:%M') || ''
-        importance_marker = message.important? ? @output.red('!') : ''
+        importance = message.important? ? @output.red('!') : ''
+        "#{@output.blue("[#{time_str}]")} #{importance}#{@output.bold(message.sender_name)}:"
+      end
 
-        header = "#{@output.blue("[#{time_str}]")} #{importance_marker}#{@output.bold(message.sender_name)}:"
-        content = "  #{message.content}"
+      def format_reactions(message)
+        return unless message.reactions.any?
 
-        reactions = if message.reactions.any?
-                      reactions_str = message.reactions.map { |r| "#{r[:type]}(#{r[:count]})" }.join(' ')
-                      "  #{@output.gray(reactions_str)}"
-                    end
-
-        [header, content, reactions].compact.join("\n")
+        str = message.reactions.map { |r| "#{r[:type]}(#{r[:count]})" }.join(' ')
+        "  #{@output.gray(str)}"
       end
     end
   end

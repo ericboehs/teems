@@ -2,13 +2,42 @@
 
 module Teems
   module Services
-    # HTTP client for Teams API with connection pooling and multi-endpoint support
-    class ApiClient
+    # HTTP connection pool management for API endpoints
+    module ConnectionPool
       ENDPOINTS = {
         graph: 'https://graph.microsoft.com',
         teams: 'https://teams.microsoft.com',
         msgservice: 'https://ng.msg.gcc.teams.microsoft.com'
       }.freeze
+
+      private
+
+      def get_http_for_endpoint(endpoint_key)
+        uri = URI(ENDPOINTS[endpoint_key])
+        cache_key = "#{uri.host}:#{uri.port}"
+        (http = @http_cache[cache_key])&.started? ? http : @http_cache[cache_key] = start_http(uri)
+      end
+
+      def start_http(uri)
+        Net::HTTP.new(uri.host, uri.port).tap do |http|
+          http.use_ssl = (uri.scheme == 'https')
+          http.open_timeout = 10
+          http.read_timeout = 30
+          http.keep_alive_timeout = 30
+          configure_ssl(http) if http.use_ssl?
+          http.start
+        end
+      end
+
+      def configure_ssl(http)
+        http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+        http.cert_store = OpenSSL::X509::Store.new.tap(&:set_default_paths)
+      end
+    end
+
+    # HTTP client for Teams API with connection pooling and multi-endpoint support
+    class ApiClient
+      include ConnectionPool
 
       NETWORK_ERRORS = [
         SocketError, Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ETIMEDOUT,
@@ -78,28 +107,6 @@ module Teems
         raise ApiError, "Network error: #{e.message}"
       end
 
-      def get_http_for_endpoint(endpoint_key)
-        uri = URI(ENDPOINTS[endpoint_key])
-        cache_key = "#{uri.host}:#{uri.port}"
-        (http = @http_cache[cache_key])&.started? ? http : @http_cache[cache_key] = start_http(uri)
-      end
-
-      def start_http(uri)
-        Net::HTTP.new(uri.host, uri.port).tap do |http|
-          http.use_ssl = (uri.scheme == 'https')
-          http.open_timeout = 10
-          http.read_timeout = 30
-          http.keep_alive_timeout = 30
-          configure_ssl(http) if http.use_ssl?
-          http.start
-        end
-      end
-
-      def configure_ssl(http)
-        http.verify_mode = OpenSSL::SSL::VERIFY_PEER
-        http.cert_store = OpenSSL::X509::Store.new.tap(&:set_default_paths)
-      end
-
       def handle_response(response)
         case response
         when Net::HTTPSuccess        then parse_json_body(response)
@@ -111,7 +118,8 @@ module Teems
       end
 
       def raise_rate_limit(response)
-        suffix = response['Retry-After'] ? "retry after #{response['Retry-After']} seconds" : 'please wait and try again'
+        retry_after = response['Retry-After']
+        suffix = retry_after ? "retry after #{retry_after} seconds" : 'please wait and try again'
         raise ApiError.new("Rate limited - #{suffix}", status_code: 429)
       end
 

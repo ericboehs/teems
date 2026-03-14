@@ -2,16 +2,64 @@
 
 module Teems
   module Formatters
-    # Formats calendar events for terminal display
-    class CalendarFormatter
-      RSVP_COUNTS = %i[accepted declined tentative pending].freeze
-
+    # Attendee formatting helpers for calendar events
+    module CalendarAttendeeFormatter
       RESPONSE_LABELS = {
         'accepted' => 'Accepted',
         'declined' => 'Declined',
         'tentativelyAccepted' => 'Tentative',
         'none' => 'Pending'
       }.freeze
+
+      private
+
+      def format_attendee_sections(event)
+        [].concat(format_attendee_group('Required Attendees:', event.required_attendees, event))
+          .concat(format_attendee_group('Optional Attendees:', event.optional_attendees, event))
+          .concat(format_untyped_attendees(event))
+      end
+
+      def format_attendee_group(title, attendees, event)
+        return [] unless attendees.any?
+
+        [@output.bold(title), *attendees.map { |a| format_attendee(a, event) }, '']
+      end
+
+      def format_untyped_attendees(event)
+        untyped = event.attendees.reject { |a| %w[required optional].include?(a[:type]) }
+        format_attendee_group('Attendees:', untyped, event)
+      end
+
+      def format_attendee(attendee, event)
+        name_email = "#{attendee[:name] || attendee[:email]}#{" (#{attendee[:email]})" if attendee[:email]}"
+        "  #{response_symbol(attendee, event)} #{name_email} — #{response_label(attendee[:response])}"
+      end
+
+      def response_symbol(att, event)
+        organizer?(att, event) ? @output.cyan('★') : response_to_symbol(att[:response])
+      end
+
+      def organizer?(att, event)
+        event.organizer && att[:email]&.downcase == event.organizer[:email]&.downcase
+      end
+
+      def response_to_symbol(response)
+        case response
+        when 'accepted'             then @output.green('✓')
+        when 'declined'             then @output.red('✗')
+        when 'tentativelyAccepted'  then @output.yellow('?')
+        else @output.gray('·')
+        end
+      end
+
+      def response_label(response) = RESPONSE_LABELS[response] || response&.capitalize || 'Pending'
+    end
+
+    # Formats calendar events for terminal display
+    class CalendarFormatter
+      include CalendarAttendeeFormatter
+
+      RSVP_COUNTS = %i[accepted declined tentative pending].freeze
 
       def initialize(output:)
         @output = output
@@ -38,30 +86,18 @@ module Teems
 
       private
 
-      # --- List item formatting ---
-
       def format_list_item(event, number, verbose: false)
-        line = build_list_item_line(event, number)
-        line += list_item_verbose_suffix(event) if verbose
-        line
+        build_list_item_line(event, number) + (verbose ? list_item_verbose_suffix(event) : '')
       end
 
       def build_list_item_line(event, number)
-        time_display = event.all_day? ? 'ALL DAY   ' : event.time_range_display.ljust(11)
-        subject = list_item_subject(event)
-        location = list_item_location(event)
-        "  #{@output.cyan("[#{number}]")} #{time_display} #{subject}#{location}"
+        time = event.all_day? ? 'ALL DAY   ' : event.time_range_display.ljust(11)
+        "  #{@output.cyan("[#{number}]")} #{time} #{list_item_subject(event)}#{list_item_location(event)}"
       end
 
-      def list_item_subject(event)
-        event.cancelled? ? @output.gray("#{event.subject} (cancelled)") : event.subject
-      end
+      def list_item_subject(event) = event.cancelled? ? @output.gray("#{event.subject} (cancelled)") : event.subject
 
-      def list_item_location(event)
-        return '' unless event.location && !event.location.empty?
-
-        "  #{@output.gray("(#{event.location})")}"
-      end
+      def list_item_location(event) = (loc = event.location) && !loc.empty? ? "  #{@output.gray("(#{loc})")}" : ''
 
       def list_item_verbose_suffix(event)
         parts = []
@@ -73,33 +109,34 @@ module Teems
         "\n      #{parts.join("  #{@output.gray('|')}  ")}"
       end
 
-      # --- Detail formatting ---
-
       def detail_metadata_lines(event)
         lines = [@output.bold(event.subject), format_detail_time(event)]
-        lines << "  Location:  #{event.location}" if event.location && !event.location.empty?
-        lines << "  Organizer: #{event.organizer[:name]} (#{event.organizer[:email]})" if event.organizer
-        lines << "  Link:      #{event.online_meeting_url}" if event.online_meeting_url
-        lines << "  Status:    #{@output.red('CANCELLED')}" if event.cancelled?
-        lines << "  Show as:   #{event.show_as}" if event.show_as
+        append_detail_fields(lines, event)
         lines
       end
 
-      def detail_body_section(event)
-        return [] unless event.body_preview && !event.body_preview.strip.empty?
+      def append_detail_fields(lines, event)
+        lines << "  Location:  #{event.location}" if event.location && !event.location.empty?
+        append_organizer_and_links(lines, event)
+        lines << "  Status:    #{@output.red('CANCELLED')}" if event.cancelled?
+        lines << "  Show as:   #{event.show_as}" if event.show_as
+      end
 
-        [@output.bold('Description:'), "  #{event.body_preview.strip}", '']
+      def append_organizer_and_links(lines, event)
+        lines << "  Organizer: #{event.organizer[:name]} (#{event.organizer[:email]})" if event.organizer
+        lines << "  Link:      #{event.online_meeting_url}" if event.online_meeting_url
+      end
+
+      def detail_body_section(event)
+        (body = event.body_preview) && !body.strip.empty? ? [@output.bold('Description:'), "  #{body.strip}", ''] : []
       end
 
       def format_detail_time(event)
         return '  Time:      ALL DAY' if event.all_day?
         return '  Time:      (unknown)' unless event.start_time && event.end_time
 
-        date = event.start_time.strftime('%A, %B %-d, %Y')
-        "  Time:      #{date}  #{event.time_range_display}"
+        "  Time:      #{event.start_time.strftime('%A, %B %-d, %Y')}  #{event.time_range_display}"
       end
-
-      # --- Attendee formatting ---
 
       def attendee_rsvp_summary(event)
         counts = RSVP_COUNTS.filter_map do |status|
@@ -107,59 +144,6 @@ module Teems
           "#{list.length} #{status}" if list.any?
         end
         counts.join(', ')
-      end
-
-      def format_attendee_sections(event)
-        lines = []
-        lines.concat(format_attendee_group('Required Attendees:', event.required_attendees, event))
-        lines.concat(format_attendee_group('Optional Attendees:', event.optional_attendees, event))
-        lines.concat(format_untyped_attendees(event))
-        lines
-      end
-
-      def format_attendee_group(title, attendees, event)
-        return [] unless attendees.any?
-
-        lines = [@output.bold(title)]
-        attendees.each { |a| lines << format_attendee(a, event) }
-        lines << ''
-        lines
-      end
-
-      def format_untyped_attendees(event)
-        untyped = event.attendees.reject { |a| %w[required optional].include?(a[:type]) }
-        format_attendee_group('Attendees:', untyped, event)
-      end
-
-      def format_attendee(attendee, event)
-        symbol = response_symbol(attendee, event)
-        name = attendee[:name] || attendee[:email]
-        email_part = attendee[:email] ? " (#{attendee[:email]})" : ''
-        "  #{symbol} #{name}#{email_part} — #{response_label(attendee[:response])}"
-      end
-
-      def response_symbol(attendee, event)
-        return @output.cyan('★') if organizer?(attendee, event)
-
-        response_to_symbol(attendee[:response])
-      end
-
-      def organizer?(attendee, event)
-        event.organizer &&
-          attendee[:email]&.downcase == event.organizer[:email]&.downcase
-      end
-
-      def response_to_symbol(response)
-        case response
-        when 'accepted'             then @output.green('✓')
-        when 'declined'             then @output.red('✗')
-        when 'tentativelyAccepted'  then @output.yellow('?')
-        else @output.gray('·')
-        end
-      end
-
-      def response_label(response)
-        RESPONSE_LABELS[response] || response&.capitalize || 'Pending'
       end
     end
   end

@@ -18,17 +18,28 @@ module Teems
       end
 
       def self.from_ng_msg_api(data)
-        new(
+        new(**ng_msg_attrs(data))
+      end
+
+      def self.ng_msg_attrs(data)
+        props = data['properties'] || {}
+        {
           id: data['id'], sender_id: data['from'],
           sender_name: data['imdisplayname'] || data['fromDisplayNameInToken'] || 'Unknown',
           content: strip_html(data['content'] || ''),
           created_at: parse_time(data['composetime'] || data['originalarrivaltime']),
           message_type: data['messagetype'],
+          **ng_msg_extras(data, props)
+        }
+      end
+
+      def self.ng_msg_extras(data, props)
+        {
           reply_to_id: data['rootMessageId'] == data['id'] ? nil : data['rootMessageId'],
-          reactions: parse_ng_msg_reactions(data.dig('properties', 'emotions')),
-          attachments: parse_files_json(data.dig('properties', 'files')),
+          reactions: parse_ng_msg_reactions(props['emotions']),
+          attachments: parse_files_json(props['files']),
           importance: nil
-        )
+        }
       end
 
       def self.parse_ng_msg_reactions(emotions)
@@ -51,17 +62,27 @@ module Teems
       end
 
       def self.from_graph_api(data)
-        new(
+        new(**graph_attrs(data))
+      end
+
+      def self.graph_attrs(data)
+        {
           id: data['id'],
           sender_id: data.dig('from', 'user', 'id') || data.dig('from', 'application', 'id'),
           sender_name: extract_sender_name(data),
           content: strip_html(data.dig('body', 'content') || ''),
           created_at: parse_time(data['createdDateTime']),
+          **graph_extras(data)
+        }
+      end
+
+      def self.graph_extras(data)
+        {
           message_type: data['messageType'], reply_to_id: data['replyToId'],
           reactions: parse_reactions(data['reactions']),
           attachments: data['attachments'] || [],
           importance: data['importance']
-        )
+        }
       end
 
       def self.extract_sender_name(data)
