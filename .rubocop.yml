@@ -1,0 +1,61 @@
+inherit_from: .rubocop_todo.yml
+
+inherit_mode:
+  merge:
+    - Exclude
+
+AllCops:
+  TargetRubyVersion: 3.2
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - 'bin/coverage'
+
+# Test files have longer methods, multiple classes, and flexible naming
+Metrics/ClassLength:
+  Exclude:
+    - 'test/**/*'
+
+Metrics/MethodLength:
+  Exclude:
+    - 'test/**/*'
+
+Metrics/AbcSize:
+  Exclude:
+    - 'test/**/*'
+
+Metrics/CyclomaticComplexity:
+  Exclude:
+    - 'test/**/*'
+
+Metrics/PerceivedComplexity:
+  Exclude:
+    - 'test/**/*'
+
+Metrics/BlockLength:
+  Exclude:
+    - 'test/**/*'
+
+Metrics/ModuleLength:
+  Exclude:
+    - 'test/**/*'
+
+Metrics/ParameterLists:
+  Exclude:
+    - 'test/**/*'
+
+Style/OneClassPerFile:
+  Exclude:
+    - 'test/**/*'
+
+Naming/MethodName:
+  Exclude:
+    - 'test/**/*'
+
+Naming/VariableNumber:
+  Exclude:
+    - 'test/**/*'
+
+Lint/UnusedMethodArgument:
+  Exclude:
+    - 'test/**/*'

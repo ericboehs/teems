@@ -7,7 +7,7 @@ module Teems
   module Services
     # Parses Microsoft Teams URLs to extract conversation and message identifiers
     class TeamsUrlParser
-      Result = Struct.new(:conversation_id, :message_id, :context_type, :team_id, keyword_init: true)
+      Result = Struct.new(:conversation_id, :message_id, :context_type, :team_id)
 
       TEAMS_HOST = 'teams.microsoft.com'
       MESSAGE_PATH_PATTERN = %r{^/l/message/([^/]+)/(\d+)$}

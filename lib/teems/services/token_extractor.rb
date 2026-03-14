@@ -14,7 +14,7 @@ module Teems
       # Supports both Teams v1 (MSAL accesstoken keys with .secret) and
       # Teams v2 (encrypted tmp.auth.v1.*.Token.* keys decrypted via AES-CBC
       # using the ExportedEncryptionKey).
-      EXTRACT_TOKENS_JS = <<~JS.freeze
+      EXTRACT_TOKENS_JS = <<~JS
         (function() {
           var result = { auth_token: null, skype_spaces_token: null };
 
@@ -46,7 +46,7 @@ module Teems
       # Tokens are encrypted with AES-256-CBC using the ExportedEncryptionKey
       # from localStorage. Results are written back to localStorage under a
       # known key since AppleScript do JavaScript is synchronous.
-      DECRYPT_TOKENS_JS = <<~JS.freeze
+      DECRYPT_TOKENS_JS = <<~JS
         (function() {
           var RESULT_KEY = '%{result_key}';
           localStorage.removeItem(RESULT_KEY);
@@ -103,14 +103,14 @@ module Teems
         })()
       JS
 
-      READ_DECRYPT_RESULT_JS = <<~JS.freeze
+      READ_DECRYPT_RESULT_JS = <<~JS
         (function() {
           return localStorage.getItem('%{result_key}');
         })()
       JS
 
       # JavaScript to exchange skype spaces token for skypeToken via authsvc
-      EXCHANGE_TOKEN_JS = <<~JS.freeze
+      EXCHANGE_TOKEN_JS = <<~JS
         (function(skypeSpacesToken) {
           var xhr = new XMLHttpRequest();
           xhr.open('POST', 'https://teams.microsoft.com/api/authsvc/v1.0/authz', false);
@@ -292,6 +292,7 @@ module Teems
             log('V1 tokens not found, trying v2 encrypted token decryption...')
             tokens = extract_tokens_v2
             return tokens if tokens && tokens[:auth_token]
+
             v2_attempted = true
           end
 

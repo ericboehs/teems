@@ -128,9 +128,7 @@ module Teems
 
       def set_tokens
         # Check for file-based input first
-        if positional_args[1]
-          return set_tokens_from_file(positional_args[1])
-        end
+        return set_tokens_from_file(positional_args[1]) if positional_args[1]
 
         puts 'Enter your Teams tokens.'
         puts '(Tokens are long - you can also use: teems auth set-tokens <file>)'
@@ -169,9 +167,7 @@ module Teems
       end
 
       def set_tokens_from_file(file_path)
-        unless File.exist?(file_path)
-          return error("File not found: #{file_path}")
-        end
+        return error("File not found: #{file_path}") unless File.exist?(file_path)
 
         content = File.read(file_path)
         data = JSON.parse(content)
@@ -179,9 +175,7 @@ module Teems
         auth_token = data['auth_token'] || data['authtoken']
         skype_token = data['skype_token'] || data['skypetoken']
 
-        unless auth_token
-          return error('File must contain auth_token key')
-        end
+        return error('File must contain auth_token key') unless auth_token
 
         # Use auth_token as fallback if skype_token not provided
         skype_token ||= auth_token

@@ -23,7 +23,7 @@ class UserTest < Minitest::Test
     data = {
       'id' => 'user-123',
       'displayName' => 'John Doe',
-      'email' => 'john@example.com'  # 'email' instead of 'mail'
+      'email' => 'john@example.com' # 'email' instead of 'mail'
     }
 
     user = Teems::Models::User.from_api(data)

@@ -110,8 +110,8 @@ class MarkdownFormatterTest < Minitest::Test
     formatter = build_formatter
     result = formatter.format([msg])
 
-    assert_includes result, "\u{1F44D}"   # 👍
-    assert_includes result, "\u{2764}"     # ❤️ (checking just the heart part)
+    assert_includes result, "\u{1F44D}" # 👍
+    assert_includes result, "\u{2764}" # ❤️ (checking just the heart part)
     assert_includes result, '×3'
   end
 

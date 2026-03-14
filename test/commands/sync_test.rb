@@ -64,8 +64,8 @@ class SyncCommandTest < Minitest::Test
       result = capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('conversations', {
-          'conversations' => [sample_ngmsg_chat]
-        })
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
 
         cmd = Teems::Commands::Sync.new(['--dry-run'], runner: runner)
         cmd.execute
@@ -81,9 +81,9 @@ class SyncCommandTest < Minitest::Test
       result = capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('messages', {
-          'messages' => [sample_ng_msg_message],
-          '_metadata' => {}
-        })
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
 
         cmd = Teems::Commands::Sync.new(['--chat', '19:test@thread.v2'], runner: runner)
         cmd.execute
@@ -107,9 +107,9 @@ class SyncCommandTest < Minitest::Test
       capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('messages', {
-          'messages' => [sample_ng_msg_message],
-          '_metadata' => {}
-        })
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
 
         cmd = Teems::Commands::Sync.new(['--chat', '19:test@thread.v2'], runner: runner)
         cmd.execute
@@ -131,9 +131,9 @@ class SyncCommandTest < Minitest::Test
       capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('messages', {
-          'messages' => [sample_ng_msg_message],
-          '_metadata' => {}
-        })
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
 
         cmd = Teems::Commands::Sync.new(['--chat', '19:test@thread.v2'], runner: runner)
         cmd.execute
@@ -154,9 +154,9 @@ class SyncCommandTest < Minitest::Test
       capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('messages', {
-          'messages' => [sample_ng_msg_message],
-          '_metadata' => {}
-        })
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
 
         cmd = Teems::Commands::Sync.new(['--chat', '19:test@thread.v2'], runner: runner)
         cmd.execute
@@ -194,8 +194,8 @@ class SyncCommandTest < Minitest::Test
         runner = configured_runner(output: output)
         # First call for chat list succeeds, message calls will get default empty response
         runner.api_client.stub('conversations', {
-          'conversations' => [sample_ngmsg_chat]
-        })
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
         # Messages call returns empty (default behavior of MockApiClient)
 
         cmd = Teems::Commands::Sync.new([], runner: runner)
@@ -231,9 +231,9 @@ class SyncCommandTest < Minitest::Test
       capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('messages', {
-          'messages' => [sample_ng_msg_message],
-          '_metadata' => {}
-        })
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
 
         cmd = Teems::Commands::Sync.new(['--chat', chat_id], runner: runner)
         cmd.execute
@@ -254,8 +254,8 @@ class SyncCommandTest < Minitest::Test
       result = capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('conversations', {
-          'conversations' => [sample_ngmsg_chat]
-        })
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
         runner.api_client.stub_error('messages', Teems::ApiError.new('HTTP 404: Not Found', status_code: 404))
 
         cmd = Teems::Commands::Sync.new([], runner: runner)
@@ -284,8 +284,8 @@ class SyncCommandTest < Minitest::Test
       result = capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('conversations', {
-          'conversations' => [sample_ngmsg_chat]
-        })
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
         # Stub messages to raise 404 — but it should never be called
         runner.api_client.stub_error('messages', Teems::ApiError.new('HTTP 404: Not Found', status_code: 404))
 
@@ -306,14 +306,15 @@ class SyncCommandTest < Minitest::Test
       result = capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('conversations', {
-          'conversations' => [sample_ngmsg_chat]
-        })
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
         # First messages call raises 404, second succeeds
-        runner.api_client.stub_transient_error('messages', Teems::ApiError.new('HTTP 404: Not Found', status_code: 404), times: 1)
+        runner.api_client.stub_transient_error('messages',
+                                               Teems::ApiError.new('HTTP 404: Not Found', status_code: 404), times: 1)
         runner.api_client.stub('messages', {
-          'messages' => [sample_ng_msg_message],
-          '_metadata' => {}
-        })
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
 
         cmd = Teems::Commands::Sync.new([], runner: runner)
         cmd.define_singleton_method(:sleep) { |_| nil }
@@ -337,9 +338,10 @@ class SyncCommandTest < Minitest::Test
       result = capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('conversations', {
-          'conversations' => [sample_ngmsg_chat]
-        })
-        runner.api_client.stub_error('messages', Teems::ApiError.new('HTTP 500: Internal Server Error', status_code: 500))
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+        runner.api_client.stub_error('messages',
+                                     Teems::ApiError.new('HTTP 500: Internal Server Error', status_code: 500))
 
         cmd = Teems::Commands::Sync.new([], runner: runner)
         cmd.execute
@@ -358,9 +360,10 @@ class SyncCommandTest < Minitest::Test
       capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('conversations', {
-          'conversations' => [sample_ngmsg_chat]
-        })
-        runner.api_client.stub_error('messages', Teems::ApiError.new('HTTP 500: Internal Server Error', status_code: 500))
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+        runner.api_client.stub_error('messages',
+                                     Teems::ApiError.new('HTTP 500: Internal Server Error', status_code: 500))
 
         cmd = Teems::Commands::Sync.new([], runner: runner)
         exit_code = cmd.execute
@@ -391,15 +394,15 @@ class SyncCommandTest < Minitest::Test
       result = capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('conversations', {
-          'conversations' => [
-            sample_ngmsg_chat,
-            { 'id' => '48:notifications', 'threadProperties' => { 'threadType' => 'chat' } }
-          ]
-        })
+                                 'conversations' => [
+                                   sample_ngmsg_chat,
+                                   { 'id' => '48:notifications', 'threadProperties' => { 'threadType' => 'chat' } }
+                                 ]
+                               })
         runner.api_client.stub('messages', {
-          'messages' => [sample_ng_msg_message],
-          '_metadata' => {}
-        })
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
 
         cmd = Teems::Commands::Sync.new(['-v'], runner: runner)
         cmd.execute
@@ -433,9 +436,9 @@ class SyncCommandTest < Minitest::Test
       capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('messages', {
-          'messages' => [sample_ng_msg_message],
-          '_metadata' => {}
-        })
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
 
         cmd = Teems::Commands::Sync.new(['--chat', chat_id], runner: runner)
         cmd.execute
@@ -525,8 +528,8 @@ class SyncCommandTest < Minitest::Test
       result = capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('conversations', {
-          'conversations' => [sample_ngmsg_chat]
-        })
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
         # Use an error with "404" in message but non-404 status code
         runner.api_client.stub_error('messages', Teems::ApiError.new('Error 404 in URL path', status_code: 500))
 

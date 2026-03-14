@@ -113,7 +113,7 @@ module Teems
       end
 
       def log_response(path, response)
-        @on_response&.call(path, response.code) if @on_response
+        @on_response&.call(path, response.code)
       end
 
       def get_http_for_endpoint(endpoint_key)

@@ -38,7 +38,7 @@ module Teems
           content: strip_html(data['content'] || ''),
           created_at: parse_time(data['composetime'] || data['originalarrivaltime']),
           message_type: data['messagetype'],
-          reply_to_id: data['rootMessageId'] != data['id'] ? data['rootMessageId'] : nil,
+          reply_to_id: data['rootMessageId'] == data['id'] ? nil : data['rootMessageId'],
           reactions: parse_ng_msg_reactions(data.dig('properties', 'emotions')),
           attachments: parse_files(data.dig('properties', 'files')),
           importance: nil
@@ -132,7 +132,7 @@ module Teems
       end
 
       def important?
-        importance == 'urgent' || importance == 'high'
+        %w[urgent high].include?(importance)
       end
 
       def to_s

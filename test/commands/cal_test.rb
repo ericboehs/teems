@@ -172,7 +172,7 @@ class CalCommandTest < Minitest::Test
     with_temp_config do
       result = capture_output do |output|
         runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(['show', '1'], runner: runner)
+        cmd = Teems::Commands::Cal.new(%w[show 1], runner: runner)
         cmd.execute
       end
 
@@ -186,7 +186,7 @@ class CalCommandTest < Minitest::Test
         runner = configured_runner(output: output)
         runner.cache_store.set_calendar_ids({ '1' => 'AAMkAGVmMDEzMTM4LTZmYWUtNDdkNC1hMDZe' })
         runner.api_client.stub('events', sample_event_data)
-        cmd = Teems::Commands::Cal.new(['show', '1'], runner: runner)
+        cmd = Teems::Commands::Cal.new(%w[show 1], runner: runner)
         cmd.execute
       end
 
@@ -229,7 +229,7 @@ class CalCommandTest < Minitest::Test
         runner = configured_runner(output: output)
         runner.cache_store.set_calendar_ids({ '1' => 'event-123' })
         runner.api_client.stub_error('events', Teems::ApiError.new('Not found', status_code: 404))
-        cmd = Teems::Commands::Cal.new(['show', '1'], runner: runner)
+        cmd = Teems::Commands::Cal.new(%w[show 1], runner: runner)
         cmd.execute
       end
 
@@ -346,7 +346,7 @@ class CalCommandTest < Minitest::Test
         runner = configured_runner(output: output)
         runner.cache_store.set_calendar_ids({ '1' => 'event-123' })
         runner.api_client.stub('accept', {})
-        cmd = Teems::Commands::Cal.new(['accept', '1'], runner: runner)
+        cmd = Teems::Commands::Cal.new(%w[accept 1], runner: runner)
         cmd.execute
       end
 
@@ -359,7 +359,7 @@ class CalCommandTest < Minitest::Test
       runner = configured_runner
       runner.cache_store.set_calendar_ids({ '3' => 'event-xyz' })
       runner.api_client.stub('accept', {})
-      cmd = Teems::Commands::Cal.new(['accept', '3'], runner: runner)
+      cmd = Teems::Commands::Cal.new(%w[accept 3], runner: runner)
       cmd.execute
 
       call = runner.api_client.calls.first
@@ -376,7 +376,7 @@ class CalCommandTest < Minitest::Test
         runner = configured_runner(output: output)
         runner.cache_store.set_calendar_ids({ '2' => 'event-456' })
         runner.api_client.stub('decline', {})
-        cmd = Teems::Commands::Cal.new(['decline', '2'], runner: runner)
+        cmd = Teems::Commands::Cal.new(%w[decline 2], runner: runner)
         cmd.execute
       end
 
@@ -389,7 +389,7 @@ class CalCommandTest < Minitest::Test
       runner = configured_runner
       runner.cache_store.set_calendar_ids({ '1' => 'event-abc' })
       runner.api_client.stub('decline', {})
-      cmd = Teems::Commands::Cal.new(['decline', '1'], runner: runner)
+      cmd = Teems::Commands::Cal.new(%w[decline 1], runner: runner)
       cmd.execute
 
       call = runner.api_client.calls.first
@@ -404,7 +404,7 @@ class CalCommandTest < Minitest::Test
         runner = configured_runner(output: output)
         runner.cache_store.set_calendar_ids({ '1' => 'event-789' })
         runner.api_client.stub('tentativelyAccept', {})
-        cmd = Teems::Commands::Cal.new(['tentative', '1'], runner: runner)
+        cmd = Teems::Commands::Cal.new(%w[tentative 1], runner: runner)
         cmd.execute
       end
 
@@ -417,7 +417,7 @@ class CalCommandTest < Minitest::Test
       runner = configured_runner
       runner.cache_store.set_calendar_ids({ '1' => 'event-abc' })
       runner.api_client.stub('tentativelyAccept', {})
-      cmd = Teems::Commands::Cal.new(['tentative', '1'], runner: runner)
+      cmd = Teems::Commands::Cal.new(%w[tentative 1], runner: runner)
       cmd.execute
 
       call = runner.api_client.calls.first
@@ -468,7 +468,7 @@ class CalCommandTest < Minitest::Test
     with_temp_config do
       result = capture_output do |output|
         runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(['decline', '99'], runner: runner)
+        cmd = Teems::Commands::Cal.new(%w[decline 99], runner: runner)
         cmd.execute
       end
 
@@ -482,7 +482,7 @@ class CalCommandTest < Minitest::Test
         runner = configured_runner(output: output)
         runner.cache_store.set_calendar_ids({ '1' => 'event-123' })
         runner.api_client.stub_error('accept', Teems::ApiError.new('Forbidden', status_code: 403))
-        cmd = Teems::Commands::Cal.new(['accept', '1'], runner: runner)
+        cmd = Teems::Commands::Cal.new(%w[accept 1], runner: runner)
         cmd.execute
       end
 
@@ -495,7 +495,7 @@ class CalCommandTest < Minitest::Test
       runner = configured_runner
       runner.cache_store.set_calendar_ids({ '1' => 'event-123' })
       runner.api_client.stub('accept', {})
-      cmd = Teems::Commands::Cal.new(['accept', '1'], runner: runner)
+      cmd = Teems::Commands::Cal.new(%w[accept 1], runner: runner)
       cmd.execute
 
       call = runner.api_client.calls.first

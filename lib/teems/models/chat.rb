@@ -57,7 +57,7 @@ module Teems
       end
 
       def display_name
-        (topic.nil? || topic.empty?) ? chat_type_label : topic
+        topic.nil? || topic.empty? ? chat_type_label : topic
       end
 
       def chat_type_label

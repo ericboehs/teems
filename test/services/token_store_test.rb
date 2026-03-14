@@ -145,7 +145,7 @@ class TokenStoreTest < Minitest::Test
 
   def test_token_age_returns_age_in_seconds
     with_temp_config do |dir|
-      saved_at = (Time.now - 3600).iso8601  # 1 hour ago
+      saved_at = (Time.now - 3600).iso8601 # 1 hour ago
       write_tokens_file(dir, {
                           'auth_token' => 'test-auth',
                           'skype_token' => 'test-skype',
@@ -154,7 +154,7 @@ class TokenStoreTest < Minitest::Test
       store = Teems::Services::TokenStore.new
       age = store.token_age
 
-      assert_in_delta 3600, age, 5  # Allow 5 seconds tolerance
+      assert_in_delta 3600, age, 5 # Allow 5 seconds tolerance
     end
   end
 
