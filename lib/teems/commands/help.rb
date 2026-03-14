@@ -64,8 +64,10 @@ module Teems
             teems auth login               Authenticate via Safari
             teems auth status              Show authentication status
             teems cal                      List today's calendar events
+            teems cal tomorrow             Show tomorrow's events
             teems cal --week               Show this week's events
             teems cal show 3               View details for event #3
+            teems cal accept 3             Accept event #3
             teems channels                 List all channels
             teems chats                    List recent chats
             teems messages <channel-id>    Read messages from a channel

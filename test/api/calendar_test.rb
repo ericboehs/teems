@@ -169,4 +169,79 @@ class CalendarApiTest < Minitest::Test
     assert_includes call[:params]['$select'], 'subject'
     assert_includes call[:params]['$select'], 'body'
   end
+
+  # RSVP API tests
+
+  def test_rsvp_accept_calls_correct_endpoint
+    @api_client.stub('accept', {})
+
+    @calendar_api.rsvp_event(event_id: 'event-123', action: 'accept')
+
+    call = @api_client.calls.first
+    assert_equal :post, call[:method]
+    assert_includes call[:path], '/v1.0/me/events/event-123/accept'
+  end
+
+  def test_rsvp_decline_calls_correct_endpoint
+    @api_client.stub('decline', {})
+
+    @calendar_api.rsvp_event(event_id: 'event-456', action: 'decline')
+
+    call = @api_client.calls.first
+    assert_includes call[:path], '/v1.0/me/events/event-456/decline'
+  end
+
+  def test_rsvp_tentative_maps_to_tentativelyAccept
+    @api_client.stub('tentativelyAccept', {})
+
+    @calendar_api.rsvp_event(event_id: 'event-789', action: 'tentative')
+
+    call = @api_client.calls.first
+    assert_includes call[:path], '/tentativelyAccept'
+  end
+
+  def test_rsvp_sends_response_by_default
+    @api_client.stub('accept', {})
+
+    @calendar_api.rsvp_event(event_id: 'event-123', action: 'accept')
+
+    call = @api_client.calls.first
+    assert_equal true, call[:body][:sendResponse]
+  end
+
+  def test_rsvp_with_send_response_false
+    @api_client.stub('accept', {})
+
+    @calendar_api.rsvp_event(event_id: 'event-123', action: 'accept', send_response: false)
+
+    call = @api_client.calls.first
+    assert_equal false, call[:body][:sendResponse]
+  end
+
+  def test_rsvp_with_comment
+    @api_client.stub('accept', {})
+
+    @calendar_api.rsvp_event(event_id: 'event-123', action: 'accept', comment: 'Will be there!')
+
+    call = @api_client.calls.first
+    assert_equal 'Will be there!', call[:body][:comment]
+  end
+
+  def test_rsvp_without_comment_omits_key
+    @api_client.stub('accept', {})
+
+    @calendar_api.rsvp_event(event_id: 'event-123', action: 'accept')
+
+    call = @api_client.calls.first
+    refute call[:body].key?(:comment)
+  end
+
+  def test_rsvp_encodes_event_id
+    @api_client.stub('accept', {})
+
+    @calendar_api.rsvp_event(event_id: 'AAMkAGVm+special/chars=', action: 'accept')
+
+    call = @api_client.calls.first
+    assert_includes call[:path], URI.encode_www_form_component('AAMkAGVm+special/chars=')
+  end
 end
