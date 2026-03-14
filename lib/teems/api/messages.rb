@@ -7,7 +7,7 @@ module Teems
     # Requires skypeToken from authsvc exchange (not the JWT from localStorage)
     class Messages < Client
       # Get messages from a channel using ng.msg API
-      def channel_messages(team_id:, channel_id:, limit: 50)
+      def channel_messages(team_id:, channel_id:, limit: 50) # rubocop:disable Lint/UnusedMethodArgument -- team_id reserved for future use
         # The ng.msg API uses /v1/users/ME/conversations/{threadId}/messages
         encoded_id = URI.encode_www_form_component(channel_id)
         get(:msgservice, "/v1/users/ME/conversations/#{encoded_id}/messages",

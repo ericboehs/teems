@@ -23,6 +23,12 @@ module Teems
 
       RSVP_ACTIONS = %w[accept decline tentative].freeze
 
+      RSVP_ACTION_LABELS = {
+        'accept' => 'accepted',
+        'decline' => 'declined',
+        'tentative' => 'tentatively accepted'
+      }.freeze
+
       def execute
         result = validate_options
         return result if result
@@ -194,7 +200,7 @@ module Teems
         # Cache event IDs for "show <N>" lookup
         ids_hash = {}
         events.each_with_index { |event, i| ids_hash[(i + 1).to_s] = event.id }
-        cache_store.set_calendar_ids(ids_hash)
+        cache_store.save_calendar_ids(ids_hash)
 
         if @options[:json]
           output_json(events.map { |e| event_to_hash(e) })
@@ -271,11 +277,7 @@ module Teems
       end
 
       def rsvp_action_label(action)
-        case action
-        when 'accept' then 'accepted'
-        when 'decline' then 'declined'
-        when 'tentative' then 'tentatively accepted'
-        end
+        RSVP_ACTION_LABELS[action]
       end
 
       def event_to_hash(event)

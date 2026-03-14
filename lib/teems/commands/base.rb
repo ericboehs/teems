@@ -60,7 +60,7 @@ module Teems
       protected
 
       # Override in subclass to handle command-specific options
-      def handle_option(arg, _args, _remaining)
+      def handle_option(arg, _args, _remaining) # rubocop:disable Naming/PredicateMethod -- not a predicate
         @unknown_options ||= []
         @unknown_options << arg
         false

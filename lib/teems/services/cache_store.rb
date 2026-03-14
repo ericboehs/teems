@@ -18,7 +18,7 @@ module Teems
       end
 
       # Store calendar event ID mappings for `cal show <N>` lookup
-      def set_calendar_ids(ids_hash)
+      def save_calendar_ids(ids_hash)
         @paths.ensure_cache_dir
         File.write(calendar_ids_file, JSON.generate(ids_hash))
       end
