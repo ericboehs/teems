@@ -21,6 +21,8 @@ module Teems
         'GMT' => 'UTC'
       }.freeze
 
+      RSVP_ACTIONS = %w[accept decline tentative].freeze
+
       def execute
         result = validate_options
         return result if result
@@ -28,8 +30,11 @@ module Teems
         auth_result = require_auth
         return auth_result if auth_result
 
-        if @subcommand == 'show'
+        case @subcommand
+        when 'show'
           show_event
+        when 'accept', 'decline', 'tentative'
+          rsvp_event
         else
           list_events
         end
@@ -45,6 +50,10 @@ module Teems
           @options[:week] = true
         when '--date'
           @options[:date] = args.shift
+        when '--comment'
+          @options[:comment] = args.shift
+        when '--no-send'
+          @options[:send_response] = false
         else
           super
         end
@@ -56,12 +65,19 @@ module Teems
 
           #{output.bold('USAGE:')}
             teems cal [options]              List today's events
+            teems cal today                  List today's events (alias)
+            teems cal tomorrow               List tomorrow's events
             teems cal show <N>               Show details for event #N
+            teems cal accept <N>             Accept event #N
+            teems cal decline <N>            Decline event #N
+            teems cal tentative <N>          Tentatively accept event #N
 
           #{output.bold('OPTIONS:')}
             --days N             Show events for the next N days (default: 1)
             --week               Show events for the current week (Mon-Fri)
             --date YYYY-MM-DD    Show events for a specific date
+            --comment TEXT       Add a comment to RSVP response
+            --no-send            Don't send response to organizer
             -n, --limit N        Maximum number of events to show
             -v, --verbose        Show attendee summaries
             -q, --quiet          Suppress output
@@ -70,10 +86,14 @@ module Teems
 
           #{output.bold('EXAMPLES:')}
             teems cal                # Today's agenda
+            teems cal today          # Same as above
+            teems cal tomorrow       # Tomorrow's events
             teems cal --days 3       # Next 3 days
             teems cal --week         # This work week
             teems cal --date 2026-01-20   # Specific date
             teems cal show 3         # Details for event #3
+            teems cal accept 3       # Accept event #3
+            teems cal decline 3 --comment "Out of office"
         HELP
       end
 
@@ -82,11 +102,22 @@ module Teems
       def parse_options(args)
         remaining = super(args)
 
-        # Detect "show <N>" subcommand from positional args
-        if remaining.first == 'show'
+        case remaining.first
+        when 'show'
           @subcommand = 'show'
           remaining.shift
-          @show_number = remaining.shift&.to_i
+          @event_number = remaining.shift&.to_i
+        when 'today'
+          @subcommand = 'list'
+          remaining.shift
+          # Default behavior — today's events
+        when 'tomorrow'
+          @subcommand = 'list'
+          remaining.shift
+          @options[:date] = (Date.today + 1).to_s
+        when *RSVP_ACTIONS
+          @subcommand = remaining.shift
+          @event_number = remaining.shift&.to_i
         else
           @subcommand = 'list'
         end
@@ -179,14 +210,14 @@ module Teems
       end
 
       def show_event
-        unless @show_number && @show_number.positive?
+        unless @event_number && @event_number.positive?
           error('Event number required. Usage: teems cal show <N>')
           return 1
         end
 
-        event_id = cache_store.get_calendar_id(@show_number)
+        event_id = cache_store.get_calendar_id(@event_number)
         unless event_id
-          error("Event ##{@show_number} not found. Run 'teems cal' first to list events.")
+          error("Event ##{@event_number} not found. Run 'teems cal' first to list events.")
           return 1
         end
 
@@ -207,6 +238,44 @@ module Teems
       rescue ApiError => e
         error("Failed to fetch event: #{e.message}")
         1
+      end
+
+      def rsvp_event
+        unless @event_number && @event_number.positive?
+          error("Event number required. Usage: teems cal #{@subcommand} <N>")
+          return 1
+        end
+
+        event_id = cache_store.get_calendar_id(@event_number)
+        unless event_id
+          error("Event ##{@event_number} not found. Run 'teems cal' first to list events.")
+          return 1
+        end
+
+        action_label = rsvp_action_label(@subcommand)
+
+        with_token_refresh do
+          runner.calendar_api.rsvp_event(
+            event_id: event_id,
+            action: @subcommand,
+            comment: @options[:comment],
+            send_response: @options.fetch(:send_response, true)
+          )
+        end
+
+        success("Event ##{@event_number} #{action_label}")
+        0
+      rescue ApiError => e
+        error("Failed to respond to event: #{e.message}")
+        1
+      end
+
+      def rsvp_action_label(action)
+        case action
+        when 'accept' then 'accepted'
+        when 'decline' then 'declined'
+        when 'tentative' then 'tentatively accepted'
+        end
       end
 
       def event_to_hash(event)
