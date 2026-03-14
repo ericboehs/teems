@@ -163,17 +163,18 @@ module Teems
 
     # Mock token store class
     class MockTokenStore
-      attr_accessor :skype_spaces_token
+      attr_accessor :skype_spaces_token, :save_result
 
       def initialize(account: nil, configured: true)
         @account = account
         @configured = configured
         @skype_spaces_token = nil
+        @save_result = true
       end
 
       def configured? = @configured
       def account = @account
-      def save(**kwargs) = nil
+      def save(**kwargs) = @save_result
       def clear = nil
       def token_age = nil
       def update_skype_token(_token) = true

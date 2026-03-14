@@ -451,6 +451,75 @@ class SyncCommandTest < Minitest::Test
     end
   end
 
+  def test_auth_flag_returns_error_when_extraction_fails
+    with_temp_config do
+      exit_code = nil
+      result = capture_output do |output|
+        store = mock_token_store(configured: false)
+        runner = Teems::Runner.new(output: output, token_store: store, api_client: Teems::TestHelpers::MockApiClient.new)
+        # Mock the token extractor to return nil (failed extraction)
+        extractor = Object.new
+        extractor.define_singleton_method(:extract) { nil }
+        runner.instance_variable_set(:@token_extractor, extractor)
+
+        cmd = Teems::Commands::Sync.new(['--auth'], runner: runner)
+        exit_code = cmd.execute
+      end
+
+      assert_equal 1, exit_code
+      assert_match(/Failed to authenticate via Safari/, result[:stderr])
+    end
+  end
+
+  def test_auth_flag_returns_error_when_save_fails
+    with_temp_config do
+      exit_code = nil
+      result = capture_output do |output|
+        store = mock_token_store(configured: false)
+        store.save_result = false
+        runner = Teems::Runner.new(output: output, token_store: store, api_client: Teems::TestHelpers::MockApiClient.new)
+        # Mock the token extractor to return valid tokens
+        extractor = Object.new
+        extractor.define_singleton_method(:extract) do
+          { auth_token: 'test-auth', skype_token: 'test-skype' }
+        end
+        runner.instance_variable_set(:@token_extractor, extractor)
+
+        cmd = Teems::Commands::Sync.new(['--auth'], runner: runner)
+        exit_code = cmd.execute
+      end
+
+      assert_equal 1, exit_code
+      assert_match(/failed to save/, result[:stderr])
+    end
+  end
+
+  def test_auth_flag_succeeds_when_tokens_saved
+    with_temp_config do
+      exit_code = nil
+      result = capture_output do |output|
+        store = mock_token_store(configured: true, account: mock_account)
+        store.save_result = true
+        runner = Teems::Runner.new(output: output, token_store: store, api_client: Teems::TestHelpers::MockApiClient.new)
+        # Mock the token extractor to return valid tokens
+        extractor = Object.new
+        extractor.define_singleton_method(:extract) do
+          { auth_token: 'test-auth', skype_token: 'test-skype' }
+        end
+        runner.instance_variable_set(:@token_extractor, extractor)
+
+        # Stub the messages API call for sync
+        runner.api_client.stub('conversations', { 'conversations' => [] })
+
+        cmd = Teems::Commands::Sync.new(['--auth'], runner: runner)
+        exit_code = cmd.execute
+      end
+
+      assert_equal 0, exit_code
+      assert_match(/Authentication successful/, result[:stdout])
+    end
+  end
+
   def test_api_error_status_code_used_for_404_detection
     with_temp_config do
       result = capture_output do |output|

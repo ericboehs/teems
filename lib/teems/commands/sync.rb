@@ -16,7 +16,8 @@ module Teems
         result = validate_options
         return result if result
 
-        login_if_requested
+        login_result = login_if_requested
+        return login_result if login_result
 
         auth_result = require_auth
         return auth_result if auth_result
@@ -81,17 +82,24 @@ module Teems
         tokens = extractor.extract
 
         if tokens && tokens[:auth_token]
-          token_store.save(
+          saved = token_store.save(
             name: 'default',
             auth_token: tokens[:auth_token],
             skype_token: tokens[:skype_token],
             skype_spaces_token: tokens[:skype_spaces_token],
             chatsvc_token: tokens[:chatsvc_token]
           )
+          unless saved
+            error('Authentication tokens extracted but failed to save')
+            return 1
+          end
           success('Authentication successful!')
         else
           error('Failed to authenticate via Safari')
+          return 1
         end
+
+        nil
       end
 
       def run_sync
