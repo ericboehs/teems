@@ -18,26 +18,9 @@ module Teems
 
       # List events in a date range using CalendarView
       def list_events(start_dt:, end_dt:, timezone:, top: 50)
-        params = {
-          'startDateTime' => start_dt,
-          'endDateTime' => end_dt,
-          '$select' => CALENDAR_VIEW_SELECT,
-          '$orderby' => 'start/dateTime',
-          '$top' => top
-        }
+        params = calendar_view_params(start_dt, end_dt, top)
         headers = timezone_header(timezone)
-
-        events = []
-        response = get(:graph, '/v1.0/me/calendarView', params: params, headers: headers)
-        events.concat(parse_events(response))
-
-        # Handle pagination
-        while (next_link = response['@odata.nextLink'])
-          response = get(:graph, next_link, headers: headers)
-          events.concat(parse_events(response))
-        end
-
-        events
+        paginate_events('/v1.0/me/calendarView', params: params, headers: headers)
       end
 
       # Get a single event by ID with full details
@@ -61,6 +44,22 @@ module Teems
       end
 
       private
+
+      def calendar_view_params(start_dt, end_dt, top)
+        { 'startDateTime' => start_dt, 'endDateTime' => end_dt,
+          '$select' => CALENDAR_VIEW_SELECT, '$orderby' => 'start/dateTime', '$top' => top }
+      end
+
+      def paginate_events(path, params:, headers:)
+        events = []
+        response = get(:graph, path, params: params, headers: headers)
+        events.concat(parse_events(response))
+        while (next_link = response['@odata.nextLink'])
+          response = get(:graph, next_link, headers: headers)
+          events.concat(parse_events(response))
+        end
+        events
+      end
 
       def timezone_header(timezone)
         { 'Prefer' => "outlook.timezone=\"#{timezone}\"" }

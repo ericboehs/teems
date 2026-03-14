@@ -29,19 +29,11 @@ module Teems
       #
       # The ng.msg API returns newest-first with _metadata.backwardLink for older pages.
       def chat_messages_page(chat_id:, limit: 200, start_time: nil, backward_link: nil)
-        if backward_link
-          # backward_link is a relative URL from the API, follow it directly
-          get(:msgservice, backward_link, params: {})
-        else
-          encoded_id = URI.encode_www_form_component(chat_id)
-          params = {
-            pageSize: limit,
-            view: 'msnp24Equivalent|supportsMessageProperties'
-          }
-          # startTime is Unix milliseconds for time-range filtering
-          params[:startTime] = (start_time.to_f * 1000).to_i if start_time
-          get(:msgservice, "/v1/users/ME/conversations/#{encoded_id}/messages", params: params)
-        end
+        return get(:msgservice, backward_link, params: {}) if backward_link
+
+        encoded_id = URI.encode_www_form_component(chat_id)
+        params = messages_page_params(limit, start_time)
+        get(:msgservice, "/v1/users/ME/conversations/#{encoded_id}/messages", params: params)
       end
 
       # Get replies to a message
@@ -49,6 +41,14 @@ module Teems
         encoded_id = URI.encode_www_form_component(thread_id)
         get(:msgservice, "/v1/users/ME/conversations/#{encoded_id}/messages/#{message_id}/replies",
             params: { pageSize: limit })
+      end
+
+      private
+
+      def messages_page_params(limit, start_time)
+        { pageSize: limit, view: 'msnp24Equivalent|supportsMessageProperties' }.tap do |p|
+          p[:startTime] = (start_time.to_f * 1000).to_i if start_time
+        end
       end
     end
   end
