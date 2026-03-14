@@ -213,7 +213,7 @@ module Teems
       def save(**_kwargs) = @save_result
       def clear = nil
       def token_age = nil
-      def update_skype_token(_token) = true
+      def update_skype_token(_token) = true # rubocop:disable Naming/PredicateMethod
     end
 
     # Mock API client for testing

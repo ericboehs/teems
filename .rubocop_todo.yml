@@ -6,15 +6,6 @@
 # Note that changes in the inspected code, or installation of new
 # versions of RuboCop, may require this file to be generated again.
 
-# Offense count: 1
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: AllowUnusedKeywordArguments, IgnoreEmptyMethods, IgnoreNotImplementedMethods, NotImplementedExceptions.
-# NotImplementedExceptions: NotImplementedError
-Lint/UnusedMethodArgument:
-  Exclude:
-    - 'test/**/*'
-    - 'lib/teems/api/messages.rb'
-
 # Offense count: 28
 # Configuration parameters: AllowedMethods, AllowedPatterns, CountRepeatedAttributes.
 Metrics/AbcSize:
@@ -55,46 +46,3 @@ Metrics/ParameterLists:
 # Configuration parameters: AllowedMethods, AllowedPatterns.
 Metrics/PerceivedComplexity:
   Max: 20
-
-# Offense count: 2
-Naming/AccessorMethodName:
-  Exclude:
-    - 'lib/teems/commands/auth.rb'
-    - 'lib/teems/services/cache_store.rb'
-
-# Offense count: 1
-# Configuration parameters: MinNameLength, AllowNamesEndingInNumbers, AllowedNames, ForbiddenNames.
-# AllowedNames: as, at, by, cc, db, id, if, in, io, ip, of, on, os, pp, to
-Naming/MethodParameterName:
-  Exclude:
-    - 'lib/teems/services/token_extractor.rb'
-
-# Offense count: 2
-# Configuration parameters: Mode, AllowedMethods, AllowedPatterns, AllowBangMethods, WaywardPredicates.
-# AllowedMethods: call
-# WaywardPredicates: infinite?, nonzero?
-Naming/PredicateMethod:
-  Exclude:
-    - 'lib/teems/commands/base.rb'
-    - 'test/test_helper.rb'
-
-# Offense count: 1
-# Configuration parameters: AllowedConstants.
-Style/Documentation:
-  Exclude:
-    - 'spec/**/*'
-    - 'test/**/*'
-    - 'lib/teems.rb'
-
-# Offense count: 4
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: MaxUnannotatedPlaceholdersAllowed, Mode, AllowedMethods, AllowedPatterns.
-# SupportedStyles: annotated, template, unannotated
-Style/FormatStringToken:
-  EnforcedStyle: template
-
-# Offense count: 1
-# Configuration parameters: MinBranchesCount.
-Style/HashLikeCase:
-  Exclude:
-    - 'lib/teems/commands/cal.rb'

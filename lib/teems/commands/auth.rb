@@ -128,7 +128,7 @@ module Teems
 
       def set_tokens
         # Check for file-based input first
-        return set_tokens_from_file(positional_args[1]) if positional_args[1]
+        return import_tokens_from_file(positional_args[1]) if positional_args[1]
 
         puts 'Enter your Teams tokens.'
         puts '(Tokens are long - you can also use: teems auth set-tokens <file>)'
@@ -166,7 +166,7 @@ module Teems
         token.strip
       end
 
-      def set_tokens_from_file(file_path)
+      def import_tokens_from_file(file_path)
         return error("File not found: #{file_path}") unless File.exist?(file_path)
 
         content = File.read(file_path)

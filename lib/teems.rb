@@ -12,6 +12,7 @@ require 'io/console'
 module Teems
   class Error < StandardError; end
 
+  # Error raised when a Teams API request fails (4xx/5xx responses)
   class ApiError < Error
     attr_reader :status_code
 

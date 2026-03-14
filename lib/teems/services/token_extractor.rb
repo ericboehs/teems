@@ -48,7 +48,7 @@ module Teems
       # known key since AppleScript do JavaScript is synchronous.
       DECRYPT_TOKENS_JS = <<~JS
         (function() {
-          var RESULT_KEY = '%{result_key}';
+          var RESULT_KEY = '{{result_key}}';
           localStorage.removeItem(RESULT_KEY);
 
           var keyDataRaw = localStorage.getItem('tmp.auth.v1.GLOBAL.ExportedEncryptionKey.ExportedEncryptionKey');
@@ -105,7 +105,7 @@ module Teems
 
       READ_DECRYPT_RESULT_JS = <<~JS
         (function() {
-          return localStorage.getItem('%{result_key}');
+          return localStorage.getItem('{{result_key}}');
         })()
       JS
 
@@ -333,7 +333,7 @@ module Teems
       # Kicks off decryption via JavaScript (async Web Crypto API), then
       # polls localStorage for the result.
       def extract_tokens_v2
-        decrypt_js = DECRYPT_TOKENS_JS.gsub('%{result_key}', DECRYPT_RESULT_KEY)
+        decrypt_js = DECRYPT_TOKENS_JS.gsub('{{result_key}}', DECRYPT_RESULT_KEY)
         kick_off_script = <<~APPLESCRIPT
           tell application "Safari"
             if (count of windows) > 0 then
@@ -349,7 +349,7 @@ module Teems
         return nil if status == 'no_key'
 
         # Poll for decryption result
-        read_js = READ_DECRYPT_RESULT_JS.gsub('%{result_key}', DECRYPT_RESULT_KEY)
+        read_js = READ_DECRYPT_RESULT_JS.gsub('{{result_key}}', DECRYPT_RESULT_KEY)
         read_script = <<~APPLESCRIPT
           tell application "Safari"
             if (count of windows) > 0 then
@@ -433,11 +433,11 @@ module Teems
         nil
       end
 
-      def escape_js_for_applescript(js)
+      def escape_js_for_applescript(js_code)
         # Escape for embedding in AppleScript string
-        js.gsub('\\', '\\\\\\\\')
-          .gsub('"', '\\"')
-          .gsub("\n", '\\n')
+        js_code.gsub('\\', '\\\\\\\\')
+               .gsub('"', '\\"')
+               .gsub("\n", '\\n')
       end
 
       def run_applescript(script)
