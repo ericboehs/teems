@@ -16,6 +16,8 @@ module Teems
       :attachments,
       :importance
     ) do
+      extend Parsing
+
       def self.from_api(data)
         # Handle Teams internal API format (has 'message' nested object)
         if data['message']
@@ -91,23 +93,6 @@ module Teems
         data.dig('from', 'user', 'displayName') ||
           data.dig('from', 'application', 'displayName') ||
           'Unknown'
-      end
-
-      def self.strip_html(html)
-        # Simple HTML stripping - remove tags but keep text, decode entities
-        require 'cgi'
-        text = html.gsub(/<[^>]+>/, ' ')
-        text = CGI.unescapeHTML(text)
-        text = text.gsub('&nbsp;', ' ') # CGI doesn't handle nbsp
-        text.gsub(/\s+/, ' ').strip
-      end
-
-      def self.parse_time(time_str)
-        return nil unless time_str
-
-        Time.parse(time_str)
-      rescue ArgumentError
-        nil
       end
 
       def self.parse_reactions(reactions_data)

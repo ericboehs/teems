@@ -38,7 +38,9 @@ module Teems
     autoload :Account, 'teems/models/account'
     autoload :Channel, 'teems/models/channel'
     autoload :Chat, 'teems/models/chat'
+    autoload :Event, 'teems/models/event'
     autoload :Message, 'teems/models/message'
+    autoload :Parsing, 'teems/models/parsing'
     autoload :User, 'teems/models/user'
   end
 
@@ -59,12 +61,14 @@ module Teems
     autoload :Output, 'teems/formatters/output'
     autoload :MessageFormatter, 'teems/formatters/message_formatter'
     autoload :MarkdownFormatter, 'teems/formatters/markdown_formatter'
+    autoload :CalendarFormatter, 'teems/formatters/calendar_formatter'
   end
 
   # CLI commands implementing user-facing functionality
   module Commands
     autoload :Base, 'teems/commands/base'
     autoload :Auth, 'teems/commands/auth'
+    autoload :Cal, 'teems/commands/cal'
     autoload :Channels, 'teems/commands/channels'
     autoload :Chats, 'teems/commands/chats'
     autoload :Messages, 'teems/commands/messages'
@@ -75,6 +79,7 @@ module Teems
   # Thin wrappers around Teams API endpoints
   module Api
     autoload :Client, 'teems/api/client'
+    autoload :Calendar, 'teems/api/calendar'
     autoload :Channels, 'teems/api/channels'
     autoload :Chats, 'teems/api/chats'
     autoload :Messages, 'teems/api/messages'

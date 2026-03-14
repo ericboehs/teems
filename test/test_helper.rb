@@ -140,6 +140,41 @@ module Teems
       }
     end
 
+    def sample_event_data
+      {
+        'id' => 'AAMkAGVmMDEzMTM4LTZmYWUtNDdkNC1hMDZe',
+        'subject' => 'Weekly Standup',
+        'start' => { 'dateTime' => '2026-01-20T09:00:00.0000000', 'timeZone' => 'America/Chicago' },
+        'end' => { 'dateTime' => '2026-01-20T10:00:00.0000000', 'timeZone' => 'America/Chicago' },
+        'location' => { 'displayName' => 'Conference Room A' },
+        'isAllDay' => false,
+        'organizer' => {
+          'emailAddress' => { 'name' => 'Alice Manager', 'address' => 'alice@example.com' }
+        },
+        'attendees' => [
+          sample_attendee_data('Bob Dev', 'bob@example.com', 'required', 'accepted'),
+          sample_attendee_data('Carol QA', 'carol@example.com', 'required', 'declined'),
+          sample_attendee_data('Dave PM', 'dave@example.com', 'optional', 'tentativelyAccepted'),
+          sample_attendee_data('Eve Intern', 'eve@example.com', 'optional', 'none')
+        ],
+        'bodyPreview' => 'Discuss sprint progress and blockers.',
+        'onlineMeeting' => { 'joinUrl' => 'https://teams.microsoft.com/l/meetup-join/123' },
+        'showAs' => 'busy',
+        'importance' => 'normal',
+        'isCancelled' => false,
+        'responseStatus' => { 'response' => 'accepted', 'time' => '2026-01-18T10:00:00Z' },
+        'sensitivity' => 'normal'
+      }
+    end
+
+    def sample_attendee_data(name, email, type, response)
+      {
+        'emailAddress' => { 'name' => name, 'address' => email },
+        'type' => type,
+        'status' => { 'response' => response, 'time' => '0001-01-01T00:00:00Z' }
+      }
+    end
+
     # Capture output for command tests
     def capture_output
       out = StringIO.new
@@ -205,8 +240,8 @@ module Teems
         @transient_errors[path] = { error: error, remaining: times }
       end
 
-      def get(_endpoint, path, account:, params: {})
-        @calls << { method: :get, path: path, params: params }
+      def get(_endpoint, path, account:, params: {}, headers: {})
+        @calls << { method: :get, path: path, params: params, headers: headers }
         @call_count += 1
         check_errors(path)
         find_response(path) || { 'value' => [] }

@@ -39,6 +39,7 @@ module Teems
         <<~COMMANDS
           #{output.bold('COMMANDS:')}
             #{output.cyan('auth')}         Authenticate with Teams
+            #{output.cyan('cal')}          List calendar events and view details
             #{output.cyan('channels')}     List joined teams and channels
             #{output.cyan('chats')}        List recent chats
             #{output.cyan('messages')}     Read messages from a channel or chat
@@ -62,6 +63,9 @@ module Teems
           #{output.bold('EXAMPLES:')}
             teems auth login               Authenticate via Safari
             teems auth status              Show authentication status
+            teems cal                      List today's calendar events
+            teems cal --week               Show this week's events
+            teems cal show 3               View details for event #3
             teems channels                 List all channels
             teems chats                    List recent chats
             teems messages <channel-id>    Read messages from a channel

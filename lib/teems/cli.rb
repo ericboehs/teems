@@ -5,6 +5,7 @@ module Teems
   class CLI
     COMMANDS = {
       'auth' => Commands::Auth,
+      'cal' => Commands::Cal,
       'channels' => Commands::Channels,
       'chats' => Commands::Chats,
       'messages' => Commands::Messages,
