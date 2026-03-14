@@ -33,17 +33,10 @@ module Teems
 
     private
 
-    def help_requested?(command_name)
-      command_name.nil? || command_name == '--help' || command_name == '-h'
-    end
+    def help_requested?(name) = name.nil? || ['-h', '--help'].include?(name)
+    def version_requested?(name) = ['--version', '-V', 'version'].include?(name)
 
-    def version_requested?(command_name)
-      ['--version', '-V', 'version'].include?(command_name)
-    end
-
-    def show_help
-      run_command('help', [])
-    end
+    def show_help = run_command('help', [])
 
     def show_version
       @output.puts "teems v#{VERSION}"
@@ -51,11 +44,7 @@ module Teems
     end
 
     def dispatch_command(command_name, args)
-      if COMMANDS[command_name]
-        run_command(command_name, args)
-      else
-        show_unknown_command(command_name)
-      end
+      COMMANDS[command_name] ? run_command(command_name, args) : show_unknown_command(command_name)
     rescue ConfigError, AuthError, ApiError => e
       handle_known_error(e)
     end
@@ -105,17 +94,14 @@ module Teems
     end
 
     def build_runner(args)
-      verbose = verbose_mode?(args)
-      out = if verbose && @output
-              @output.with_verbose(true)
-            elsif verbose
-              Formatters::Output.new(verbose: true)
-            else
-              @output || Formatters::Output.new
-            end
-      runner = Runner.new(output: out)
-      setup_verbose_logging(runner, out) if verbose
-      runner
+      out = resolve_output(args)
+      Runner.new(output: out).tap { |r| setup_verbose_logging(r, out) if verbose_mode?(args) }
+    end
+
+    def resolve_output(args)
+      return @output unless verbose_mode?(args)
+
+      @output&.with_verbose(true) || Formatters::Output.new(verbose: true)
     end
 
     def setup_verbose_logging(runner, output)
@@ -131,18 +117,13 @@ module Teems
       result
     end
 
-    def verbose_mode?(args)
-      args.include?('-v') || args.include?('--verbose')
-    end
+    def verbose_mode?(args) = args.include?('-v') || args.include?('--verbose')
 
     def log_api_call_count(runner)
-      return unless runner.api_client.call_count.positive?
-
-      runner.output.debug("Total API calls: #{runner.api_client.call_count}")
+      count = runner.api_client.call_count
+      runner.output.debug("Total API calls: #{count}") if count.positive?
     end
 
-    def log_error(error)
-      Support::ErrorLogger.log(error)
-    end
+    def log_error(error) = Support::ErrorLogger.log(error)
   end
 end
