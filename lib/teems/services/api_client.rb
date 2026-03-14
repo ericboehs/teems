@@ -54,7 +54,11 @@ module Teems
       end
 
       def close
-        @http_cache.each_value { |http| http.finish if http.started? rescue nil } # rubocop:disable Style/RescueModifier
+        @http_cache.each_value do |http|
+          http.finish if http.started?
+        rescue IOError
+          nil
+        end
         @http_cache.clear
       end
 

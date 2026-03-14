@@ -66,7 +66,7 @@ module Teems
 
       def fetch_new_messages(chat)
         start_time = @sync_store.last_synced_time(@state, chat.id) || since_time
-        sync_engine.fetch_all_messages(chat.id, start_time)
+        with_token_refresh { sync_engine.fetch_all_messages(chat.id, start_time) }
       end
 
       def merge_and_update(chat, new_messages)

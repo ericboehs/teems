@@ -272,9 +272,20 @@ module Teems
       def safari_available? = system('which', 'osascript', out: File::NULL, err: File::NULL)
 
       def open_teams_in_safari
-        run_safari_script(<<~APPLESCRIPT)
-          tell front window
-            set current tab to (make new tab with properties {URL:"#{TEAMS_URL}"})
+        run_applescript(open_teams_script)
+      end
+
+      def open_teams_script
+        <<~APPLESCRIPT
+          tell application "Safari"
+            activate
+            if (count of windows) = 0 then
+              make new document with properties {URL:"#{TEAMS_URL}"}
+            else
+              tell front window
+                set current tab to (make new tab with properties {URL:"#{TEAMS_URL}"})
+              end tell
+            end if
           end tell
         APPLESCRIPT
       end
