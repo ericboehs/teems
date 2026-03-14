@@ -39,27 +39,27 @@ module Teems
       private
 
       def list_chats
-        api = runner.chats_api
-        response = with_token_refresh { api.list(limit: @options[:limit]) }
+        chats = fetch_chats
+        return 0 if chats.empty? && (puts('No chats found') || true)
 
-        # ng.msg returns 'conversations', Graph API returns 'value'
-        chats = response['conversations'] || response['value'] || []
+        render_chats(chats)
+        0
+      rescue ApiError => e
+        error("Failed to fetch chats: #{e.message}")
+        1
+      end
 
-        if chats.empty?
-          puts 'No chats found'
-          return 0
-        end
+      def fetch_chats
+        response = with_token_refresh { runner.chats_api.list(limit: @options[:limit]) }
+        response['conversations'] || response['value'] || []
+      end
 
+      def render_chats(chats)
         if @options[:json]
           output_json(chats.map { |c| chat_to_hash(c) })
         else
           display_chats(chats)
         end
-
-        0
-      rescue ApiError => e
-        error("Failed to fetch chats: #{e.message}")
-        1
       end
 
       def display_chats(chats)
