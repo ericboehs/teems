@@ -162,7 +162,7 @@ class TokenRefresherExchangeTokenTest < Minitest::Test
   def test_exchange_token_handles_json_parse_error
     with_temp_config do
       store = mock_token_store
-      refresher = ExposedTokenRefresher.new(token_store: store, output: test_output)
+      ExposedTokenRefresher.new(token_store: store, output: test_output)
 
       # Mock HTTP to return invalid JSON - we can't easily do this without
       # a full HTTP mock library, so we test the error handling constant

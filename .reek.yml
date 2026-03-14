@@ -1,0 +1,7 @@
+exclude_paths:
+  - .bundle
+  - test
+
+detectors:
+  UtilityFunction:
+    public_methods_only: true

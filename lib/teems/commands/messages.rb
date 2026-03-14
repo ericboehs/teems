@@ -94,7 +94,7 @@ module Teems
         end
       end
 
-      def fetch_channel_messages(api, channel_id)
+      def fetch_channel_messages(_api, channel_id)
         response = with_token_refresh do
           runner.messages_api.channel_messages(
             team_id: @options[:team_id],
@@ -110,7 +110,7 @@ module Teems
         1
       end
 
-      def fetch_chat_messages(api, chat_id)
+      def fetch_chat_messages(_api, chat_id)
         response = with_token_refresh do
           runner.messages_api.chat_messages(
             chat_id: chat_id,

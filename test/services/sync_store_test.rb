@@ -250,7 +250,7 @@ class SyncStoreTest < Minitest::Test
       chat_id = '19:abc123def456@thread.v2'
       state = { 'chats' => {} }
 
-      %w[Group\ Chat 1:1\ Chat Meeting\ Chat].each do |label|
+      ['Group Chat', '1:1 Chat', 'Meeting Chat'].each do |label|
         dir_name = store.ensure_dir_name(state, chat_id, label)
 
         assert_match(/\(19_abc123def456_thre\)\z/, dir_name, "#{label} should have ID suffix")
@@ -487,7 +487,8 @@ class SyncStoreTest < Minitest::Test
         state = { 'chats' => { chat_id => { 'dir_name' => 'Some Chat', 'chat_type' => chat_type } } }
         dir = store.chat_dir(chat_id, state: state)
 
-        assert_includes dir, "chats/#{subdir}/Some Chat", "chat_type '#{chat_type}' should use '#{subdir}/' subdirectory"
+        assert_includes dir, "chats/#{subdir}/Some Chat",
+                        "chat_type '#{chat_type}' should use '#{subdir}/' subdirectory"
       end
     end
   end

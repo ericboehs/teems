@@ -66,7 +66,7 @@ module Teems
         sender = msg.sender_name || 'Unknown'
 
         # Reply marker
-        lines << "> _Reply to message_" if msg.reply?
+        lines << '> _Reply to message_' if msg.reply?
 
         # Importance marker
         prefix = msg.important? ? '**[!]** ' : ''

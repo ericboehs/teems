@@ -278,8 +278,8 @@ class WithTokenRefreshTest < Minitest::Test
       0
     end
 
-    def test_with_token_refresh(&block)
-      with_token_refresh(&block)
+    def test_with_token_refresh(&)
+      with_token_refresh(&)
     end
   end
 

@@ -243,6 +243,6 @@ class CalendarFormatterTest < Minitest::Test
       response_status: 'accepted',
       sensitivity: 'normal'
     }
-    Teems::Models::Event.new(**defaults.merge(overrides))
+    Teems::Models::Event.new(**defaults, **overrides)
   end
 end

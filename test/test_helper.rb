@@ -208,8 +208,9 @@ module Teems
       end
 
       def configured? = @configured
-      def account = @account
-      def save(**kwargs) = @save_result
+      attr_reader :account
+
+      def save(**_kwargs) = @save_result
       def clear = nil
       def token_age = nil
       def update_skype_token(_token) = true

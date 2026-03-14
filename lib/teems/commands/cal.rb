@@ -100,7 +100,7 @@ module Teems
       private
 
       def parse_options(args)
-        remaining = super(args)
+        remaining = super
 
         case remaining.first
         when 'show'
@@ -127,7 +127,7 @@ module Teems
 
       def detect_timezone
         # Check ENV['TZ'] first
-        if (tz_env = ENV['TZ']) && !tz_env.empty?
+        if (tz_env = ENV.fetch('TZ', nil)) && !tz_env.empty?
           return tz_env if tz_env.include?('/')
 
           return TIMEZONE_MAP[tz_env] || tz_env
@@ -146,7 +146,7 @@ module Teems
         elsif @options[:week]
           today = Date.today
           # Monday of current week
-          monday = today - (today.wday == 0 ? 6 : today.wday - 1)
+          monday = today - (today.wday.zero? ? 6 : today.wday - 1)
           friday = monday + 4
           start_dt = Time.new(monday.year, monday.month, monday.day, 0, 0, 0)
           end_dt = Time.new(friday.year, friday.month, friday.day, 23, 59, 59)
@@ -210,7 +210,7 @@ module Teems
       end
 
       def show_event
-        unless @event_number && @event_number.positive?
+        unless @event_number&.positive?
           error('Event number required. Usage: teems cal show <N>')
           return 1
         end
@@ -241,7 +241,7 @@ module Teems
       end
 
       def rsvp_event
-        unless @event_number && @event_number.positive?
+        unless @event_number&.positive?
           error("Event number required. Usage: teems cal #{@subcommand} <N>")
           return 1
         end

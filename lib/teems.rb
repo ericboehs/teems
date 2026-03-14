@@ -25,6 +25,7 @@ module Teems
     def forbidden? = status_code == 403
     def rate_limited? = status_code == 429
   end
+
   class ConfigError < Error; end
   class AuthError < Error; end
   class TokenStoreError < Error; end

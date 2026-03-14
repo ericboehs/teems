@@ -68,13 +68,13 @@ module Teems
 
       def format_detail_time(event)
         if event.all_day?
-          "  Time:      ALL DAY"
+          '  Time:      ALL DAY'
         elsif event.start_time && event.end_time
           date = event.start_time.strftime('%A, %B %-d, %Y')
           time = event.time_range_display
           "  Time:      #{date}  #{time}"
         else
-          "  Time:      (unknown)"
+          '  Time:      (unknown)'
         end
       end
 

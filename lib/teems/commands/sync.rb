@@ -300,7 +300,7 @@ module Teems
 
           # Stop if oldest message in this page is before our start time
           if oldest_in_page&.created_at && oldest_in_page.created_at < start_time
-            debug("  Reached cutoff date, stopping pagination")
+            debug('  Reached cutoff date, stopping pagination')
             break
           end
 
@@ -367,11 +367,11 @@ module Teems
         @sync_store.write_messages(chat.id, messages_md: messages_md, messages_json: messages_json, state: @state)
 
         @sync_store.write_chat_metadata(chat.id, {
-          'id' => chat.id,
-          'display_name' => chat.display_name,
-          'type' => chat.chat_type,
-          'synced_at' => now.iso8601
-        }, state: @state)
+                                          'id' => chat.id,
+                                          'display_name' => chat.display_name,
+                                          'type' => chat.chat_type,
+                                          'synced_at' => now.iso8601
+                                        }, state: @state)
       end
 
       def message_to_hash(message)
@@ -414,7 +414,7 @@ module Teems
 
       def show_summary
         puts
-        success("Sync complete!")
+        success('Sync complete!')
         info("  Chats synced: #{@stats[:synced]}")
         info("  Chats skipped (no new messages): #{@stats[:skipped]}") if @stats[:skipped].positive?
         info("  Total messages: #{@stats[:messages_total]}")

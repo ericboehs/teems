@@ -70,7 +70,7 @@ class CLITest < Minitest::Test
 
   def test_dispatches_to_auth_command
     with_temp_config do
-      result = capture_cli_output(['auth', 'status'])
+      result = capture_cli_output(%w[auth status])
 
       assert_equal 0, result[:exit_code]
       # Without auth, shows not authenticated
@@ -107,7 +107,7 @@ class CLITest < Minitest::Test
 
   def test_dispatches_to_messages_command_requires_auth
     with_temp_config do
-      result = capture_cli_output(['messages', 'some-id'])
+      result = capture_cli_output(%w[messages some-id])
 
       assert_equal 1, result[:exit_code]
       assert_match(/Not authenticated/, result[:stderr])
