@@ -79,65 +79,65 @@ end
 class ApiClientResponseHandlingTest < Minitest::Test
   # Test subclass to expose private methods for testing
   class TestableApiClient < Teems::Services::ApiClient
-    public :parse_success_response, :handle_rate_limit
+    public :parse_json_body, :raise_rate_limit
   end
 
-  def test_parse_success_response_handles_json
+  def test_parse_json_body_handles_json
     client = TestableApiClient.new
     response = MockBody.new('{"key": "value"}')
 
-    result = client.parse_success_response(response)
+    result = client.parse_json_body(response)
 
     assert_equal({ 'key' => 'value' }, result)
   end
 
-  def test_parse_success_response_handles_empty_body
+  def test_parse_json_body_handles_empty_body
     client = TestableApiClient.new
     response = MockBody.new('')
 
-    result = client.parse_success_response(response)
+    result = client.parse_json_body(response)
 
     assert_equal({}, result)
   end
 
-  def test_parse_success_response_handles_nil_body
+  def test_parse_json_body_handles_nil_body
     client = TestableApiClient.new
     response = MockBody.new(nil)
 
-    result = client.parse_success_response(response)
+    result = client.parse_json_body(response)
 
     assert_equal({}, result)
   end
 
-  def test_parse_success_response_raises_on_invalid_json
+  def test_parse_json_body_raises_on_invalid_json
     client = TestableApiClient.new
     response = MockBody.new('not json')
 
     error = assert_raises(Teems::ApiError) do
-      client.parse_success_response(response)
+      client.parse_json_body(response)
     end
 
     assert_match(/Invalid JSON/, error.message)
   end
 
-  def test_handle_rate_limit_with_retry_after
+  def test_raise_rate_limit_with_retry_after
     client = TestableApiClient.new
     response = MockRateLimit.new('60')
 
     error = assert_raises(Teems::ApiError) do
-      client.handle_rate_limit(response)
+      client.raise_rate_limit(response)
     end
 
     assert_match(/retry after 60/, error.message)
     assert_equal 429, error.status_code
   end
 
-  def test_handle_rate_limit_without_retry_after
+  def test_raise_rate_limit_without_retry_after
     client = TestableApiClient.new
     response = MockRateLimit.new(nil)
 
     error = assert_raises(Teems::ApiError) do
-      client.handle_rate_limit(response)
+      client.raise_rate_limit(response)
     end
 
     assert_match(/Rate limited/, error.message)

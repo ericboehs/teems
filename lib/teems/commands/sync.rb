@@ -242,10 +242,8 @@ module Teems
         debug("  Total: #{all_messages.length} message(s) after merge")
         @sync_store.update_chat_state(
           @state, chat.id,
-          last_synced_at: Time.now,
-          message_count: all_messages.length,
-          display_name: chat.display_name,
-          chat_type: chat.chat_type
+          attrs: { last_synced_at: Time.now, message_count: all_messages.length,
+                   display_name: chat.display_name, chat_type: chat.chat_type }
         )
         @stats[:synced] += 1
         @stats[:messages_total] += all_messages.length
