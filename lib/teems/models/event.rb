@@ -23,7 +23,11 @@ module Teems
       extend Parsing
 
       def self.from_api(data)
-        new(
+        new(**event_attrs(data))
+      end
+
+      def self.event_attrs(data)
+        {
           id: data['id'],
           subject: data['subject'] || '(No subject)',
           start_time: parse_time(data.dig('start', 'dateTime')),
@@ -39,7 +43,7 @@ module Teems
           is_cancelled: data['isCancelled'] || false,
           response_status: data.dig('responseStatus', 'response'),
           sensitivity: data['sensitivity']
-        )
+        }
       end
 
       def self.parse_organizer(organizer_data)

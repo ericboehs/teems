@@ -5,42 +5,28 @@ module Teems
     # Represents a message in Teams
     # Handles both Graph API and Teams internal API response formats
     Message = Data.define(
-      :id,
-      :sender_id,
-      :sender_name,
-      :content,
-      :created_at,
-      :message_type,
-      :reply_to_id,
-      :reactions,
-      :attachments,
-      :importance
+      :id, :sender_id, :sender_name, :content, :created_at,
+      :message_type, :reply_to_id, :reactions, :attachments, :importance
     ) do
       extend Parsing
 
       def self.from_api(data)
-        # Handle Teams internal API format (has 'message' nested object)
-        if data['message']
-          from_teams_internal_api(data)
-        elsif data['imdisplayname'] || data['messagetype']
-          # ng.msg API format (direct fields, lowercase keys)
-          from_ng_msg_api(data)
-        else
-          from_graph_api(data)
+        if data['message'] then from_teams_internal_api(data)
+        elsif data['imdisplayname'] || data['messagetype'] then from_ng_msg_api(data)
+        else from_graph_api(data)
         end
       end
 
       def self.from_ng_msg_api(data)
         new(
-          id: data['id'],
-          sender_id: data['from'],
+          id: data['id'], sender_id: data['from'],
           sender_name: data['imdisplayname'] || data['fromDisplayNameInToken'] || 'Unknown',
           content: strip_html(data['content'] || ''),
           created_at: parse_time(data['composetime'] || data['originalarrivaltime']),
           message_type: data['messagetype'],
           reply_to_id: data['rootMessageId'] == data['id'] ? nil : data['rootMessageId'],
           reactions: parse_ng_msg_reactions(data.dig('properties', 'emotions')),
-          attachments: parse_files(data.dig('properties', 'files')),
+          attachments: parse_files_json(data.dig('properties', 'files')),
           importance: nil
         )
       end
@@ -48,23 +34,18 @@ module Teems
       def self.parse_ng_msg_reactions(emotions)
         return [] unless emotions.is_a?(Array)
 
-        emotions.map do |e|
-          { type: e['key'], count: e['users']&.length || 1 }
-        end
+        emotions.map { |e| { type: e['key'], count: e['users']&.length || 1 } }
       end
 
       def self.from_teams_internal_api(data)
         msg = data['message']
         new(
-          id: data['id'],
-          sender_id: msg['from'],
+          id: data['id'], sender_id: msg['from'],
           sender_name: msg['imDisplayName'] || msg['fromDisplayNameInToken'] || 'Unknown',
           content: strip_html(msg['content'] || ''),
           created_at: parse_time(msg['composeTime'] || data['latestMessageTime']),
-          message_type: msg['type'],
-          reply_to_id: nil,
-          reactions: [],
-          attachments: parse_files(msg.dig('properties', 'files')),
+          message_type: msg['type'], reply_to_id: nil, reactions: [],
+          attachments: parse_files_json(msg.dig('properties', 'files')),
           importance: nil
         )
       end
@@ -72,67 +53,38 @@ module Teems
       def self.from_graph_api(data)
         new(
           id: data['id'],
-          sender_id: extract_sender_id(data),
+          sender_id: data.dig('from', 'user', 'id') || data.dig('from', 'application', 'id'),
           sender_name: extract_sender_name(data),
           content: strip_html(data.dig('body', 'content') || ''),
           created_at: parse_time(data['createdDateTime']),
-          message_type: data['messageType'],
-          reply_to_id: data['replyToId'],
+          message_type: data['messageType'], reply_to_id: data['replyToId'],
           reactions: parse_reactions(data['reactions']),
           attachments: data['attachments'] || [],
           importance: data['importance']
         )
       end
 
-      def self.extract_sender_id(data)
-        data.dig('from', 'user', 'id') ||
-          data.dig('from', 'application', 'id')
-      end
-
       def self.extract_sender_name(data)
         data.dig('from', 'user', 'displayName') ||
-          data.dig('from', 'application', 'displayName') ||
-          'Unknown'
+          data.dig('from', 'application', 'displayName') || 'Unknown'
       end
 
       def self.parse_reactions(reactions_data)
         return [] unless reactions_data.is_a?(Array)
 
-        reactions_data.map do |r|
-          { type: r['reactionType'], count: r['user']&.length || 1 }
-        end
+        reactions_data.map { |r| { type: r['reactionType'], count: r['user']&.length || 1 } }
       end
 
-      def self.parse_files(files_json)
-        return [] unless files_json
-
-        begin
-          JSON.parse(files_json)
-        rescue JSON::ParserError
-          []
-        end
-      end
-
-      def timestamp
-        created_at
-      end
-
-      def reply?
-        !reply_to_id.nil?
-      end
+      def timestamp = created_at
+      def reply? = !reply_to_id.nil?
+      def important? = %w[urgent high].include?(importance)
 
       def system_message?
-        # Regular message types: Message, message, RichText/Html, Text
         return false if message_type.nil?
         return false if %w[Message message Text].include?(message_type)
         return false if message_type.start_with?('RichText')
 
-        # Everything else is a system message (ThreadActivity/*, etc.)
         true
-      end
-
-      def important?
-        %w[urgent high].include?(importance)
       end
 
       def to_s

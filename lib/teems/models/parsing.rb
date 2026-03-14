@@ -21,6 +21,14 @@ module Teems
       rescue ArgumentError
         nil
       end
+
+      def parse_files_json(files_json)
+        return [] unless files_json
+
+        JSON.parse(files_json)
+      rescue JSON::ParserError
+        []
+      end
     end
   end
 end
