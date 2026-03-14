@@ -11,8 +11,8 @@ module Teems
 
       protected
 
-      def get(endpoint, path, params: {})
-        @api.get(endpoint, path, account: @account, params: params)
+      def get(endpoint, path, params: {}, headers: {})
+        @api.get(endpoint, path, account: @account, params: params, headers: headers)
       end
 
       def post(endpoint, path, body: nil)
