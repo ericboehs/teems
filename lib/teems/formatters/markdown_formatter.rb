@@ -23,35 +23,35 @@ module Teems
       # Format an array of Message objects into a Markdown string.
       # Messages should be in chronological order (oldest first).
       def format(messages)
-        lines = []
-        lines << build_header
-        lines << ''
+        lines = [build_header, '']
+        return (lines << '_No messages_').join("\n") if messages.empty?
 
-        if messages.empty?
-          lines << '_No messages_'
-          return lines.join("\n")
-        end
-
-        current_date = nil
-        messages.each do |msg|
-          next if msg.system_message?
-
-          msg_date = msg.created_at&.strftime('%Y-%m-%d')
-          if msg_date != current_date
-            lines << '' if current_date # blank line between date sections
-            lines << "## #{msg_date || 'Unknown Date'}"
-            lines << ''
-            current_date = msg_date
-          end
-
-          lines.concat(format_message(msg))
-          lines << ''
-        end
-
+        format_message_groups(messages, lines)
         lines.join("\n")
       end
 
       private
+
+      def format_message_groups(messages, lines)
+        current_date = nil
+        messages.each do |msg|
+          next if msg.system_message?
+
+          current_date = append_date_header(lines, msg, current_date)
+          lines.concat(format_message(msg))
+          lines << ''
+        end
+      end
+
+      def append_date_header(lines, msg, current_date)
+        msg_date = msg.created_at&.strftime('%Y-%m-%d')
+        return current_date if msg_date == current_date
+
+        lines << '' if current_date
+        lines << "## #{msg_date || 'Unknown Date'}"
+        lines << ''
+        msg_date
+      end
 
       def build_header
         parts = ["# #{@chat_name}"]
@@ -62,38 +62,42 @@ module Teems
 
       def format_message(msg)
         lines = []
-        time_str = msg.created_at&.strftime('%H:%M') || '??:??'
-        sender = msg.sender_name || 'Unknown'
-
-        # Reply marker
         lines << '> _Reply to message_' if msg.reply?
-
-        # Importance marker
-        prefix = msg.important? ? '**[!]** ' : ''
-
-        lines << "### #{time_str} — #{prefix}#{sender}"
+        lines << format_message_header(msg)
         lines << ''
         lines << msg.content unless msg.content.nil? || msg.content.empty?
-
-        # Attachments
-        if msg.attachments.is_a?(Array) && msg.attachments.any?
-          msg.attachments.each do |att|
-            name = att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
-            lines << "\u{1F4CE} #{name}"
-          end
-        end
-
-        # Reactions
-        if msg.reactions.is_a?(Array) && msg.reactions.any?
-          reaction_strs = msg.reactions.map do |r|
-            emoji = REACTION_EMOJI[r[:type]] || r[:type]
-            count = r[:count] || 1
-            count > 1 ? "#{emoji} ×#{count}" : emoji.to_s
-          end
-          lines << "Reactions: #{reaction_strs.join('  ')}"
-        end
-
+        lines.concat(format_message_attachments(msg))
+        lines.concat(format_message_reactions(msg))
         lines
+      end
+
+      def format_message_header(msg)
+        time_str = msg.created_at&.strftime('%H:%M') || '??:??'
+        sender = msg.sender_name || 'Unknown'
+        prefix = msg.important? ? '**[!]** ' : ''
+        "### #{time_str} — #{prefix}#{sender}"
+      end
+
+      def format_message_attachments(msg)
+        return [] unless msg.attachments.is_a?(Array) && msg.attachments.any?
+
+        msg.attachments.map do |att|
+          name = att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
+          "\u{1F4CE} #{name}"
+        end
+      end
+
+      def format_message_reactions(msg)
+        return [] unless msg.reactions.is_a?(Array) && msg.reactions.any?
+
+        strs = msg.reactions.map { |r| format_single_reaction(r) }
+        ["Reactions: #{strs.join('  ')}"]
+      end
+
+      def format_single_reaction(reaction)
+        emoji = REACTION_EMOJI[reaction[:type]] || reaction[:type]
+        count = reaction[:count] || 1
+        count > 1 ? "#{emoji} \u00d7#{count}" : emoji.to_s
       end
     end
   end
