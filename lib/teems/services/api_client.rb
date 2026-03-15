@@ -64,11 +64,14 @@ module Teems
 
       def get(endpoint_key, path, account:, params: {}, headers: {})
         uri = resolve_uri(endpoint_key, path, params)
-        execute_request(path, endpoint_key) do |http|
-          req = Net::HTTP::Get.new(uri)
+        request = build_get_request(uri, account, endpoint_key, headers)
+        execute_request(path, endpoint_key) { |http| http.request(request) }
+      end
+
+      def build_get_request(uri, account, endpoint_key, headers)
+        Net::HTTP::Get.new(uri).tap do |req|
           apply_auth(req, account, endpoint_key)
-          headers.each { |k, v| req[k] = v }
-          http.request(req)
+          headers.each { |key, value| req[key] = value }
         end
       end
 
@@ -107,8 +110,8 @@ module Teems
         response = yield(get_http_for_endpoint(endpoint_key))
         @on_response&.call(path, response.code)
         handle_response(response)
-      rescue *NETWORK_ERRORS => e
-        raise ApiError, "Network error: #{e.message}"
+      rescue *NETWORK_ERRORS => net_error
+        raise ApiError, "Network error: #{net_error.message}"
       end
 
       def handle_response(response)
@@ -128,9 +131,10 @@ module Teems
       end
 
       def parse_json_body(response)
-        return {} if response.body.nil? || response.body.empty?
+        body = response.body
+        return {} if body.nil? || body.empty?
 
-        JSON.parse(response.body)
+        JSON.parse(body)
       rescue JSON::ParserError
         raise ApiError, 'Invalid JSON response from Teams API'
       end

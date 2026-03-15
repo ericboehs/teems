@@ -27,8 +27,8 @@ module Teems
         return log_and_fail('No skype_spaces_token available for refresh') unless skype_spaces_token
 
         attempt_refresh(skype_spaces_token)
-      rescue *RECOVERABLE_ERRORS => e
-        log("Token exchange error: #{e.class}: #{e.message}")
+      rescue *RECOVERABLE_ERRORS => refresh_error
+        log("Token exchange error: #{refresh_error.class}: #{refresh_error.message}")
         false
       end
 

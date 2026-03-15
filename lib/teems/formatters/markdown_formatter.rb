@@ -65,7 +65,8 @@ module Teems
         lines << '> _Reply to message_' if msg.reply?
         lines << format_message_header(msg)
         lines << ''
-        lines << msg.content unless msg.content.nil? || msg.content.empty?
+        content = msg.content
+        lines << content unless content.nil? || content.empty?
         lines.concat(format_message_attachments(msg))
         lines.concat(format_message_reactions(msg))
         lines
@@ -79,18 +80,20 @@ module Teems
       end
 
       def format_message_attachments(msg)
-        return [] unless msg.attachments.is_a?(Array) && msg.attachments.any?
+        attachments = msg.attachments
+        return [] unless attachments.is_a?(Array) && attachments.any?
 
-        msg.attachments.map do |att|
+        attachments.map do |att|
           name = att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
           "\u{1F4CE} #{name}"
         end
       end
 
       def format_message_reactions(msg)
-        return [] unless msg.reactions.is_a?(Array) && msg.reactions.any?
+        reactions = msg.reactions
+        return [] unless reactions.is_a?(Array) && reactions.any?
 
-        strs = msg.reactions.map { |r| format_single_reaction(r) }
+        strs = reactions.map { |reaction| format_single_reaction(reaction) }
         ["Reactions: #{strs.join('  ')}"]
       end
 

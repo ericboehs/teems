@@ -73,8 +73,9 @@ module Teems
         result = Services::TeamsUrlParser.parse(target)
         return error('Invalid Teams URL format') || nil unless result
 
-        debug("Parsed URL: conversation=#{result.conversation_id}, team=#{result.team_id}")
-        @options[:team_id] = result.team_id if result.team_id
+        team_id = result.team_id
+        debug("Parsed URL: conversation=#{result.conversation_id}, team=#{team_id}")
+        @options[:team_id] = team_id if team_id
         result.conversation_id
       end
 
@@ -89,8 +90,8 @@ module Teems
           )
         end
         display_messages(extract_messages_data(response))
-      rescue ApiError => e
-        error("Failed to fetch channel messages: #{e.message}")
+      rescue ApiError => api_error
+        error("Failed to fetch channel messages: #{api_error.message}")
       end
 
       def fetch_chat_messages(chat_id)
@@ -98,8 +99,8 @@ module Teems
           runner.messages_api.chat_messages(chat_id: chat_id, limit: @options[:limit])
         end
         display_messages(extract_messages_data(response))
-      rescue ApiError => e
-        error("Failed to fetch chat messages: #{e.message}")
+      rescue ApiError => api_error
+        error("Failed to fetch chat messages: #{api_error.message}")
       end
 
       def extract_messages_data(response) = response['messages'] || response['posts'] || response['value'] || []
@@ -107,14 +108,14 @@ module Teems
       def display_messages(messages_data)
         return (puts('No messages found') || true) && 0 if messages_data.empty?
 
-        messages = messages_data.map { |m| Models::Message.from_api(m) }.reject(&:system_message?).reverse
+        messages = messages_data.map { |msg_data| Models::Message.from_api(msg_data) }.reject(&:system_message?).reverse
         render_messages(messages)
         0
       end
 
       def render_messages(messages)
         if @options[:json]
-          output_json(messages.map { |m| message_to_hash(m) })
+          output_json(messages.map { |msg| message_to_hash(msg) })
         else
           messages.each { |msg| display_message(msg) }
         end
@@ -132,7 +133,7 @@ module Teems
       def display_reactions(message)
         return unless message.reactions.any?
 
-        strs = message.reactions.map { |r| "#{r[:type]}(#{r[:count]})" }.join(' ')
+        strs = message.reactions.map { |reaction| "#{reaction[:type]}(#{reaction[:count]})" }.join(' ')
         puts "  #{output.gray(strs)}"
       end
 

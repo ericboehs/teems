@@ -63,3 +63,8 @@ Naming/PredicateMethod:
 Lint/UnusedMethodArgument:
   Exclude:
     - 'test/**/*'
+
+# Allow descriptive rescue variable names (Reek requires non-single-char names)
+Naming/RescuedExceptionsVariableName:
+  PreferredName: e
+  Enabled: false

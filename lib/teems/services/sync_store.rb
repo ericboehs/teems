@@ -60,13 +60,13 @@ module Teems
       end
 
       def write_messages(chat_id, messages_md:, messages_json:, state: nil)
-        dir = chat_dir(chat_id, state: state).tap { |d| FileUtils.mkdir_p(d) }
+        dir = chat_dir(chat_id, state: state).tap { |path| FileUtils.mkdir_p(path) }
         atomic_write(File.join(dir, 'messages.md'), messages_md)
         atomic_write(File.join(dir, 'messages.json'), messages_json)
       end
 
       def write_chat_metadata(chat_id, metadata, state: nil)
-        dir = chat_dir(chat_id, state: state).tap { |d| FileUtils.mkdir_p(d) }
+        dir = chat_dir(chat_id, state: state).tap { |path| FileUtils.mkdir_p(path) }
         atomic_write(File.join(dir, 'chat_metadata.json'), JSON.pretty_generate(metadata))
       end
 

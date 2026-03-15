@@ -7,6 +7,7 @@ module Teems
   module Services
     # Parses Microsoft Teams URLs to extract conversation and message identifiers
     class TeamsUrlParser
+      # Parsed components from a Teams message URL
       Result = Struct.new(:conversation_id, :message_id, :context_type, :team_id)
 
       TEAMS_HOST = 'teams.microsoft.com'
@@ -51,8 +52,8 @@ module Teems
           return {} unless context_json
 
           parse_context_json(context_json)
-        rescue JSON::ParserError => e
-          warn "teems: Could not parse Teams URL context: #{e.message}"
+        rescue JSON::ParserError => parse_error
+          warn "teems: Could not parse Teams URL context: #{parse_error.message}"
           {}
         end
 

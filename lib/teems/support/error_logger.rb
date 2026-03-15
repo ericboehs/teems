@@ -9,10 +9,10 @@ module Teems
       def log(error, paths: XdgPaths.new)
         paths.ensure_cache_dir
         log_file = paths.cache_file('error.log')
-        File.open(log_file, 'a') { |f| write_entry(f, error) }
+        File.open(log_file, 'a') { |file| write_entry(file, error) }
         log_file
-      rescue SystemCallError, IOError => e
-        warn "teems: Could not write error log: #{e.message}"
+      rescue SystemCallError, IOError => io_error
+        warn "teems: Could not write error log: #{io_error.message}"
         nil
       end
 

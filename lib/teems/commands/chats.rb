@@ -44,8 +44,8 @@ module Teems
 
         render_chats(chats)
         0
-      rescue ApiError => e
-        error("Failed to fetch chats: #{e.message}")
+      rescue ApiError => api_error
+        error("Failed to fetch chats: #{api_error.message}")
         1
       end
 
@@ -56,7 +56,7 @@ module Teems
 
       def render_chats(chats)
         if @options[:json]
-          output_json(chats.map { |c| chat_to_hash(c) })
+          output_json(chats.map { |chat_data| chat_to_hash(chat_data) })
         else
           display_chats(chats)
         end

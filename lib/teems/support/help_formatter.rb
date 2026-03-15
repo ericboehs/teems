@@ -28,8 +28,8 @@ module Teems
       def render
         lines = [@usage, '']
         lines.push(@description, '') if @description
-        @sections.each { |s| lines.push(s.render, '') }
-        @notes.each { |n| lines << "Note: #{n}" }
+        @sections.each { |section| lines.push(section.render, '') }
+        @notes.each { |note| lines << "Note: #{note}" }
         lines.join("\n")
       end
 

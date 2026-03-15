@@ -363,8 +363,8 @@ class CLIErrorHandlingTest < Minitest::Test
   class MockVerboseApiCLI < Teems::CLI
     private
 
-    def build_runner(args)
-      out = resolve_output(args)
+    def build_runner(args, verbose = verbose_mode?(args))
+      out = resolve_output(args, verbose)
       mock_api = Teems::TestHelpers::MockApiClient.new
       mock_api.stub('joinedTeams', { 'value' => [] })
       store = Teems::TestHelpers::MockTokenStore.new(
@@ -372,7 +372,7 @@ class CLIErrorHandlingTest < Minitest::Test
         configured: true
       )
       runner = Teems::Runner.new(output: out, token_store: store, api_client: mock_api)
-      setup_verbose_logging(runner, out) if verbose_mode?(args)
+      setup_verbose_logging(runner, out) if verbose
       runner
     end
   end
