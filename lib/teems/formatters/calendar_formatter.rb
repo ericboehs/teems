@@ -96,10 +96,11 @@ module Teems
       end
 
       def list_item_subject(event)
-        return gray_text("#{event.subject} (cancelled)") if event.cancelled?
-
-        event.subject
+        subject = event.subject
+        event.cancelled? ? canceled_text(subject) : subject
       end
+
+      def canceled_text(subject) = gray_text("#{subject} (cancelled)")
 
       def gray_text(text) = @output.gray(text)
 
@@ -117,9 +118,10 @@ module Teems
       end
 
       def organizer_label(event)
-        return unless event.organizer
+        organizer = event.organizer
+        return unless organizer
 
-        "#{gray_text('Organizer:')} #{event.organizer[:name]}"
+        "#{gray_text('Organizer:')} #{organizer[:name]}"
       end
 
       def detail_metadata_lines(event)
@@ -152,11 +154,13 @@ module Teems
       def detail_show_as(event) = event.show_as && "  Show as:   #{event.show_as}"
 
       def detail_body_section(event)
-        body_text = event.body_preview
-        return [] if body_text.to_s.strip.empty?
+        body = event.body_preview
+        return [] if body.to_s.strip.empty?
 
-        [bold_text('Description:'), "  #{body_text.strip}", '']
+        description_lines(body.strip)
       end
+
+      def description_lines(text) = [bold_text('Description:'), "  #{text}", '']
 
       def bold_text(text) = @output.bold(text)
 

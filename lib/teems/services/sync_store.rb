@@ -95,8 +95,9 @@ module Teems
       end
 
       def build_chat_fields(chat_id, attrs)
+        display_name = attrs[:display_name]
         { 'last_synced_at' => attrs[:last_synced_at].iso8601, 'message_count' => attrs[:message_count],
-          'display_name' => attrs[:display_name], 'dir_name' => build_dir_name(chat_id, attrs[:display_name]),
+          'display_name' => display_name, 'dir_name' => build_dir_name(chat_id, display_name),
           'chat_type' => attrs[:chat_type] }
       end
 
@@ -106,10 +107,18 @@ module Teems
 
       def maybe_rename(entry, new_dir_name, chat_type)
         current = entry['dir_name']
-        return unless current && (current != new_dir_name || entry['chat_type'] != chat_type)
+        return unless current && dir_name_changed?(current, new_dir_name, entry['chat_type'], chat_type)
 
-        old_path = chat_type_path(entry['chat_type'], current)
-        new_path = chat_type_path(chat_type, new_dir_name)
+        perform_rename(entry['chat_type'], current, chat_type, new_dir_name)
+      end
+
+      def dir_name_changed?(current, new_name, current_type, new_type)
+        current != new_name || current_type != new_type
+      end
+
+      def perform_rename(old_type, old_name, new_type, new_name)
+        old_path = chat_type_path(old_type, old_name)
+        new_path = chat_type_path(new_type, new_name)
         return if old_path == new_path || !File.directory?(old_path) || File.exist?(new_path)
 
         FileUtils.mkdir_p(File.dirname(new_path))

@@ -242,7 +242,7 @@ module Teems
 
       def save_login_tokens(tokens)
         saved = token_store.save(name: 'default', **tokens.slice(:auth_token, :skype_token,
-                                                                   :skype_spaces_token, :chatsvc_token))
+                                                                 :skype_spaces_token, :chatsvc_token))
         return error('Authentication tokens extracted but failed to save') || 1 unless saved
 
         success('Authentication successful!')

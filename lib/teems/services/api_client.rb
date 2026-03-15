@@ -20,13 +20,17 @@ module Teems
 
       def start_http(uri)
         Net::HTTP.new(uri.host, uri.port).tap do |http|
-          http.use_ssl = (uri.scheme == 'https')
-          http.open_timeout = 10
-          http.read_timeout = 30
-          http.keep_alive_timeout = 30
-          configure_ssl(http) if http.use_ssl?
+          configure_http(http, uri.scheme == 'https')
           http.start
         end
+      end
+
+      def configure_http(http, use_ssl)
+        http.use_ssl = use_ssl
+        http.open_timeout = 10
+        http.read_timeout = 30
+        http.keep_alive_timeout = 30
+        configure_ssl(http) if use_ssl
       end
 
       def configure_ssl(http)
@@ -50,8 +54,8 @@ module Teems
       }.freeze
       DEFAULT_AUTH_HEADER = ->(account) { ['Authorization', account.teams_auth_header] }
 
-      attr_reader :call_count, :on_request, :on_response
-      attr_writer :on_request, :on_response # rubocop:disable Style/BisectedAttrAccessor -- :reek:Attribute
+      attr_accessor :on_request, :on_response
+      attr_reader :call_count
 
       def initialize
         @call_count = 0
@@ -136,10 +140,13 @@ module Teems
       end
 
       def parse_json_body(response)
-        body = response.body
-        return {} if !body || body.empty?
+        return {} if !response.body || response.body.empty?
 
-        JSON.parse(body)
+        parse_json(response.body)
+      end
+
+      def parse_json(text)
+        JSON.parse(text)
       rescue JSON::ParserError
         raise ApiError, 'Invalid JSON response from Teams API'
       end

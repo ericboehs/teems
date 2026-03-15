@@ -86,9 +86,13 @@ module Teems
       end
 
       def date_range_for_week
-        today = Date.today
-        monday = today - (today.wday.zero? ? 6 : today.wday - 1)
+        monday = week_monday
         [day_start(monday), day_end(monday + 4)]
+      end
+
+      def week_monday
+        today = Date.today
+        today - (today.wday.zero? ? 6 : today.wday - 1)
       end
 
       def date_range_for_days

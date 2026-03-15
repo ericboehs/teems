@@ -176,7 +176,7 @@ module Teems
 
       def save_tokens(tokens)
         token_store.save(name: 'default', **tokens.slice(:auth_token, :skype_token,
-                                                          :skype_spaces_token, :chatsvc_token))
+                                                         :skype_spaces_token, :chatsvc_token))
       end
 
       def logout

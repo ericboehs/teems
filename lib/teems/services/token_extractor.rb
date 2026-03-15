@@ -73,9 +73,13 @@ module Teems
       end
 
       def log_applescript_error(run_error)
-        label = run_error.is_a?(Errno::ENOENT) ? 'osascript not found' : 'AppleScript I/O error'
-        log("#{label}: #{run_error.message}")
+        log(applescript_error_message(run_error))
         nil
+      end
+
+      def applescript_error_message(run_error)
+        label = run_error.is_a?(Errno::ENOENT) ? 'osascript not found' : 'AppleScript I/O error'
+        "#{label}: #{run_error.message}"
       end
     end
 
@@ -124,14 +128,16 @@ module Teems
 
       def parse_decrypt_result(result, attempt)
         parsed = JSON.parse(result)
-        if parsed['error']
-          log("Decryption error: #{parsed['error']}")
-          return nil
-        end
+        return log_decrypt_error(parsed['error']) if parsed['error']
         return nil unless parsed['auth_token']
 
         log("V2 tokens decrypted after #{attempt + 1}s")
         finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'])
+      end
+
+      def log_decrypt_error(message)
+        log("Decryption error: #{message}")
+        nil
       end
     end
 
@@ -208,7 +214,8 @@ module Teems
       end
 
       def log_poll_progress(attempt)
-        log("Tokens not yet available, retrying... (#{attempt + 1}s)") if ((attempt + 1) % 5).zero?
+        elapsed = attempt + 1
+        log("Tokens not yet available, retrying... (#{elapsed}s)") if (elapsed % 5).zero?
       end
 
       def extract_tokens_v1
@@ -330,7 +337,11 @@ module Teems
         return false unless result
 
         url, ready_state = result.split('|', 2)
-        url.to_s.include?('teams.microsoft.com') && !url.to_s.include?('login') && ready_state.to_s == 'complete'
+        teams_page_loaded?(url.to_s, ready_state.to_s)
+      end
+
+      def teams_page_loaded?(url, ready_state)
+        url.include?('teams.microsoft.com') && !url.include?('login') && ready_state == 'complete'
       end
 
       def log(message) = @output&.debug(message)

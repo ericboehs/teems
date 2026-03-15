@@ -91,9 +91,14 @@ module Teems
       end
 
       def format_message_reactions(msg)
-        return [] unless msg.reactions.is_a?(Array) && msg.reactions.any?
+        reactions = msg.reactions
+        return [] unless reactions.is_a?(Array) && reactions.any?
 
-        ["Reactions: #{msg.reactions.map { |reaction| format_single_reaction(reaction) }.join('  ')}"]
+        [format_reactions_line(reactions)]
+      end
+
+      def format_reactions_line(reactions)
+        "Reactions: #{reactions.map { |reaction| format_single_reaction(reaction) }.join('  ')}"
       end
 
       def format_single_reaction(reaction)

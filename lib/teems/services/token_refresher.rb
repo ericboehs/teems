@@ -78,7 +78,11 @@ module Teems
       def parse_exchange_response(response)
         return log_exchange_failure(response) unless response.is_a?(Net::HTTPSuccess)
 
-        JSON.parse(response.body).dig('tokens', 'skypeToken')
+        extract_skype_token(response.body)
+      end
+
+      def extract_skype_token(body)
+        JSON.parse(body).dig('tokens', 'skypeToken')
       end
 
       def log_exchange_failure(response)

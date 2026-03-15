@@ -8,11 +8,10 @@ module Teems
         return nil unless html
 
         require 'cgi'
-        text = html.gsub(/<[^>]+>/, ' ')
-        text = CGI.unescapeHTML(text)
-        text = text.gsub('&nbsp;', ' ')
-        text.gsub(/\s+/, ' ').strip
+        clean_whitespace(CGI.unescapeHTML(html.gsub(/<[^>]+>/, ' ')).gsub('&nbsp;', ' '))
       end
+
+      def clean_whitespace(text) = text.gsub(/\s+/, ' ').strip
 
       def parse_time(time_str)
         return nil unless time_str

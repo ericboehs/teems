@@ -31,13 +31,18 @@ module Teems
       end
 
       def stored_msg_attrs(data)
-        {
-          id: data['id'], sender_id: data['sender_id'], sender_name: data['sender_name'],
+        stored_msg_core(data).merge(stored_msg_extras(data))
+      end
+
+      def stored_msg_core(data)
+        { id: data['id'], sender_id: data['sender_id'], sender_name: data['sender_name'],
           content: data['content'], created_at: data['created_at'] ? Time.parse(data['created_at']) : nil,
-          message_type: data['message_type'], reply_to_id: data['reply_to_id'],
-          reactions: parse_stored_reactions(data['reactions']),
-          attachments: data['attachments'] || [], importance: data['importance']
-        }
+          message_type: data['message_type'] }
+      end
+
+      def stored_msg_extras(data)
+        { reply_to_id: data['reply_to_id'], reactions: parse_stored_reactions(data['reactions']),
+          attachments: data['attachments'] || [], importance: data['importance'] }
       end
     end
 
@@ -88,9 +93,17 @@ module Teems
       private
 
       def fetch_messages_page(chat_id, start_time, backward_link, page_count)
-        response = @runner.messages_api.chat_messages_page(
+        response = fetch_page_response(chat_id, start_time, backward_link, page_count)
+        extract_messages_and_link(response)
+      end
+
+      def fetch_page_response(chat_id, start_time, backward_link, page_count)
+        @runner.messages_api.chat_messages_page(
           chat_id: chat_id, start_time: page_count.zero? ? start_time : nil, backward_link: backward_link
         )
+      end
+
+      def extract_messages_and_link(response)
         [response['messages'] || response['value'] || [], response.dig('_metadata', 'backwardLink')]
       end
 
@@ -147,9 +160,12 @@ module Teems
       end
 
       def write_metadata(chat)
-        @sync_store.write_chat_metadata(chat.id, { 'id' => chat.id, 'display_name' => chat.display_name,
-                                                   'type' => chat.chat_type, 'synced_at' => Time.now.iso8601 },
-                                        state: @state)
+        @sync_store.write_chat_metadata(chat.id, chat_metadata_hash(chat), state: @state)
+      end
+
+      def chat_metadata_hash(chat)
+        { 'id' => chat.id, 'display_name' => chat.display_name,
+          'type' => chat.chat_type, 'synced_at' => Time.now.iso8601 }
       end
 
       def debug(message) = @verbose && @output&.debug(message)
