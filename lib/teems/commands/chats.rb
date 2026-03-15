@@ -49,8 +49,8 @@ module Teems
 
         render_chats(chats)
         0
-      rescue ApiError => api_error
-        error("Failed to fetch chats: #{api_error.message}")
+      rescue ApiError => e
+        error("Failed to fetch chats: #{e.message}")
         1
       end
 

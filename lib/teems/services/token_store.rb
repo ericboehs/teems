@@ -21,8 +21,8 @@ module Teems
         @paths.ensure_config_dir
         data = build_save_data(name, auth_token, skype_token, extra_tokens)
         write_token_file(data)
-      rescue SystemCallError, IOError => save_error
-        warn "teems: Could not save tokens: #{save_error.message}"
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not save tokens: #{e.message}"
         false
       end
 
@@ -32,8 +32,8 @@ module Teems
         return false if data.empty?
 
         apply_skype_token(data, skype_token)
-      rescue SystemCallError, IOError => update_error
-        warn "teems: Could not update token file: #{update_error.message}"
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not update token file: #{e.message}"
         false
       end
 
@@ -90,15 +90,14 @@ module Teems
       def write_token_file(data)
         File.write(tokens_file, JSON.pretty_generate(data))
         File.chmod(0o600, tokens_file)
-        true
       end
 
       def load_tokens
         return {} unless File.exist?(tokens_file)
 
         JSON.parse(File.read(tokens_file))
-      rescue JSON::ParserError => parse_error
-        warn "teems: Token file corrupted (#{parse_error.message}), please re-authenticate with: teems auth login"
+      rescue JSON::ParserError => e
+        warn "teems: Token file corrupted (#{e.message}), please re-authenticate with: teems auth login"
         {}
       end
     end

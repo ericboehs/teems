@@ -33,8 +33,7 @@ module Teems
       end
 
       def last_synced_time(state, chat_id)
-        ts = state.dig('chats', chat_id, 'last_synced_at')
-        ts ? Time.parse(ts) : nil
+        (ts = state.dig('chats', chat_id, 'last_synced_at')) ? Time.parse(ts) : nil
       rescue ArgumentError
         nil
       end
@@ -121,14 +120,11 @@ module Teems
         File.rename(old_path, new_path)
       end
 
-      def chat_type_path(chat_type, dir_name)
-        File.join(sync_dir, CHATS_DIR, type_dir(chat_type), dir_name)
-      end
+      def chat_type_path(type, name) = File.join(sync_dir, CHATS_DIR, type_dir(type), name)
 
       def atomic_write(path, content)
-        tmp = "#{path}.tmp"
-        File.write(tmp, content)
-        File.rename(tmp, path)
+        File.write("#{path}.tmp", content)
+        File.rename("#{path}.tmp", path)
       end
 
       def backup_corrupt_file(path)

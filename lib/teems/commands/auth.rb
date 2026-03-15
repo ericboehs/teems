@@ -77,8 +77,8 @@ module Teems
         return data if data.is_a?(Integer)
 
         build_and_save_file_tokens(data)
-      rescue Errno::EACCES => access_error
-        error("Cannot read file: #{access_error.message}")
+      rescue Errno::EACCES => e
+        error("Cannot read file: #{e.message}")
       rescue Errno::EISDIR
         error("Path is a directory, not a file: #{file_path}")
       end

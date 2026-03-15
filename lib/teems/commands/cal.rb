@@ -166,8 +166,8 @@ module Teems
         return 1 unless event_id
 
         render_single_event(event_id)
-      rescue ApiError => api_error
-        error("Failed to fetch event: #{api_error.message}")
+      rescue ApiError => e
+        error("Failed to fetch event: #{e.message}")
         1
       end
 
@@ -192,8 +192,8 @@ module Teems
         return 1 unless event_id
 
         send_rsvp(event_id)
-      rescue ApiError => api_error
-        error("Failed to respond to event: #{api_error.message}")
+      rescue ApiError => e
+        error("Failed to respond to event: #{e.message}")
         1
       end
 
@@ -286,8 +286,8 @@ module Teems
         return error("Invalid date: #{@options[:date]}") && 1 unless range
 
         fetch_and_display_events(range)
-      rescue ApiError => api_error
-        error("Failed to fetch calendar: #{api_error.message}")
+      rescue ApiError => e
+        error("Failed to fetch calendar: #{e.message}")
         1
       end
 

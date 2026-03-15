@@ -118,8 +118,8 @@ module Teems
         response = yield(get_http_for_endpoint(endpoint_key))
         @on_response&.call(path, response.code)
         handle_response(response)
-      rescue *NETWORK_ERRORS => net_error
-        raise ApiError, "Network error: #{net_error.message}"
+      rescue *NETWORK_ERRORS => e
+        raise ApiError, "Network error: #{e.message}"
       end
 
       def handle_response(response)

@@ -100,8 +100,8 @@ module Teems
           )
         end
         display_messages(extract_messages_data(response))
-      rescue ApiError => api_error
-        error("Failed to fetch channel messages: #{api_error.message}")
+      rescue ApiError => e
+        error("Failed to fetch channel messages: #{e.message}")
       end
 
       def fetch_chat_messages(chat_id)
@@ -109,8 +109,8 @@ module Teems
           runner.messages_api.chat_messages(chat_id: chat_id, limit: @options[:limit])
         end
         display_messages(extract_messages_data(response))
-      rescue ApiError => api_error
-        error("Failed to fetch chat messages: #{api_error.message}")
+      rescue ApiError => e
+        error("Failed to fetch chat messages: #{e.message}")
       end
 
       def extract_messages_data(response) = response['messages'] || response['posts'] || response['value'] || []
@@ -124,11 +124,9 @@ module Teems
       end
 
       def render_messages(messages)
-        if @options[:json]
-          output_json(messages.map { |msg| message_to_hash(msg) })
-        else
-          messages.each { |msg| display_message(msg) }
-        end
+        return output_json(messages.map { |msg| message_to_hash(msg) }) if @options[:json]
+
+        messages.each { |msg| display_message(msg) }
       end
 
       def display_message(message)
@@ -143,8 +141,7 @@ module Teems
       def display_reactions(message)
         return unless message.reactions.any?
 
-        strs = message.reactions.map { |reaction| "#{reaction[:type]}(#{reaction[:count]})" }.join(' ')
-        puts "  #{output.gray(strs)}"
+        puts "  #{output.gray(message.reactions.map { |r| "#{r[:type]}(#{r[:count]})" }.join(' '))}"
       end
 
       def message_to_hash(message)
