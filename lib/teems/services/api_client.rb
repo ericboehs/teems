@@ -64,14 +64,8 @@ module Teems
 
       def get(endpoint_key, path, account:, params: {}, headers: {})
         uri = resolve_uri(endpoint_key, path, params)
-        request = build_get_request(uri, account, endpoint_key, headers)
-        execute_request(path, endpoint_key) { |http| http.request(request) }
-      end
-
-      def build_get_request(uri, account, endpoint_key, headers)
-        Net::HTTP::Get.new(uri).tap do |req|
-          apply_auth(req, account, endpoint_key)
-          headers.each { |key, value| req[key] = value }
+        execute_request(path, endpoint_key) do |http|
+          http.request(build_get_request(uri, account, endpoint_key, headers))
         end
       end
 
@@ -86,6 +80,13 @@ module Teems
       end
 
       private
+
+      def build_get_request(uri, account, endpoint_key, headers)
+        Net::HTTP::Get.new(uri).tap do |req|
+          apply_auth(req, account, endpoint_key)
+          headers.each { |key, value| req[key] = value }
+        end
+      end
 
       def resolve_uri(endpoint_key, path, params)
         URI(path.start_with?('http') ? path : "#{resolve_endpoint(endpoint_key)}#{path}").tap do |uri|
