@@ -55,13 +55,17 @@ module Teems
       end
 
       def read_multiline_token
-        lines = []
+        clean_token(collect_input_lines.join)
+      end
+
+      def collect_input_lines
+        result = []
         while (line = $stdin.gets)
           break if line.strip.empty?
 
-          lines << line.chomp
+          result << line.chomp
         end
-        clean_token(lines.join)
+        result
       end
 
       def clean_token(token) = token.sub(/^Bearer\s+/i, '').sub(/^skypetoken=/i, '').strip
@@ -86,12 +90,14 @@ module Teems
       end
 
       def build_and_save_file_tokens(data)
-        auth_token = data['auth_token'] || data['authtoken']
+        auth_token = extract_auth_token(data)
         return error('File must contain auth_token key') unless auth_token
 
-        save_extracted_tokens(auth_token, data['skype_token'] || data['skypetoken'] || auth_token,
-                              data['chatsvc_token'])
+        save_extracted_tokens(auth_token, extract_skype_token(data, auth_token), data['chatsvc_token'])
       end
+
+      def extract_auth_token(data) = data['auth_token'] || data['authtoken']
+      def extract_skype_token(data, fallback) = data['skype_token'] || data['skypetoken'] || fallback
 
       def save_extracted_tokens(auth_token, skype_token, chatsvc_token = nil)
         token_store.save(
@@ -169,10 +175,8 @@ module Teems
       end
 
       def save_tokens(tokens)
-        token_store.save(
-          name: 'default', auth_token: tokens[:auth_token], skype_token: tokens[:skype_token],
-          skype_spaces_token: tokens[:skype_spaces_token], chatsvc_token: tokens[:chatsvc_token]
-        )
+        token_store.save(name: 'default', **tokens.slice(:auth_token, :skype_token,
+                                                          :skype_spaces_token, :chatsvc_token))
       end
 
       def logout

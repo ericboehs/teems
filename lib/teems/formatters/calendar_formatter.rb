@@ -31,9 +31,14 @@ module Teems
       end
 
       def format_attendee(attendee, event)
+        symbol = response_symbol(attendee, event)
+        label = response_label(attendee[:response])
+        "  #{symbol} #{attendee_name_email(attendee)} — #{label}"
+      end
+
+      def attendee_name_email(attendee)
         email = attendee[:email]
-        name_email = "#{attendee[:name] || email}#{" (#{email})" if email}"
-        "  #{response_symbol(attendee, event)} #{name_email} — #{response_label(attendee[:response])}"
+        "#{attendee[:name] || email}#{" (#{email})" if email}"
       end
 
       def response_symbol(att, event)
@@ -68,21 +73,15 @@ module Teems
 
       # Compact agenda view with numbered events
       def format_event_list(events, verbose: false)
-        lines = []
-        events.each_with_index do |event, index|
-          lines << format_list_item(event, index + 1, verbose: verbose)
-          lines << '' if verbose
-        end
-        lines.join("\n")
+        events.each_with_index.flat_map do |event, index|
+          item = format_list_item(event, index + 1, verbose: verbose)
+          verbose ? [item, ''] : [item]
+        end.join("\n")
       end
 
       # Detailed view of a single event
       def format_event_detail(event)
-        lines = detail_metadata_lines(event)
-        lines << ''
-        lines.concat(detail_body_section(event))
-        lines.concat(format_attendee_sections(event))
-        lines.join("\n")
+        [*detail_metadata_lines(event), '', *detail_body_section(event), *format_attendee_sections(event)].join("\n")
       end
 
       private
@@ -96,18 +95,31 @@ module Teems
         "  #{@output.cyan("[#{number}]")} #{time} #{list_item_subject(event)}#{list_item_location(event)}"
       end
 
-      def list_item_subject(event) = event.cancelled? ? @output.gray("#{event.subject} (cancelled)") : event.subject
+      def list_item_subject(event)
+        return gray_text("#{event.subject} (cancelled)") if event.cancelled?
+
+        event.subject
+      end
+
+      def gray_text(text) = @output.gray(text)
 
       def list_item_location(event) = (loc = event.location) && !loc.empty? ? "  #{@output.gray("(#{loc})")}" : ''
 
       def list_item_verbose_suffix(event)
-        parts = []
-        parts << "#{@output.gray('Organizer:')} #{event.organizer[:name]}" if event.organizer
-        parts << attendee_rsvp_summary(event) if event.attendees.any?
-        parts.reject!(&:empty?)
-        return '' unless parts.any?
+        items = verbose_suffix_parts(event)
+        return '' if items.empty?
 
-        "\n      #{parts.join("  #{@output.gray('|')}  ")}"
+        "\n      #{items.join("  #{gray_text('|')}  ")}"
+      end
+
+      def verbose_suffix_parts(event)
+        [organizer_label(event), attendee_rsvp_summary(event)].compact.reject(&:empty?)
+      end
+
+      def organizer_label(event)
+        return unless event.organizer
+
+        "#{gray_text('Organizer:')} #{event.organizer[:name]}"
       end
 
       def detail_metadata_lines(event)
@@ -117,22 +129,36 @@ module Teems
       end
 
       def append_detail_fields(lines, event)
-        location = event.location
-        lines << "  Location:  #{location}" if location && !location.empty?
-        append_organizer_and_links(lines, event)
-        lines << "  Status:    #{@output.red('CANCELLED')}" if event.cancelled?
-        lines << "  Show as:   #{event.show_as}" if event.show_as
+        lines.concat(detail_field_lines(event))
       end
 
-      def append_organizer_and_links(lines, event)
-        organizer = event.organizer
-        lines << "  Organizer: #{organizer[:name]} (#{organizer[:email]})" if organizer
-        lines << "  Link:      #{event.online_meeting_url}" if event.online_meeting_url
+      def detail_field_lines(event)
+        [detail_location(event), detail_organizer(event), detail_link(event),
+         detail_status(event), detail_show_as(event)].compact
       end
+
+      def detail_location(event)
+        loc = event.location
+        "  Location:  #{loc}" if loc && !loc.empty?
+      end
+
+      def detail_organizer(event)
+        org = event.organizer
+        "  Organizer: #{org[:name]} (#{org[:email]})" if org
+      end
+
+      def detail_link(event) = event.online_meeting_url && "  Link:      #{event.online_meeting_url}"
+      def detail_status(event) = event.cancelled? ? "  Status:    #{@output.red('CANCELLED')}" : nil
+      def detail_show_as(event) = event.show_as && "  Show as:   #{event.show_as}"
 
       def detail_body_section(event)
-        (body = event.body_preview) && !body.strip.empty? ? [@output.bold('Description:'), "  #{body.strip}", ''] : []
+        body_text = event.body_preview
+        return [] if body_text.to_s.strip.empty?
+
+        [bold_text('Description:'), "  #{body_text.strip}", '']
       end
+
+      def bold_text(text) = @output.bold(text)
 
       def format_detail_time(event)
         return '  Time:      ALL DAY' if event.all_day?

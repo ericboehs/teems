@@ -52,35 +52,41 @@ module Teems
       def exchange_token(skype_spaces_token)
         http = build_exchange_http
         request = build_exchange_request(skype_spaces_token)
-        response = http.request(request)
-        parse_exchange_response(response)
+        parse_exchange_response(http.request(request))
       end
 
       def build_exchange_http
-        uri = URI(AUTHSVC_URL)
-        http = Net::HTTP.new(uri.host, uri.port)
+        Net::HTTP.new(authsvc_uri.host, authsvc_uri.port).tap { |http| configure_exchange_http(http) }
+      end
+
+      def configure_exchange_http(http)
         http.use_ssl = true
         http.open_timeout = 10
         http.read_timeout = 30
-        http
       end
 
       def build_exchange_request(token)
-        request = Net::HTTP::Post.new(URI(AUTHSVC_URL))
+        Net::HTTP::Post.new(authsvc_uri).tap { |req| apply_exchange_headers(req, token) }
+      end
+
+      def apply_exchange_headers(request, token)
         request['Authorization'] = "Bearer #{token}"
         request['Content-Type'] = 'application/json'
         request.body = '{}'
-        request
       end
 
       def parse_exchange_response(response)
-        unless response.is_a?(Net::HTTPSuccess)
-          log("Token exchange failed: HTTP #{response.code}")
-          return nil
-        end
+        return log_exchange_failure(response) unless response.is_a?(Net::HTTPSuccess)
 
         JSON.parse(response.body).dig('tokens', 'skypeToken')
       end
+
+      def log_exchange_failure(response)
+        log("Token exchange failed: HTTP #{response.code}")
+        nil
+      end
+
+      def authsvc_uri = @authsvc_uri ||= URI(AUTHSVC_URL)
 
       def log(message) = @output&.debug(message)
     end

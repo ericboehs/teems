@@ -13,14 +13,8 @@ module Teems
       def account
         data = load_tokens
         return nil if data.empty?
-        return nil unless data['auth_token'] && data['skype_token']
 
-        Models::Account.new(
-          name: data['name'] || 'default',
-          auth_token: data['auth_token'],
-          skype_token: data['skype_token'],
-          chatsvc_token: data['chatsvc_token']
-        )
+        build_account(data)
       end
 
       def save(name:, auth_token:, skype_token: nil, **extra_tokens)
@@ -74,9 +68,17 @@ module Teems
         @paths.config_file(TOKENS_FILE)
       end
 
+      def build_account(data)
+        return nil unless data['auth_token'] && data['skype_token']
+
+        Models::Account.new(
+          name: data['name'] || 'default', auth_token: data['auth_token'],
+          skype_token: data['skype_token'], chatsvc_token: data['chatsvc_token']
+        )
+      end
+
       def apply_skype_token(data, skype_token)
-        data['skype_token'] = skype_token
-        data['skype_token_refreshed_at'] = Time.now.iso8601
+        data.merge!('skype_token' => skype_token, 'skype_token_refreshed_at' => Time.now.iso8601)
         write_token_file(data)
       end
 
