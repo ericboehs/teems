@@ -241,4 +241,178 @@ module TokenRefresherTests
       response
     end
   end
+
+  # Testable refresher that mocks both OIDC and authsvc HTTP calls
+  class OidcTestableRefresher < Teems::Services::TokenRefresher
+    attr_accessor :oidc_responses, :authsvc_response, :authsvc_error
+
+    def initialize(token_store:, output: nil)
+      super
+      @oidc_responses = {}
+      @authsvc_response = nil
+      @authsvc_error = nil
+    end
+
+    private
+
+    def oidc_token_request(scope, _refresh_token)
+      @oidc_responses[scope]
+    end
+
+    def exchange_token(_skype_spaces_token)
+      raise authsvc_error if authsvc_error
+
+      authsvc_response
+    end
+  end
+
+  class OidcRefreshTest < Minitest::Test
+    GRAPH = Teems::Services::TokenRefresher::GRAPH_SCOPE
+    SKYPE = Teems::Services::TokenRefresher::SKYPE_SCOPE
+
+    def test_oidc_refresh_succeeds_with_all_tokens
+      with_temp_config do |dir|
+        refresher, store = build_successful_oidc(dir)
+        assert refresher.refresh
+        assert_equal 'new-auth', store.account.auth_token
+        assert_equal 'new-skype', store.account.skype_token
+      end
+    end
+
+    def test_oidc_refresh_saves_new_refresh_token
+      with_temp_config do |dir|
+        refresher, store = build_successful_oidc(dir)
+        refresher.refresh
+        assert_equal 'rt3', store.refresh_token
+      end
+    end
+
+    def test_oidc_refresh_saves_skype_spaces_token
+      with_temp_config do |dir|
+        refresher, store = build_successful_oidc(dir)
+        refresher.refresh
+        assert_equal 'new-spaces', store.skype_spaces_token
+      end
+    end
+
+    def test_oidc_falls_back_to_authsvc_when_graph_fails
+      with_temp_config do |dir|
+        refresher, store = build_oidc_refresher(dir)
+        refresher.oidc_responses = { GRAPH => nil, SKYPE => nil }
+        refresher.authsvc_response = 'fallback-skype'
+
+        assert refresher.refresh
+        assert_equal 'fallback-skype', store.account.skype_token
+      end
+    end
+
+    def test_oidc_falls_back_to_authsvc_when_skype_scope_fails
+      with_temp_config do |dir|
+        refresher, store = build_oidc_refresher(dir)
+        refresher.oidc_responses = { GRAPH => oidc_graph_response, SKYPE => nil }
+        refresher.authsvc_response = 'fallback-skype'
+
+        assert refresher.refresh
+        assert_equal 'fallback-skype', store.account.skype_token
+      end
+    end
+
+    def test_oidc_falls_back_when_authsvc_exchange_fails_in_oidc_flow
+      with_temp_config do |dir|
+        refresher, _store = build_successful_oidc(dir)
+        refresher.authsvc_response = nil
+        refute refresher.refresh
+      end
+    end
+
+    def test_skips_oidc_when_no_refresh_token
+      with_temp_config do |dir|
+        tokens = { 'auth_token' => 'old-auth', 'skype_token' => 'old-skype',
+                   'skype_spaces_token' => 'spaces', 'client_id' => 'cid', 'tenant_id' => 'tid' }
+        write_tokens_file(dir, tokens)
+        store = Teems::Services::TokenStore.new
+        refresher = OidcTestableRefresher.new(token_store: store)
+        refresher.authsvc_response = 'new-skype'
+
+        assert refresher.refresh
+        assert_equal 'new-skype', store.account.skype_token
+      end
+    end
+
+    def test_oidc_falls_back_on_network_error
+      with_temp_config do |dir|
+        refresher, store = build_oidc_refresher(dir)
+        refresher.define_singleton_method(:oidc_token_request) { |*| raise SocketError, 'fail' }
+        refresher.authsvc_response = 'fallback-skype'
+
+        assert refresher.refresh
+        assert_equal 'fallback-skype', store.account.skype_token
+      end
+    end
+
+    private
+
+    def oidc_graph_response = { 'access_token' => 'new-auth', 'refresh_token' => 'rt2' }
+    def oidc_skype_response = { 'access_token' => 'new-spaces', 'refresh_token' => 'rt3' }
+
+    def build_successful_oidc(dir)
+      refresher, store = build_oidc_refresher(dir)
+      refresher.oidc_responses = { GRAPH => oidc_graph_response, SKYPE => oidc_skype_response }
+      refresher.authsvc_response = 'new-skype'
+      [refresher, store]
+    end
+
+    def build_oidc_refresher(dir)
+      write_tokens_file(dir, { 'auth_token' => 'old-auth', 'skype_token' => 'old-skype',
+                               'skype_spaces_token' => 'spaces',
+                               'refresh_token' => 'rt1', 'client_id' => 'cid', 'tenant_id' => 'tid' })
+      store = Teems::Services::TokenStore.new
+      [OidcTestableRefresher.new(token_store: store), store]
+    end
+  end
+
+  class OidcBuildMethodsTest < Minitest::Test
+    class ExposedOidc < Teems::Services::TokenRefresher
+      public :build_oidc_request, :oidc_token_uri
+    end
+
+    def test_build_oidc_request_headers_and_body
+      with_temp_config do
+        request = build_test_oidc_request
+        assert_instance_of Net::HTTP::Post, request
+        assert_equal 'application/x-www-form-urlencoded', request['Content-Type']
+        assert_equal 'https://teams.microsoft.com', request['Origin']
+      end
+    end
+
+    def test_build_oidc_request_params
+      with_temp_config do
+        request = build_test_oidc_request
+        assert_includes request.body, 'grant_type=refresh_token'
+        assert_includes request.body, 'client_id=test-client'
+        assert_includes request.body, 'refresh_token=my-rt'
+      end
+    end
+
+    def test_oidc_token_uri_uses_tenant_id
+      with_temp_config do
+        store = mock_token_store
+        store.tenant_id = 'my-tenant-123'
+        refresher = ExposedOidc.new(token_store: store)
+
+        assert_equal 'https://login.microsoftonline.com/my-tenant-123/oauth2/v2.0/token',
+                     refresher.oidc_token_uri.to_s
+      end
+    end
+
+    private
+
+    def build_test_oidc_request
+      store = mock_token_store
+      store.tenant_id = 'test-tenant'
+      store.client_id = 'test-client'
+      refresher = ExposedOidc.new(token_store: store)
+      refresher.build_oidc_request(refresher.oidc_token_uri, 'https://graph.microsoft.com/.default', 'my-rt')
+    end
+  end
 end

@@ -8,7 +8,8 @@ module Teems
       # JavaScript to extract tokens from Teams web app localStorage.
       EXTRACT_TOKENS_JS = <<~JS
         (function() {
-          var result = { auth_token: null, skype_spaces_token: null };
+          var result = { auth_token: null, skype_spaces_token: null,
+                         refresh_token: null, client_id: null, tenant_id: null };
 
           try {
             for (var i = 0; i < localStorage.length; i++) {
@@ -24,6 +25,19 @@ module Teems
                   }
                   if (key.includes('api.spaces.skype.com')) {
                     result.skype_spaces_token = parsed.secret;
+                  }
+                }
+              }
+
+              // MSAL refresh token (always v1/unencrypted)
+              if (key.includes('refreshtoken')) {
+                var rtVal = localStorage.getItem(key);
+                var rt = JSON.parse(rtVal);
+                if (rt.secret) {
+                  result.refresh_token = rt.secret;
+                  result.client_id = rt.clientId;
+                  if (rt.homeAccountId && rt.homeAccountId.indexOf('.') !== -1) {
+                    result.tenant_id = rt.homeAccountId.split('.')[1];
                   }
                 }
               }

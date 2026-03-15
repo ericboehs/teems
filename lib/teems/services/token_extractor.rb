@@ -134,7 +134,8 @@ module Teems
         return nil unless parsed['auth_token']
 
         log("V2 tokens decrypted after #{attempt + 1}s")
-        finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'])
+        finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'],
+                        **extract_v1_refresh_data)
       end
 
       def log_decrypt_error(message)
@@ -224,7 +225,10 @@ module Teems
         parsed = parse_safari_json(EXTRACT_TOKENS_JS)
         return nil unless parsed&.dig('auth_token')
 
-        finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'])
+        finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'],
+                        refresh_token: parsed['refresh_token'],
+                        client_id: parsed['client_id'],
+                        tenant_id: parsed['tenant_id'])
       rescue JSON::ParserError => e
         log("Failed to parse v1 token extraction result: #{e.message}")
         nil
@@ -237,10 +241,23 @@ module Teems
         JSON.parse(result)
       end
 
-      def finalize_tokens(auth_token, skype_spaces_token)
+      # Extract refresh token data from V1 localStorage (always unencrypted)
+      def extract_v1_refresh_data
+        parsed = parse_safari_json(EXTRACT_TOKENS_JS)
+        return {} unless parsed&.dig('refresh_token')
+
+        { refresh_token: parsed['refresh_token'],
+          client_id: parsed['client_id'],
+          tenant_id: parsed['tenant_id'] }
+      rescue JSON::ParserError
+        {}
+      end
+
+      def finalize_tokens(auth_token, skype_spaces_token, refresh_token: nil, client_id: nil, tenant_id: nil)
         skype_token = exchange_skype_if_available(skype_spaces_token)
         { auth_token: auth_token, skype_token: skype_token,
-          skype_spaces_token: skype_spaces_token, chatsvc_token: nil }
+          skype_spaces_token: skype_spaces_token, chatsvc_token: nil,
+          refresh_token: refresh_token, client_id: client_id, tenant_id: tenant_id }
       end
     end
 
