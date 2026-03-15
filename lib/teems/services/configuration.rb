@@ -39,8 +39,8 @@ module Teems
         return {} unless File.exist?(config_file)
 
         JSON.parse(File.read(config_file))
-      rescue JSON::ParserError => parse_error
-        @on_warning&.call("Config file #{config_file} is corrupted (#{parse_error.message}). Using defaults.")
+      rescue JSON::ParserError => e
+        @on_warning&.call("Config file #{config_file} is corrupted (#{e.message}). Using defaults.")
         {}
       end
 

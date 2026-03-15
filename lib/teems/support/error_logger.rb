@@ -10,8 +10,8 @@ module Teems
         log_file = prepare_log_file(paths)
         File.open(log_file, 'a') { |file| write_entry(file, error) }
         log_file
-      rescue SystemCallError, IOError => io_error
-        warn "teems: Could not write error log: #{io_error.message}"
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not write error log: #{e.message}"
         nil
       end
 

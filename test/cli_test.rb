@@ -372,7 +372,7 @@ class CLIErrorHandlingTest < Minitest::Test
         configured: true
       )
       runner = Teems::Runner.new(output: out, token_store: store, api_client: mock_api)
-      setup_verbose_logging(runner, out) if out.verbose
+      setup_verbose_logging(runner, out) if out.verbose?
       runner
     end
   end

@@ -11,7 +11,6 @@ AllCops:
 
 # Test files have longer methods, multiple classes, and flexible naming
 Metrics/ClassLength:
-  Max: 110
   Exclude:
     - 'test/**/*'
 
@@ -52,19 +51,9 @@ Naming/MethodName:
     - 'test/**/*'
 
 Naming/VariableNumber:
-  AllowedPatterns:
-    - '_\d{3}$'  # HTTP status codes (e.g., retry_after_404)
   Exclude:
     - 'test/**/*'
-
-# Conservative mode flags private helper methods as false positives
-Naming/PredicateMethod:
-  Enabled: false
 
 Lint/UnusedMethodArgument:
   Exclude:
     - 'test/**/*'
-
-# Reek flags single-char rescue variables; allow descriptive names
-Naming/RescuedExceptionsVariableName:
-  Enabled: false

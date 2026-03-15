@@ -25,9 +25,8 @@ module Teems
         @mode = mode
       end
 
-      def verbose = @mode == :verbose
-      def quiet = @mode == :quiet
-      alias quiet? quiet
+      def verbose? = @mode == :verbose
+      def quiet? = @mode == :quiet
 
       def puts(message = '')
         @io.puts(message) unless quiet?
@@ -58,7 +57,7 @@ module Teems
       end
 
       def debug(message)
-        return unless verbose
+        return unless verbose?
 
         @err.puts(colorize("#{gray('[debug]')} #{message}"))
       end

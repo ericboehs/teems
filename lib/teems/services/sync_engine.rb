@@ -63,7 +63,9 @@ module Teems
 
       # Fetch all messages from a chat since start_time with pagination
       def fetch_all_messages(chat_id, start_time)
-        messages, backward_link, page_count = [], nil, 0 # rubocop:disable Style/ParallelAssignment
+        messages = []
+        backward_link = nil
+        page_count = 0
         loop do
           page_messages, backward_link = fetch_messages_page(chat_id, start_time, backward_link, page_count)
           break if page_messages.empty? || log_and_check_max(page_count += 1, page_messages)
@@ -167,7 +169,7 @@ module Teems
           'type' => chat.chat_type, 'synced_at' => Time.now.iso8601 }
       end
 
-      def debug(message) = @output&.verbose && @output.debug(message)
+      def debug(message) = @output&.verbose? && @output.debug(message)
     end
   end
 end

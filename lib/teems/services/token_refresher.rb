@@ -24,11 +24,11 @@ module Teems
 
       def refresh
         skype_spaces_token = @token_store.skype_spaces_token
-        return log_and_fail('No skype_spaces_token available for refresh') unless skype_spaces_token
+        return log_and_abandon('No skype_spaces_token available for refresh') unless skype_spaces_token
 
         attempt_refresh(skype_spaces_token)
-      rescue *RECOVERABLE_ERRORS => refresh_error
-        log("Token exchange error: #{refresh_error.class}: #{refresh_error.message}")
+      rescue *RECOVERABLE_ERRORS => e
+        log("Token exchange error: #{e.class}: #{e.message}")
         false
       end
 
@@ -37,16 +37,16 @@ module Teems
       def attempt_refresh(token)
         log('Attempting to refresh skype_token...')
         new_token = exchange_token(token)
-        return log_and_fail('Token refresh failed - skype_spaces_token may be expired') unless new_token
+        return log_and_abandon('Token refresh failed - skype_spaces_token may be expired') unless new_token
 
         @token_store.update_skype_token(new_token)
         log('Token refresh successful')
         true
       end
 
-      def log_and_fail(message)
+      def log_and_abandon(message)
         log(message)
-        false
+        nil
       end
 
       def exchange_token(skype_spaces_token)

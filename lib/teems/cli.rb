@@ -29,8 +29,8 @@ module Teems
       dispatch_command(command_name, args)
     rescue Interrupt
       handle_interrupt
-    rescue StandardError => error
-      handle_error(error)
+    rescue StandardError => e
+      handle_error(e)
     end
 
     private
@@ -47,8 +47,8 @@ module Teems
 
     def dispatch_command(command_name, args)
       COMMANDS[command_name] ? run_command(command_name, args) : show_unknown_command(command_name)
-    rescue ConfigError, AuthError, ApiError => known_error
-      handle_known_error(known_error)
+    rescue ConfigError, AuthError, ApiError => e
+      handle_known_error(e)
     end
 
     def show_unknown_command(command_name)
@@ -92,7 +92,7 @@ module Teems
 
     def build_runner(args)
       out = verbose_mode?(args) ? verbose_output : @output
-      Runner.new(output: out).tap { |new_runner| setup_verbose_logging(new_runner, out) if out.verbose }
+      Runner.new(output: out).tap { |new_runner| setup_verbose_logging(new_runner, out) if out.verbose? }
     end
 
     def verbose_output
@@ -108,7 +108,7 @@ module Teems
     def execute_command(command_class, args, runner)
       command = command_class.new(args, runner: runner)
       result = command.execute
-      log_api_call_count(runner) if runner.output.verbose
+      log_api_call_count(runner) if runner.output.verbose?
       result
     end
 

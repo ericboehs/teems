@@ -135,31 +135,31 @@ class OutputTest < Minitest::Test
     output = Teems::Formatters::Output.new
     verbose_output = output.with_verbose(true)
 
-    refute output.verbose
-    assert verbose_output.verbose
+    refute output.verbose?
+    assert verbose_output.verbose?
   end
 
   def test_with_quiet_creates_new_instance
     output = Teems::Formatters::Output.new
     quiet_output = output.with_quiet(true)
 
-    refute output.quiet
-    assert quiet_output.quiet
+    refute output.quiet?
+    assert quiet_output.quiet?
   end
 
   def test_with_verbose_false_resets_to_normal
     output = Teems::Formatters::Output.new(mode: :verbose)
     normal_output = output.with_verbose(false)
 
-    assert output.verbose
-    refute normal_output.verbose
+    assert output.verbose?
+    refute normal_output.verbose?
   end
 
   def test_with_quiet_false_resets_to_normal
     output = Teems::Formatters::Output.new(mode: :quiet)
     normal_output = output.with_quiet(false)
 
-    assert output.quiet
-    refute normal_output.quiet
+    assert output.quiet?
+    refute normal_output.quiet?
   end
 end

@@ -815,7 +815,7 @@ class SyncCommandTest < Minitest::Test
                              })
       # Trigger API response callback
       runner.api_client.on_response = lambda { |path, code|
-        verbose_output.debug("  API <- #{code} #{path[0..80]}") if verbose_output.verbose
+        verbose_output.debug("  API <- #{code} #{path[0..80]}") if verbose_output.verbose?
       }
 
       cmd = Teems::Commands::Sync.new(['-v'], runner: runner)

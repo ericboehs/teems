@@ -39,8 +39,8 @@ module Teems
 
         info("[#{index + 1}/#{total}] Syncing: #{chat.display_name}")
         with_404_retry(chat) { sync_single_chat(chat) }
-      rescue StandardError => sync_error
-        handle_sync_error(chat, sync_error)
+      rescue StandardError => e
+        handle_sync_error(chat, e)
       end
 
       def skip_chat(chat, index, total)
@@ -95,11 +95,11 @@ module Teems
 
       def with_404_retry(chat, &)
         yield
-      rescue ApiError => api_error
+      rescue ApiError => e
         output.flush
-        return handle_non_404_error(chat, api_error) unless api_error.not_found?
+        return handle_non_404_error(chat, e) unless e.not_found?
 
-        retry_after_404(chat, &)
+        retry_after_not_found(chat, &)
       end
 
       def handle_non_404_error(chat, error)
@@ -107,15 +107,15 @@ module Teems
         @stats[:errors] += 1
       end
 
-      def retry_after_404(chat)
+      def retry_after_not_found(chat)
         debug("  Got 404, retrying in #{RETRY_DELAY_SECONDS}s...")
         sleep(RETRY_DELAY_SECONDS)
         yield
-      rescue ApiError => api_error
-        handle_persistent_404(chat, api_error)
+      rescue ApiError => e
+        handle_persistent_not_found(chat, e)
       end
 
-      def handle_persistent_404(chat, error)
+      def handle_persistent_not_found(chat, error)
         display_name = chat.display_name
         if error.not_found?
           @sync_store.mark_unavailable(@state, chat.id, display_name: display_name, chat_type: chat.chat_type)
@@ -135,8 +135,8 @@ module Teems
         return build_single_chat if @options[:chat_id]
 
         fetch_all_chats
-      rescue ApiError => api_error
-        error("Failed to fetch chats: #{api_error.message}")
+      rescue ApiError => e
+        error("Failed to fetch chats: #{e.message}")
         nil
       end
 
@@ -299,9 +299,9 @@ module Teems
 
       def save_state_safely
         @sync_store.save_state(@state)
-      rescue StandardError => save_error
+      rescue StandardError => e
         @stats[:errors] += 1
-        error("Warning: Failed to save sync state: #{save_error.message}")
+        error("Warning: Failed to save sync state: #{e.message}")
       end
 
       def since_time = Time.now - ((@options[:since_days] || DEFAULT_SINCE_DAYS) * 86_400)
@@ -309,7 +309,7 @@ module Teems
       def setup_api_logging
         out = output
         runner.api_client.on_response = lambda { |path, code|
-          out.debug("  API ← #{code} #{path[0..80]}") if out.verbose
+          out.debug("  API ← #{code} #{path[0..80]}") if out.verbose?
         }
       end
     end
