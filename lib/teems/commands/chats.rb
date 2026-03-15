@@ -63,16 +63,15 @@ module Teems
       end
 
       def display_chats(chats)
-        chats.each do |chat_data|
-          chat = Models::Chat.from_api(chat_data)
-          type_icon = chat_type_icon(chat)
-          time_str = chat.last_updated&.strftime('%Y-%m-%d %H:%M') || ''
+        chats.each { |chat_data| display_single_chat(Models::Chat.from_api(chat_data)) }
+      end
 
-          puts "#{type_icon} #{output.bold(chat.display_name)}"
-          puts "    ID: #{chat.id}"
-          puts "    Last updated: #{time_str}" unless time_str.empty?
-          puts
-        end
+      def display_single_chat(chat)
+        time_str = chat.last_updated&.strftime('%Y-%m-%d %H:%M') || ''
+        puts "#{chat_type_icon(chat)} #{output.bold(chat.display_name)}"
+        puts "    ID: #{chat.id}"
+        puts "    Last updated: #{time_str}" unless time_str.empty?
+        puts
       end
 
       def chat_type_icon(chat)

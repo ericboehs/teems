@@ -271,15 +271,19 @@ module Teems
         range = compute_date_range
         return error("Invalid date: #{@options[:date]}") && 1 unless range
 
+        fetch_and_display_events(range)
+      rescue ApiError => api_error
+        error("Failed to fetch calendar: #{api_error.message}")
+        1
+      end
+
+      def fetch_and_display_events(range)
         events = fetch_events(range)
         return 0 if events.empty? && (puts('No events found') || true)
 
         cache_event_ids(events)
         render_events(events)
         0
-      rescue ApiError => api_error
-        error("Failed to fetch calendar: #{api_error.message}")
-        1
       end
 
       def fetch_events(range)

@@ -65,11 +65,15 @@ module Teems
         lines << '> _Reply to message_' if msg.reply?
         lines << format_message_header(msg)
         lines << ''
+        append_message_body(lines, msg)
+        lines
+      end
+
+      def append_message_body(lines, msg)
         content = msg.content
         lines << content unless content.nil? || content.empty?
         lines.concat(format_message_attachments(msg))
         lines.concat(format_message_reactions(msg))
-        lines
       end
 
       def format_message_header(msg)

@@ -64,11 +64,16 @@ module Teems
           page_messages, backward_link = fetch_messages_page(chat_id, start_time, backward_link, page_count)
           break if page_messages.empty? || log_and_check_max(page_count += 1, page_messages)
 
-          parsed, cutoff = parse_page_messages(page_messages, start_time)
-          messages.concat(parsed)
-          break if cutoff || (backward_link = advance_link(backward_link, start_time)).nil?
+          backward_link = accumulate_page(messages, page_messages, backward_link, start_time)
+          break unless backward_link
         end
         filter_and_sort_messages(messages, start_time)
+      end
+
+      def accumulate_page(messages, page_messages, backward_link, start_time)
+        parsed, cutoff = parse_page_messages(page_messages, start_time)
+        messages.concat(parsed)
+        cutoff ? nil : advance_link(backward_link, start_time)
       end
 
       def merge_and_write(chat, existing_raw, new_messages)
@@ -117,8 +122,14 @@ module Teems
 
       def filter_and_sort_messages(messages, start_time)
         messages.reject(&:system_message?)
-                .select { |msg| msg.created_at.nil? || msg.created_at >= start_time }
-                .sort_by { |msg| msg.created_at || Time.at(0) }
+                .filter_map { |msg| message_with_timestamp(msg, start_time) }
+                .sort_by(&:first)
+                .map(&:last)
+      end
+
+      def message_with_timestamp(msg, start_time)
+        timestamp = msg.created_at || Time.at(0)
+        [timestamp, msg] if msg.created_at.nil? || timestamp >= start_time
       end
 
       def merge_messages(existing, new_messages)

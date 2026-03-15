@@ -62,6 +62,7 @@ module Teems
         @http_cache.clear
       end
 
+      # :reek:LongParameterList - HTTP method naturally takes endpoint, path, account, params, headers
       def get(endpoint_key, path, account:, params: {}, headers: {})
         uri = resolve_uri(endpoint_key, path, params)
         execute_request(path, endpoint_key) do |http|

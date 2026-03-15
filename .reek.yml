@@ -28,6 +28,7 @@ detectors:
   DataClump:
     exclude:
       - "Teems::Services::SyncStore"
+      - "Teems::Services::SyncEngine"
       - "Teems::Services::ApiClient"
 
   # 404 is an HTTP status code; v1/v2 are token format versions

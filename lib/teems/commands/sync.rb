@@ -157,12 +157,15 @@ module Teems
 
       def show_dry_run(chats)
         syncable = chats.reject { |chat| skip_reason(chat['id']) }
-        skipped = chats.length - syncable.length
-        info("Dry run — would sync #{syncable.length} chat(s) since #{since_time.strftime('%Y-%m-%d')}")
-        info("  (#{skipped} system streams skipped)") if skipped.positive?
-        puts
+        display_dry_run_header(chats.length - syncable.length, syncable.length)
         syncable.each { |chat| format_dry_run_chat(chat) }
         0
+      end
+
+      def display_dry_run_header(skipped, syncable_count)
+        info("Dry run — would sync #{syncable_count} chat(s) since #{since_time.strftime('%Y-%m-%d')}")
+        info("  (#{skipped} system streams skipped)") if skipped.positive?
+        puts
       end
 
       def format_dry_run_chat(chat_data)
@@ -254,6 +257,10 @@ module Teems
         return 1 unless chats
         return show_dry_run(chats) if @options[:dry_run]
 
+        sync_all_chats(chats)
+      end
+
+      def sync_all_chats(chats)
         chats.each_with_index { |chat_data, index| sync_or_skip_chat(chat_data, index, chats.length) }
         save_state_safely
         show_summary
