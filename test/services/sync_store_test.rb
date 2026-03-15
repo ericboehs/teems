@@ -69,9 +69,8 @@ class SyncStoreTest < Minitest::Test
       now = Time.now
 
       store.update_chat_state(state, 'chat1',
-                              last_synced_at: now,
-                              message_count: 42,
-                              display_name: 'Test Chat')
+                              attrs: { last_synced_at: now, message_count: 42,
+                                       display_name: 'Test Chat' })
 
       assert_equal now.iso8601, state['chats']['chat1']['last_synced_at']
       assert_equal 42, state['chats']['chat1']['message_count']
@@ -355,10 +354,8 @@ class SyncStoreTest < Minitest::Test
       now = Time.now
 
       store.update_chat_state(state, 'chat1',
-                              last_synced_at: now,
-                              message_count: 42,
-                              display_name: 'My Project Chat',
-                              chat_type: 'group')
+                              attrs: { last_synced_at: now, message_count: 42,
+                                       display_name: 'My Project Chat', chat_type: 'group' })
 
       assert_equal 'My Project Chat', state['chats']['chat1']['dir_name']
       assert_equal 'group', state['chats']['chat1']['chat_type']
@@ -528,10 +525,8 @@ class SyncStoreTest < Minitest::Test
       now = Time.now
 
       store.update_chat_state(state, 'chat1',
-                              last_synced_at: now,
-                              message_count: 10,
-                              display_name: 'DM Chat',
-                              chat_type: 'oneOnOne')
+                              attrs: { last_synced_at: now, message_count: 10,
+                                       display_name: 'DM Chat', chat_type: 'oneOnOne' })
 
       assert_equal 'oneOnOne', state['chats']['chat1']['chat_type']
     end

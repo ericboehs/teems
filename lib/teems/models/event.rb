@@ -23,7 +23,15 @@ module Teems
       extend Parsing
 
       def self.from_api(data)
-        new(
+        new(**event_attrs(data))
+      end
+
+      def self.event_attrs(data)
+        core_attrs(data).merge(detail_attrs(data))
+      end
+
+      def self.core_attrs(data)
+        {
           id: data['id'],
           subject: data['subject'] || '(No subject)',
           start_time: parse_time(data.dig('start', 'dateTime')),
@@ -31,7 +39,12 @@ module Teems
           location: data.dig('location', 'displayName'),
           is_all_day: data['isAllDay'] || false,
           organizer: parse_organizer(data['organizer']),
-          attendees: parse_attendees(data['attendees']),
+          attendees: parse_attendees(data['attendees'])
+        }
+      end
+
+      def self.detail_attrs(data)
+        {
           body_preview: data['bodyPreview'] || strip_html(data.dig('body', 'content')),
           online_meeting_url: data.dig('onlineMeeting', 'joinUrl'),
           show_as: data['showAs'],
@@ -39,7 +52,7 @@ module Teems
           is_cancelled: data['isCancelled'] || false,
           response_status: data.dig('responseStatus', 'response'),
           sensitivity: data['sensitivity']
-        )
+        }
       end
 
       def self.parse_organizer(organizer_data)

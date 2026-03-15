@@ -37,65 +37,66 @@ module Teems
       private
 
       def list_teams_and_channels
-        api = runner.channels_api
-        teams_response = api.list_teams
+        teams = fetch_teams
+        return 0 if teams.empty? && (puts('No teams found') || true)
 
-        teams = teams_response['value'] || []
-
-        if teams.empty?
-          puts 'No teams found'
-          return 0
-        end
-
-        if @options[:json]
-          output_json(build_json_output(api, teams))
-        else
-          display_teams(api, teams)
-        end
-
+        render_teams(teams)
         0
       rescue ApiError => e
         error("Failed to fetch teams: #{e.message}")
         1
       end
 
-      def display_teams(api, teams)
+      def fetch_teams
+        response = runner.channels_api.list_teams
+        response['value'] || []
+      end
+
+      def render_teams(teams)
+        if @options[:json]
+          output_json(build_json_output(teams))
+        else
+          display_teams(teams)
+        end
+      end
+
+      def display_teams(teams)
+        api = runner.channels_api
         teams.each do |team_data|
-          team_name = team_data['displayName']
-          team_id = team_data['id']
-
-          puts output.bold(team_name)
-
-          begin
-            channels_response = api.list_channels(team_id: team_id)
-            channels = channels_response['value'] || []
-
-            channels.each do |channel_data|
-              channel = Models::Channel.from_api(channel_data, team_id: team_id, team_name: team_name)
-              prefix = channel.private? ? output.yellow('🔒') : '  '
-              puts "  #{prefix} #{channel.name} (#{channel.id})"
-            end
-          rescue ApiError => e
-            puts "  #{output.red('Error:')} #{e.message}"
-          end
-
+          puts output.bold(team_data['displayName'])
+          display_team_channels(api, team_data)
           puts
         end
       end
 
-      def build_json_output(api, teams)
-        teams.map do |team_data|
-          team_id = team_data['id']
-          channels_response = api.list_channels(team_id: team_id)
+      def display_team_channels(api, team_data)
+        channels = api.list_channels(team_id: team_data['id'])['value'] || []
+        channels.each { |c| display_channel(c, team_data) }
+      rescue ApiError => e
+        puts "  #{output.red('Error:')} #{e.message}"
+      end
 
-          {
-            id: team_id,
-            name: team_data['displayName'],
-            channels: (channels_response['value'] || []).map do |c|
-              { id: c['id'], name: c['displayName'], membership_type: c['membershipType'] }
-            end
-          }
-        end
+      def display_channel(channel_data, team_data)
+        channel = Models::Channel.from_api(channel_data, team_id: team_data['id'],
+                                                         team_name: team_data['displayName'])
+        prefix = channel.private? ? output.yellow('🔒') : '  '
+        puts "  #{prefix} #{channel.name} (#{channel.id})"
+      end
+
+      def build_json_output(teams)
+        api = runner.channels_api
+        teams.map { |t| team_to_hash(api, t) }
+      end
+
+      def team_to_hash(api, team_data)
+        channels_response = api.list_channels(team_id: team_data['id'])
+        {
+          id: team_data['id'],
+          name: team_data['displayName'],
+          channels: (channels_response['value'] || []).map do |c|
+            { id: c['id'], name: c['displayName'], membership_type: c['membershipType'] }
+          end
+        }
       end
     end
   end

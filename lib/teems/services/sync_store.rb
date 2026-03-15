@@ -5,30 +5,18 @@ module Teems
     # Manages local sync state and file storage for the sync command.
     # Stores chat history as Markdown + JSON in XDG data directory.
     class SyncStore
+      include SyncDirNaming
+
       SYNC_DIR = 'sync'
       STATE_FILE = 'sync_state.json'
       CHATS_DIR = 'chats'
-      GENERIC_LABELS = ['Group Chat', '1:1 Chat', 'Meeting Chat', 'Channel', 'Space'].freeze
-      MAX_DIR_NAME_LENGTH = 100
-      TYPE_DIRS = {
-        'oneOnOne' => 'dms', 'group' => 'groups', 'meeting' => 'meetings',
-        'channel' => 'channels', 'space' => 'spaces'
-      }.freeze
 
       def initialize(xdg_paths: nil)
         @xdg_paths = xdg_paths || Support::XdgPaths.new
       end
 
-      def sync_dir
-        @sync_dir ||= File.join(@xdg_paths.data_dir, SYNC_DIR)
-      end
+      def sync_dir = @sync_dir ||= File.join(@xdg_paths.data_dir, SYNC_DIR)
 
-      # Map chat_type to subdirectory name
-      def type_dir(chat_type)
-        TYPE_DIRS[chat_type] || 'other'
-      end
-
-      # Load the global sync state from disk
       def load_state
         path = File.join(sync_dir, STATE_FILE)
         return {} unless File.exist?(path)
@@ -39,82 +27,49 @@ module Teems
         {}
       end
 
-      # Save the global sync state to disk (atomic write)
       def save_state(state)
-        ensure_sync_dir
-        path = File.join(sync_dir, STATE_FILE)
-        atomic_write(path, JSON.pretty_generate(state))
+        FileUtils.mkdir_p(sync_dir)
+        atomic_write(File.join(sync_dir, STATE_FILE), JSON.pretty_generate(state))
       end
 
-      # Return the last synced time for a chat, or nil
       def last_synced_time(state, chat_id)
         ts = state.dig('chats', chat_id, 'last_synced_at')
-        return nil unless ts
-
-        Time.parse(ts)
+        ts ? Time.parse(ts) : nil
       rescue ArgumentError
         nil
       end
 
-      # Update per-chat metadata in the state hash (in-memory, call save_state to persist)
-      def update_chat_state(state, chat_id, last_synced_at:, message_count:, display_name: nil, chat_type: nil)
-        ensure_chat_entry(state, chat_id).merge!(
-          'last_synced_at' => last_synced_at.iso8601,
-          'message_count' => message_count,
-          'display_name' => display_name,
-          'dir_name' => build_dir_name(chat_id, display_name),
-          'chat_type' => chat_type
-        )
+      def update_chat_state(state, chat_id, attrs:)
+        ensure_chat_entry(state, chat_id).merge!(build_chat_fields(chat_id, attrs))
         state
       end
 
-      # Mark a chat as unavailable (e.g. 404) so it gets skipped on future syncs
       def mark_unavailable(state, chat_id, display_name: nil, chat_type: nil)
         entry = ensure_chat_entry(state, chat_id)
-        entry['unavailable'] = true
-        entry['unavailable_at'] = Time.now.iso8601
+        entry.merge!('unavailable' => true, 'unavailable_at' => Time.now.iso8601)
         entry['chat_type'] = chat_type if chat_type
-        if display_name
-          entry['display_name'] = display_name
-          entry['dir_name'] = build_dir_name(chat_id, display_name)
-        end
+        apply_display_name(entry, display_name, chat_id) if display_name
         state
       end
 
-      # Check if a chat has been marked as unavailable
-      def chat_unavailable?(state, chat_id)
-        state.dig('chats', chat_id, 'unavailable') == true
-      end
+      def chat_unavailable?(state, chat_id) = state.dig('chats', chat_id, 'unavailable') == true
 
-      # Return the directory path for a specific chat
-      # When state is provided, uses the human-readable dir_name and type subdirectory;
-      # falls back to sanitized ID in 'other/' when state is not available
       def chat_dir(chat_id, state: nil)
         dir_name = state&.dig('chats', chat_id, 'dir_name') || sanitize_id(chat_id)
-        chat_type = state&.dig('chats', chat_id, 'chat_type')
-        type_subdir = type_dir(chat_type)
-        File.join(sync_dir, CHATS_DIR, type_subdir, dir_name)
+        File.join(sync_dir, CHATS_DIR, type_dir(state&.dig('chats', chat_id, 'chat_type')), dir_name)
       end
 
-      # Write messages.md and messages.json for a chat (atomic writes)
       def write_messages(chat_id, messages_md:, messages_json:, state: nil)
-        dir = chat_dir(chat_id, state: state)
-        FileUtils.mkdir_p(dir)
-
+        dir = chat_dir(chat_id, state: state).tap { |d| FileUtils.mkdir_p(d) }
         atomic_write(File.join(dir, 'messages.md'), messages_md)
         atomic_write(File.join(dir, 'messages.json'), messages_json)
       end
 
-      # Write chat_metadata.json with original ID and display info
       def write_chat_metadata(chat_id, metadata, state: nil)
-        dir = chat_dir(chat_id, state: state)
-        FileUtils.mkdir_p(dir)
-
+        dir = chat_dir(chat_id, state: state).tap { |d| FileUtils.mkdir_p(d) }
         atomic_write(File.join(dir, 'chat_metadata.json'), JSON.pretty_generate(metadata))
       end
 
-      # Read existing messages.json for a chat, returns array or empty array.
-      # Backs up corrupt files to prevent data loss on re-sync.
       def read_messages_json(chat_id, state: nil)
         path = File.join(chat_dir(chat_id, state: state), 'messages.json')
         return [] unless File.exist?(path)
@@ -125,100 +80,55 @@ module Teems
         []
       end
 
-      # Ensure a chat has the correct human-readable directory name within its type subdirectory.
-      # Handles topic rename, type change, or no change needed.
-      # Returns the dir_name that was set.
       def ensure_dir_name(state, chat_id, display_name, chat_type: nil)
         new_dir_name = build_dir_name(chat_id, display_name)
         entry = ensure_chat_entry(state, chat_id)
-        current_dir_name = entry['dir_name']
-        old_chat_type = entry['chat_type']
-
-        if current_dir_name && (current_dir_name != new_dir_name || old_chat_type != chat_type)
-          rename_chat_dir(
-            current_dir_name, new_dir_name,
-            old_type: type_dir(old_chat_type), new_type: type_dir(chat_type)
-          )
-        end
-
-        entry['dir_name'] = new_dir_name
-        entry['chat_type'] = chat_type
+        maybe_rename(entry, new_dir_name, chat_type)
+        entry.merge!('dir_name' => new_dir_name, 'chat_type' => chat_type)
         new_dir_name
       end
 
       private
 
-      def ensure_sync_dir
-        FileUtils.mkdir_p(sync_dir)
-      end
-
-      # Ensure state has a chats hash and an entry for this chat_id, return the entry
       def ensure_chat_entry(state, chat_id)
-        state['chats'] ||= {}
-        state['chats'][chat_id] ||= {}
+        (state['chats'] ||= {})[chat_id] ||= {}
       end
 
-      # Sanitize a chat ID for use as a directory name
-      # Replace : @ and other unsafe chars with _
-      def sanitize_id(id)
-        id.gsub(/[:@]/, '_')
+      def build_chat_fields(chat_id, attrs)
+        { 'last_synced_at' => attrs[:last_synced_at].iso8601, 'message_count' => attrs[:message_count],
+          'display_name' => attrs[:display_name], 'dir_name' => build_dir_name(chat_id, attrs[:display_name]),
+          'chat_type' => attrs[:chat_type] }
       end
 
-      # Sanitize a display name for use as a directory name
-      # Replace filesystem-unsafe chars, collapse whitespace, truncate
-      def sanitize_display_name(name)
-        return nil if name.nil? || name.strip.empty?
-
-        sanitized = name.strip
-        sanitized = sanitized.gsub(%r{[/\\:*?"<>|]}, '-')
-        sanitized = sanitized.gsub(/\s+/, ' ')
-        sanitized = sanitized[0, MAX_DIR_NAME_LENGTH]
-        sanitized = sanitized.gsub(/[\s.]+\z/, '')
-        sanitized.empty? ? nil : sanitized
+      def apply_display_name(entry, display_name, chat_id)
+        entry.merge!('display_name' => display_name, 'dir_name' => build_dir_name(chat_id, display_name))
       end
 
-      # Build a human-readable directory name for a chat.
-      # Named topics use sanitized display name; generic labels get a short ID suffix;
-      # nil/empty falls back to sanitized chat ID.
-      def build_dir_name(chat_id, display_name)
-        sanitized = sanitize_display_name(display_name)
-        return sanitize_id(chat_id) unless sanitized
+      def maybe_rename(entry, new_dir_name, chat_type)
+        current = entry['dir_name']
+        return unless current && (current != new_dir_name || entry['chat_type'] != chat_type)
 
-        if GENERIC_LABELS.include?(display_name&.strip)
-          short_id = sanitize_id(chat_id)[0, 20]
-          "#{sanitized} (#{short_id})"
-        else
-          sanitized
-        end
-      end
+        old_path = chat_type_path(entry['chat_type'], current)
+        new_path = chat_type_path(chat_type, new_dir_name)
+        return if old_path == new_path || !File.directory?(old_path) || File.exist?(new_path)
 
-      # Rename/move a chat directory across type subdirectories.
-      # No-op if old doesn't exist, new already exists, or paths are the same.
-      def rename_chat_dir(old_name, new_name, old_type:, new_type:)
-        chats_path = File.join(sync_dir, CHATS_DIR)
-        old_path = File.join(chats_path, old_type, old_name)
-        new_path = File.join(chats_path, new_type, new_name)
-        return if old_path == new_path
-        return unless File.directory?(old_path)
-        return if File.exist?(new_path)
-
-        FileUtils.mkdir_p(File.join(chats_path, new_type))
+        FileUtils.mkdir_p(File.dirname(new_path))
         File.rename(old_path, new_path)
       end
 
-      # Write to a temp file then rename for atomicity
-      def atomic_write(path, content)
-        tmp_path = "#{path}.tmp"
-        File.write(tmp_path, content)
-        File.rename(tmp_path, path)
+      def chat_type_path(chat_type, dir_name)
+        File.join(sync_dir, CHATS_DIR, type_dir(chat_type), dir_name)
       end
 
-      # Back up a corrupt file so data isn't lost, and warn the user
+      def atomic_write(path, content)
+        tmp = "#{path}.tmp"
+        File.write(tmp, content)
+        File.rename(tmp, path)
+      end
+
       def backup_corrupt_file(path)
-        backup_path = "#{path}.corrupt.#{Time.now.strftime('%Y%m%d%H%M%S')}"
-        File.rename(path, backup_path)
+        File.rename(path, "#{path}.corrupt.#{Time.now.strftime('%Y%m%d%H%M%S')}")
       rescue StandardError
-        # If backup fails, still continue with empty state
         nil
       end
     end

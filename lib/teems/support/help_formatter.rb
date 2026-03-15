@@ -26,21 +26,10 @@ module Teems
       end
 
       def render
-        lines = []
-        lines << @usage
-        lines << ''
-        lines << @description if @description
-        lines << '' if @description
-
-        @sections.each do |section|
-          lines << section.render
-          lines << ''
-        end
-
-        @notes.each do |note|
-          lines << "Note: #{note}"
-        end
-
+        lines = [@usage, '']
+        lines.push(@description, '') if @description
+        @sections.each { |s| lines.push(s.render, '') }
+        @notes.each { |n| lines << "Note: #{n}" }
         lines.join("\n")
       end
 
@@ -65,18 +54,17 @@ module Teems
 
         def render
           lines = ["#{@title}:"]
-
-          @items.each do |type, *args|
-            case type
-            when :option, :item
-              label, desc = args
-              lines << "  #{label.ljust(20)} #{desc}"
-            when :text
-              lines << "  #{args.first}"
-            end
-          end
-
+          @items.each { |type, *args| lines << render_item(type, args) }
           lines.join("\n")
+        end
+
+        private
+
+        def render_item(type, args)
+          case type
+          when :option, :item then "  #{args[0].ljust(20)} #{args[1]}"
+          when :text          then "  #{args.first}"
+          end
         end
       end
     end

@@ -25,17 +25,8 @@ module Teems
 
       def save(name:, auth_token:, skype_token:, skype_spaces_token: nil, chatsvc_token: nil)
         @paths.ensure_config_dir
-        data = {
-          'name' => name,
-          'auth_token' => auth_token,
-          'skype_token' => skype_token,
-          'skype_spaces_token' => skype_spaces_token,
-          'chatsvc_token' => chatsvc_token,
-          'saved_at' => Time.now.iso8601
-        }.compact
-        File.write(tokens_file, JSON.pretty_generate(data))
-        File.chmod(0o600, tokens_file)
-        true
+        data = build_save_data(name, auth_token, skype_token, skype_spaces_token, chatsvc_token)
+        write_token_file(data)
       rescue SystemCallError, IOError => e
         warn "teems: Could not save tokens: #{e.message}"
         false
@@ -85,6 +76,18 @@ module Teems
 
       def tokens_file
         @paths.config_file(TOKENS_FILE)
+      end
+
+      def build_save_data(name, auth_token, skype_token, skype_spaces_token, chatsvc_token)
+        { 'name' => name, 'auth_token' => auth_token, 'skype_token' => skype_token,
+          'skype_spaces_token' => skype_spaces_token, 'chatsvc_token' => chatsvc_token,
+          'saved_at' => Time.now.iso8601 }.compact
+      end
+
+      def write_token_file(data)
+        File.write(tokens_file, JSON.pretty_generate(data))
+        File.chmod(0o600, tokens_file)
+        true
       end
 
       def load_tokens

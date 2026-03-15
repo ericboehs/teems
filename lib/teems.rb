@@ -56,6 +56,8 @@ module Teems
     autoload :CacheStore, 'teems/services/cache_store'
     autoload :TeamsUrlParser, 'teems/services/teams_url_parser'
     autoload :SyncStore, 'teems/services/sync_store'
+    autoload :SyncDirNaming, 'teems/services/sync_dir_naming'
+    autoload :SyncEngine, 'teems/services/sync_engine'
   end
 
   # Output formatters for messages and terminal output

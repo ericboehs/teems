@@ -60,7 +60,8 @@ module Teems
       protected
 
       # Override in subclass to handle command-specific options
-      def handle_option(arg, _args, _remaining) # rubocop:disable Naming/PredicateMethod -- not a predicate
+      # -- not a predicate
+      def handle_option(arg, _args, _remaining)
         @unknown_options ||= []
         @unknown_options << arg
         false
@@ -99,38 +100,19 @@ module Teems
       end
 
       # Output helpers
-      def success(message)
-        output.success(message) unless @options[:quiet]
-      end
-
-      def info(message)
-        output.info(message) unless @options[:quiet]
-      end
-
-      def warn(message)
-        output.warn(message)
-      end
+      def success(msg) = @options[:quiet] || output.success(msg)
+      def info(msg) = @options[:quiet] || output.info(msg)
+      def warn(message) = output.warn(message)
 
       def error(message)
         output.error(message)
         1
       end
 
-      def debug(message)
-        output.debug(message) if @options[:verbose]
-      end
-
-      def puts(message = '')
-        output.puts(message) unless @options[:quiet]
-      end
-
-      def print(message)
-        output.print(message) unless @options[:quiet]
-      end
-
-      def output_json(data)
-        output.puts(JSON.pretty_generate(data))
-      end
+      def debug(msg) = @options[:verbose] && output.debug(msg)
+      def puts(message = '') = @options[:quiet] || output.puts(message)
+      def print(msg) = @options[:quiet] || output.print(msg)
+      def output_json(data) = output.puts(JSON.pretty_generate(data))
 
       # Check if account is configured, show error if not
       def require_auth
@@ -148,13 +130,16 @@ module Teems
         raise unless e.unauthorized? || e.message.include?('expired')
 
         debug('Token expired, attempting refresh...')
-        if runner.refresh_tokens
-          debug('Token refreshed, retrying request...')
-          yield
-        else
-          warn('Token refresh failed. Try: teems auth login')
-          raise
-        end
+        raise unless attempt_token_refresh
+
+        yield
+      end
+
+      def attempt_token_refresh
+        return false unless runner.refresh_tokens
+
+        debug('Token refreshed, retrying request...')
+        true
       end
     end
   end
