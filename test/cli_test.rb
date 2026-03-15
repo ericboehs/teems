@@ -230,7 +230,7 @@ class CLIErrorHandlingTest < Minitest::Test
       err = StringIO.new
       output = Teems::Formatters::Output.new(io: out, err: err, color: false)
 
-      cli = MockInterruptCLI.new(['auth', 'status'], output: output)
+      cli = MockInterruptCLI.new(%w[auth status], output: output)
       exit_code = cli.run
 
       assert_equal 130, exit_code
@@ -289,7 +289,6 @@ class CLIErrorHandlingTest < Minitest::Test
       assert_match(/Details logged to:/, out.string)
     end
   end
-
 
   def test_verbose_api_logging_sets_callback
     with_temp_config do |dir|

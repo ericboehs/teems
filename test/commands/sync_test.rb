@@ -750,11 +750,9 @@ class SyncCommandTest < Minitest::Test
         runner.api_client.define_singleton_method(:get) do |_endpoint, path, **_opts|
           if path.include?('messages')
             call_count += 1
-            if call_count == 1
-              raise Teems::ApiError.new('HTTP 404: Not Found', status_code: 404)
-            else
-              raise Teems::ApiError.new('HTTP 500: Server Error', status_code: 500)
-            end
+            raise Teems::ApiError.new('HTTP 404: Not Found', status_code: 404) if call_count == 1
+
+            raise Teems::ApiError.new('HTTP 500: Server Error', status_code: 500)
           end
           { 'conversations' => [{ 'id' => '19:chat123@thread.v2', 'threadProperties' => { 'threadType' => 'chat' } }] }
         end
@@ -790,7 +788,7 @@ class SyncCommandTest < Minitest::Test
 
   def test_since_days_with_custom_value
     with_temp_config do
-      result = capture_output do |output|
+      capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub('conversations', { 'conversations' => [] })
         cmd = Teems::Commands::Sync.new(['--since', '7'], runner: runner)

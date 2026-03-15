@@ -47,7 +47,7 @@ class SyncEngineTest < Minitest::Test
         '_metadata' => {}
       }
       call_count = 0
-      runner.api_client.define_singleton_method(:get) do |_endpoint, path, **_opts|
+      runner.api_client.define_singleton_method(:get) do |_endpoint, _path, **_opts|
         call_count += 1
         call_count == 1 ? first_response : second_response
       end

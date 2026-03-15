@@ -4,7 +4,7 @@ require 'test_helper'
 
 class ErrorLoggerTest < Minitest::Test
   def test_log_writes_error_to_file
-    with_temp_config do |dir|
+    with_temp_config do
       paths = Teems::Support::XdgPaths.new
       error = RuntimeError.new('test error')
       error.set_backtrace(['file.rb:1:in `method`', 'file.rb:2:in `other`'])
