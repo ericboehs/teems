@@ -27,17 +27,22 @@ module Teems
       end
 
       def parse_stored_reactions(reactions)
-        (reactions || []).map { |reaction| { type: reaction['type'], count: reaction['count'] } }
+        Array(reactions).map { |reaction| { type: reaction['type'], count: reaction['count'] } }
       end
 
       def stored_msg_attrs(data)
-        {
-          id: data['id'], sender_id: data['sender_id'], sender_name: data['sender_name'],
+        stored_msg_core(data).merge(stored_msg_extras(data))
+      end
+
+      def stored_msg_core(data)
+        { id: data['id'], sender_id: data['sender_id'], sender_name: data['sender_name'],
           content: data['content'], created_at: data['created_at'] ? Time.parse(data['created_at']) : nil,
-          message_type: data['message_type'], reply_to_id: data['reply_to_id'],
-          reactions: parse_stored_reactions(data['reactions']),
-          attachments: data['attachments'] || [], importance: data['importance']
-        }
+          message_type: data['message_type'] }
+      end
+
+      def stored_msg_extras(data)
+        { reply_to_id: data['reply_to_id'], reactions: parse_stored_reactions(data['reactions']),
+          attachments: data['attachments'] || [], importance: data['importance'] }
       end
     end
 
@@ -49,12 +54,11 @@ module Teems
       API_DELAY_SECONDS = 0.5
       MAX_PAGES = 500
 
-      def initialize(runner:, sync_store:, state:, output:, verbose: false)
+      def initialize(runner:, sync_store:, state:, output:)
         @runner = runner
         @sync_store = sync_store
         @state = state
         @output = output
-        @verbose = verbose
       end
 
       # Fetch all messages from a chat since start_time with pagination
@@ -64,11 +68,16 @@ module Teems
           page_messages, backward_link = fetch_messages_page(chat_id, start_time, backward_link, page_count)
           break if page_messages.empty? || log_and_check_max(page_count += 1, page_messages)
 
-          parsed, cutoff = parse_page_messages(page_messages, start_time)
-          messages.concat(parsed)
-          break if cutoff || (backward_link = advance_link(backward_link, start_time)).nil?
+          backward_link = accumulate_page(messages, page_messages, backward_link, start_time)
+          break unless backward_link
         end
         filter_and_sort_messages(messages, start_time)
+      end
+
+      def accumulate_page(messages, page_messages, backward_link, start_time)
+        parsed, cutoff = parse_page_messages(page_messages, start_time)
+        messages.concat(parsed)
+        cutoff ? nil : advance_link(backward_link, start_time)
       end
 
       def merge_and_write(chat, existing_raw, new_messages)
@@ -83,9 +92,17 @@ module Teems
       private
 
       def fetch_messages_page(chat_id, start_time, backward_link, page_count)
-        response = @runner.messages_api.chat_messages_page(
+        response = fetch_page_response(chat_id, start_time, backward_link, page_count)
+        extract_messages_and_link(response)
+      end
+
+      def fetch_page_response(chat_id, start_time, backward_link, page_count)
+        @runner.messages_api.chat_messages_page(
           chat_id: chat_id, start_time: page_count.zero? ? start_time : nil, backward_link: backward_link
         )
+      end
+
+      def extract_messages_and_link(response)
         [response['messages'] || response['value'] || [], response.dig('_metadata', 'backwardLink')]
       end
 
@@ -117,8 +134,14 @@ module Teems
 
       def filter_and_sort_messages(messages, start_time)
         messages.reject(&:system_message?)
-                .select { |msg| msg.created_at.nil? || msg.created_at >= start_time }
-                .sort_by { |msg| msg.created_at || Time.at(0) }
+                .filter_map { |msg| message_with_timestamp(msg, start_time) }
+                .sort_by(&:first)
+                .map(&:last)
+      end
+
+      def message_with_timestamp(msg, start_time)
+        timestamp = msg.created_at || Time.at(0)
+        [timestamp, msg] if !msg.created_at || timestamp >= start_time
       end
 
       def merge_messages(existing, new_messages)
@@ -136,12 +159,15 @@ module Teems
       end
 
       def write_metadata(chat)
-        @sync_store.write_chat_metadata(chat.id, { 'id' => chat.id, 'display_name' => chat.display_name,
-                                                   'type' => chat.chat_type, 'synced_at' => Time.now.iso8601 },
-                                        state: @state)
+        @sync_store.write_chat_metadata(chat.id, chat_metadata_hash(chat), state: @state)
       end
 
-      def debug(message) = @verbose && @output&.debug(message)
+      def chat_metadata_hash(chat)
+        { 'id' => chat.id, 'display_name' => chat.display_name,
+          'type' => chat.chat_type, 'synced_at' => Time.now.iso8601 }
+      end
+
+      def debug(message) = @output&.verbose && @output.debug(message)
     end
   end
 end

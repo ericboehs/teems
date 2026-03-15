@@ -11,8 +11,8 @@ module Teems
       STATE_FILE = 'sync_state.json'
       CHATS_DIR = 'chats'
 
-      def initialize(xdg_paths: nil)
-        @xdg_paths = xdg_paths || Support::XdgPaths.new
+      def initialize(xdg_paths: Support::XdgPaths.new)
+        @xdg_paths = xdg_paths
       end
 
       def sync_dir = @sync_dir ||= File.join(@xdg_paths.data_dir, SYNC_DIR)
@@ -95,8 +95,9 @@ module Teems
       end
 
       def build_chat_fields(chat_id, attrs)
+        display_name = attrs[:display_name]
         { 'last_synced_at' => attrs[:last_synced_at].iso8601, 'message_count' => attrs[:message_count],
-          'display_name' => attrs[:display_name], 'dir_name' => build_dir_name(chat_id, attrs[:display_name]),
+          'display_name' => display_name, 'dir_name' => build_dir_name(chat_id, display_name),
           'chat_type' => attrs[:chat_type] }
       end
 
@@ -108,8 +109,12 @@ module Teems
         current = entry['dir_name']
         return unless current && (current != new_dir_name || entry['chat_type'] != chat_type)
 
-        old_path = chat_type_path(entry['chat_type'], current)
-        new_path = chat_type_path(chat_type, new_dir_name)
+        perform_rename(entry['chat_type'], current, chat_type, new_dir_name)
+      end
+
+      def perform_rename(old_type, old_name, new_type, new_name)
+        old_path = chat_type_path(old_type, old_name)
+        new_path = chat_type_path(new_type, new_name)
         return if old_path == new_path || !File.directory?(old_path) || File.exist?(new_path)
 
         FileUtils.mkdir_p(File.dirname(new_path))

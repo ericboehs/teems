@@ -163,7 +163,7 @@ class SyncEngineTest < Minitest::Test
       state = sync_store.load_state
       engine = Teems::Services::SyncEngine.new(
         runner: runner, sync_store: sync_store, state: state,
-        output: output, verbose: true
+        output: output
       )
       runner.api_client.stub('messages', { 'messages' => [sample_ng_msg_message], '_metadata' => {} })
 
@@ -176,7 +176,7 @@ class SyncEngineTest < Minitest::Test
 
   def test_fetch_cutoff_stops_pagination
     with_temp_config do
-      engine = build_engine(verbose: true)
+      engine = build_engine
       runner = engine.instance_variable_get(:@runner)
       # Create a message with old date (before start_time)
       old_msg = sample_ng_msg_message.dup
@@ -203,7 +203,7 @@ class SyncEngineTest < Minitest::Test
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       engine = engine_class.new(runner: runner, sync_store: sync_store, state: {},
-                                output: output, verbose: false)
+                                output: output)
 
       # Directly call debug - should be a no-op when not verbose
       result = engine.debug('test message')
@@ -220,7 +220,7 @@ class SyncEngineTest < Minitest::Test
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       engine = engine_class.new(runner: runner, sync_store: sync_store, state: {},
-                                output: output, verbose: false)
+                                output: output)
 
       refute engine.log_and_check_max(1, ['msg'])
       assert engine.log_and_check_max(500, ['msg'])
@@ -236,7 +236,7 @@ class SyncEngineTest < Minitest::Test
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       engine = engine_class.new(runner: runner, sync_store: sync_store, state: {},
-                                output: output, verbose: false)
+                                output: output)
 
       msg = sample_ng_msg_message.dup
       msg.delete('composetime')
@@ -279,7 +279,7 @@ class SyncEngineTest < Minitest::Test
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       engine = engine_class.new(runner: runner, sync_store: sync_store, state: {},
-                                output: output, verbose: false)
+                                output: output)
 
       msg_with_time = Teems::Models::Message.new(
         id: 'msg-1', sender_id: 'u1', sender_name: 'A', content: 'Hi',
@@ -309,7 +309,7 @@ class SyncEngineTest < Minitest::Test
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       engine = engine_class.new(runner: runner, sync_store: sync_store, state: {},
-                                output: output, verbose: false)
+                                output: output)
 
       assert_nil engine.advance_link(nil, Time.now)
     end
@@ -324,7 +324,7 @@ class SyncEngineTest < Minitest::Test
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       engine = engine_class.new(runner: runner, sync_store: sync_store, state: {},
-                                output: output, verbose: false)
+                                output: output)
 
       msg = Teems::Models::Message.new(
         id: 'nil-time', sender_id: 'u1', sender_name: 'A', content: 'Hi',
@@ -349,7 +349,7 @@ class SyncEngineTest < Minitest::Test
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       engine = engine_class.new(runner: runner, sync_store: sync_store, state: {},
-                                output: output, verbose: true)
+                                output: output)
 
       old_msg = sample_ng_msg_message.dup
       old_msg['composetime'] = '2025-06-01T12:00:00.000Z'
@@ -370,7 +370,7 @@ class SyncEngineTest < Minitest::Test
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       engine = engine_class.new(runner: runner, sync_store: sync_store, state: {},
-                                output: output, verbose: false)
+                                output: output)
 
       msg = Teems::Models::Message.new(
         id: 'nil-time', sender_id: 'u1', sender_name: 'A', content: 'Hi',
@@ -386,7 +386,7 @@ class SyncEngineTest < Minitest::Test
 
   def test_fetch_all_messages_with_nil_created_at_msg
     with_temp_config do
-      engine = build_engine(verbose: false)
+      engine = build_engine
       runner = engine.instance_variable_get(:@runner)
 
       msg = sample_ng_msg_message.dup
@@ -415,7 +415,7 @@ class SyncEngineTest < Minitest::Test
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       engine = engine_class.new(runner: runner, sync_store: sync_store, state: {},
-                                output: output, verbose: false)
+                                output: output)
 
       # Empty list -> oldest is nil -> &.created_at returns nil (else branch of &&)
       parsed, cutoff = engine.parse_page_messages([], Time.new(2026, 1, 1))
@@ -434,7 +434,7 @@ class SyncEngineTest < Minitest::Test
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       engine = engine_class.new(runner: runner, sync_store: sync_store, state: {},
-                                output: output, verbose: false)
+                                output: output)
 
       msg_with_time = sample_ng_msg_message
       msg_no_time = sample_ng_msg_message.dup
@@ -450,14 +450,13 @@ class SyncEngineTest < Minitest::Test
 
   private
 
-  def build_engine(verbose: false)
+  def build_engine
     output = test_output
     runner = configured_runner(output: output)
     sync_store = Teems::Services::SyncStore.new
     state = sync_store.load_state
     Teems::Services::SyncEngine.new(
-      runner: runner, sync_store: sync_store, state: state,
-      output: output, verbose: verbose
+      runner: runner, sync_store: sync_store, state: state, output: output
     )
   end
 end

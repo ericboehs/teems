@@ -61,15 +61,16 @@ module Teems
       end
 
       def format_message(msg)
-        lines = []
-        lines << '> _Reply to message_' if msg.reply?
-        lines << format_message_header(msg)
-        lines << ''
+        [*(msg.reply? ? ['> _Reply to message_'] : []),
+         format_message_header(msg), '',
+         *message_body_lines(msg)]
+      end
+
+      def message_body_lines(msg)
         content = msg.content
-        lines << content unless content.nil? || content.empty?
-        lines.concat(format_message_attachments(msg))
-        lines.concat(format_message_reactions(msg))
-        lines
+        result = content.to_s.empty? ? [] : [content]
+        result.concat(format_message_attachments(msg))
+        result.concat(format_message_reactions(msg))
       end
 
       def format_message_header(msg)
@@ -93,8 +94,11 @@ module Teems
         reactions = msg.reactions
         return [] unless reactions.is_a?(Array) && reactions.any?
 
-        strs = reactions.map { |reaction| format_single_reaction(reaction) }
-        ["Reactions: #{strs.join('  ')}"]
+        [format_reactions_line(reactions)]
+      end
+
+      def format_reactions_line(reactions)
+        "Reactions: #{reactions.map { |reaction| format_single_reaction(reaction) }.join('  ')}"
       end
 
       def format_single_reaction(reaction)

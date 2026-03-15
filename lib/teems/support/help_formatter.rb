@@ -35,6 +35,12 @@ module Teems
 
       # Section within help text
       class Section
+        ITEM_RENDERERS = {
+          option: ->(args) { "  #{args[0].ljust(20)} #{args[1]}" },
+          item: ->(args) { "  #{args[0].ljust(20)} #{args[1]}" },
+          text: ->(args) { "  #{args.first}" }
+        }.freeze
+
         def initialize(title)
           @title = title
           @items = []
@@ -61,10 +67,7 @@ module Teems
         private
 
         def render_item(type, args)
-          case type
-          when :option, :item then "  #{args[0].ljust(20)} #{args[1]}"
-          when :text          then "  #{args.first}"
-          end
+          ITEM_RENDERERS[type]&.call(args)
         end
       end
     end

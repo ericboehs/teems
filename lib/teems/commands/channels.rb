@@ -4,6 +4,11 @@ module Teems
   module Commands
     # List joined teams and their channels
     class Channels < Base
+      def initialize(args, runner:)
+        @options = {}
+        super
+      end
+
       def execute
         result = validate_options
         return result if result
@@ -79,9 +84,10 @@ module Teems
       def display_channel(channel_data, team_data)
         channel = Models::Channel.from_api(channel_data, team_id: team_data['id'],
                                                          team_name: team_data['displayName'])
-        prefix = channel.private? ? output.yellow('🔒') : '  '
-        puts "  #{prefix} #{channel.name} (#{channel.id})"
+        puts "  #{channel_prefix(channel)} #{channel.name} (#{channel.id})"
       end
+
+      def channel_prefix(channel) = channel.private? ? output.yellow('🔒') : '  '
 
       def build_json_output(teams)
         api = runner.channels_api

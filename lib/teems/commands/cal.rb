@@ -86,9 +86,13 @@ module Teems
       end
 
       def date_range_for_week
-        today = Date.today
-        monday = today - (today.wday.zero? ? 6 : today.wday - 1)
+        monday = week_monday
         [day_start(monday), day_end(monday + 4)]
+      end
+
+      def week_monday
+        today = Date.today
+        today - (today.wday.zero? ? 6 : today.wday - 1)
       end
 
       def date_range_for_days
@@ -198,7 +202,7 @@ module Teems
           runner.calendar_api.rsvp_event(
             event_id: event_id, action: @subcommand,
             comment: @options[:comment],
-            send_response: @options.fetch(:send_response, true)
+            notify: @options[:no_send] ? :silent : :send
           )
         end
 
@@ -231,6 +235,13 @@ module Teems
       include CalSubcommandParser
       include CalEventActions
 
+      def initialize(args, runner:)
+        @options = {}
+        @subcommand = nil
+        @event_number = nil
+        super
+      end
+
       def execute
         result = validate_options
         return result if result
@@ -243,16 +254,19 @@ module Teems
 
       protected
 
-      # :reek:DuplicateMethodCall { allow_calls: ['args.shift'] } - each option consumes the next arg
+      CAL_OPTIONS = {
+        '--days' => ->(opts, args) { opts[:days] = args.shift.to_i },
+        '--week' => ->(opts, _args) { opts[:week] = true },
+        '--date' => ->(opts, args) { opts[:date] = args.shift },
+        '--comment' => ->(opts, args) { opts[:comment] = args.shift },
+        '--no-send' => ->(opts, _args) { opts[:no_send] = true }
+      }.freeze
+
       def handle_option(arg, args, _remaining)
-        case arg
-        when '--days'    then @options[:days] = args.shift.to_i
-        when '--week'    then @options[:week] = true
-        when '--date'    then @options[:date] = args.shift
-        when '--comment' then @options[:comment] = args.shift
-        when '--no-send' then @options[:send_response] = false
-        else super
-        end
+        handler = CAL_OPTIONS[arg]
+        return super unless handler
+
+        handler.call(@options, args)
       end
 
       def help_text = CAL_HELP
@@ -271,15 +285,19 @@ module Teems
         range = compute_date_range
         return error("Invalid date: #{@options[:date]}") && 1 unless range
 
+        fetch_and_display_events(range)
+      rescue ApiError => api_error
+        error("Failed to fetch calendar: #{api_error.message}")
+        1
+      end
+
+      def fetch_and_display_events(range)
         events = fetch_events(range)
         return 0 if events.empty? && (puts('No events found') || true)
 
         cache_event_ids(events)
         render_events(events)
         0
-      rescue ApiError => api_error
-        error("Failed to fetch calendar: #{api_error.message}")
-        1
       end
 
       def fetch_events(range)
@@ -303,7 +321,8 @@ module Teems
           output_json(events.map { |event| event_to_hash(event) })
         else
           formatter = Formatters::CalendarFormatter.new(output: output)
-          puts formatter.format_event_list(events, verbose: @options[:verbose])
+          method = @options[:verbose] ? :format_event_list_verbose : :format_event_list_compact
+          puts formatter.public_send(method, events)
         end
       end
     end

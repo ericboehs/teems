@@ -4,14 +4,13 @@ module Teems
   module Models
     # Shared parsing helpers for API response data
     module Parsing
+      module_function
+
       def strip_html(html)
         return nil unless html
 
         require 'cgi'
-        text = html.gsub(/<[^>]+>/, ' ')
-        text = CGI.unescapeHTML(text)
-        text = text.gsub('&nbsp;', ' ')
-        text.gsub(/\s+/, ' ').strip
+        CGI.unescapeHTML(html.gsub(/<[^>]+>/, ' ')).gsub('&nbsp;', ' ').gsub(/\s+/, ' ').strip
       end
 
       def parse_time(time_str)

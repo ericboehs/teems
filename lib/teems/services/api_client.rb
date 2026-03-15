@@ -20,13 +20,17 @@ module Teems
 
       def start_http(uri)
         Net::HTTP.new(uri.host, uri.port).tap do |http|
-          http.use_ssl = (uri.scheme == 'https')
-          http.open_timeout = 10
-          http.read_timeout = 30
-          http.keep_alive_timeout = 30
-          configure_ssl(http) if http.use_ssl?
+          configure_http(http, uri.scheme == 'https')
           http.start
         end
+      end
+
+      def configure_http(http, use_ssl)
+        http.use_ssl = use_ssl
+        http.open_timeout = 10
+        http.read_timeout = 30
+        http.keep_alive_timeout = 30
+        configure_ssl(http) if use_ssl
       end
 
       def configure_ssl(http)
@@ -44,8 +48,14 @@ module Teems
         Errno::EHOSTUNREACH, Net::OpenTimeout, Net::ReadTimeout, OpenSSL::SSL::SSLError
       ].freeze
 
-      attr_reader :call_count
+      AUTH_HEADERS = {
+        msgservice: ->(account) { ['Authentication', account.skype_auth_header] },
+        teams: ->(account) { ['Authorization', "Bearer #{account.skype_token}"] }
+      }.freeze
+      DEFAULT_AUTH_HEADER = ->(account) { ['Authorization', account.teams_auth_header] }
+
       attr_accessor :on_request, :on_response
+      attr_reader :call_count
 
       def initialize
         @call_count = 0
@@ -62,6 +72,7 @@ module Teems
         @http_cache.clear
       end
 
+      # :reek:LongParameterList - HTTP method naturally takes endpoint, path, account, params, headers
       def get(endpoint_key, path, account:, params: {}, headers: {})
         uri = resolve_uri(endpoint_key, path, params)
         execute_request(path, endpoint_key) do |http|
@@ -98,11 +109,8 @@ module Teems
 
       def apply_auth(request, account, endpoint_key)
         request['Content-Type'] = 'application/json'
-        case endpoint_key
-        when :msgservice then request['Authentication'] = account.skype_auth_header
-        when :teams      then request['Authorization'] = "Bearer #{account.skype_token}"
-        else                  request['Authorization'] = account.teams_auth_header
-        end
+        header, value = AUTH_HEADERS.fetch(endpoint_key, DEFAULT_AUTH_HEADER).call(account)
+        request[header] = value
       end
 
       def execute_request(path, endpoint_key)
@@ -133,7 +141,7 @@ module Teems
 
       def parse_json_body(response)
         body = response.body
-        return {} if body.nil? || body.empty?
+        return {} if body.to_s.empty?
 
         JSON.parse(body)
       rescue JSON::ParserError

@@ -97,11 +97,11 @@ module Teems
       end
 
       def timestamp = created_at
-      def reply? = !reply_to_id.nil?
+      def reply? = !!reply_to_id
       def important? = %w[urgent high].include?(importance)
 
       def system_message?
-        return false if message_type.nil?
+        return false unless message_type
         return false if %w[Message message Text].include?(message_type)
         return false if message_type.start_with?('RichText')
 

@@ -3,6 +3,8 @@
 module Teems
   # Command-line interface entry point that dispatches to commands
   class CLI
+    ERROR_LABELS = { AuthError => 'Auth error', ApiError => 'API error' }.freeze
+
     COMMANDS = {
       'auth' => Commands::Auth,
       'cal' => Commands::Cal,
@@ -13,6 +15,7 @@ module Teems
       'help' => Commands::Help
     }.freeze
 
+    # :reek:ControlParameter - DI constructor with lazy default
     def initialize(argv, output: nil)
       @argv = argv.dup
       @output = output || Formatters::Output.new
@@ -33,7 +36,7 @@ module Teems
 
     private
 
-    def help_requested?(name) = name.nil? || ['-h', '--help'].include?(name)
+    def help_requested?(name) = !name || ['-h', '--help'].include?(name)
     def version_requested?(name) = ['--version', '-V', 'version'].include?(name)
 
     def show_help = run_command('help', [])
@@ -63,12 +66,7 @@ module Teems
       1
     end
 
-    def error_label(error)
-      case error
-      when AuthError then 'Auth error'
-      when ApiError then 'API error'
-      end
-    end
+    def error_label(error) = ERROR_LABELS[error.class]
 
     def handle_interrupt
       @output.puts
@@ -87,21 +85,18 @@ module Teems
       command_class = COMMANDS[name]
       return 1 unless command_class
 
-      verbose = verbose_mode?(args)
-      runner = build_runner(args, verbose)
-      execute_command(command_class, args, runner, verbose)
+      runner = build_runner(args)
+      execute_command(command_class, args, runner)
     ensure
       runner&.api_client&.close
     end
 
-    def build_runner(args, verbose)
-      out = resolve_output(args, verbose)
-      Runner.new(output: out).tap { |new_runner| setup_verbose_logging(new_runner, out) if verbose }
+    def build_runner(args)
+      out = verbose_mode?(args) ? verbose_output : @output
+      Runner.new(output: out).tap { |new_runner| setup_verbose_logging(new_runner, out) if out.verbose }
     end
 
-    def resolve_output(_args, verbose)
-      return @output unless verbose
-
+    def verbose_output
       @output&.with_verbose(true) || Formatters::Output.new(verbose: true)
     end
 
@@ -111,10 +106,10 @@ module Teems
       }
     end
 
-    def execute_command(command_class, args, runner, verbose)
+    def execute_command(command_class, args, runner)
       command = command_class.new(args, runner: runner)
       result = command.execute
-      log_api_call_count(runner) if verbose
+      log_api_call_count(runner) if runner.output.verbose
       result
     end
 

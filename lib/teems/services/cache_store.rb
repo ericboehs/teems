@@ -4,8 +4,8 @@ module Teems
   module Services
     # Manages caching of user and channel data
     class CacheStore
-      def initialize(paths: nil)
-        @paths = paths || Support::XdgPaths.new
+      def initialize(paths: Support::XdgPaths.new)
+        @paths = paths
         @user_cache = {}
       end
 

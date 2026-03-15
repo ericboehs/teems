@@ -157,12 +157,15 @@ module Teems
 
       def show_dry_run(chats)
         syncable = chats.reject { |chat| skip_reason(chat['id']) }
-        skipped = chats.length - syncable.length
-        info("Dry run — would sync #{syncable.length} chat(s) since #{since_time.strftime('%Y-%m-%d')}")
-        info("  (#{skipped} system streams skipped)") if skipped.positive?
-        puts
+        display_dry_run_header(chats.length - syncable.length, syncable.length)
         syncable.each { |chat| format_dry_run_chat(chat) }
         0
+      end
+
+      def display_dry_run_header(skipped, syncable_count)
+        info("Dry run — would sync #{syncable_count} chat(s) since #{since_time.strftime('%Y-%m-%d')}")
+        info("  (#{skipped} system streams skipped)") if skipped.positive?
+        puts
       end
 
       def format_dry_run_chat(chat_data)
@@ -198,6 +201,14 @@ module Teems
       DEFAULT_SINCE_DAYS = 180
       SKIP_PREFIXES = %w[48:].freeze
 
+      def initialize(args, runner:)
+        @options = {}
+        @sync_store = nil
+        @state = nil
+        @stats = nil
+        super
+      end
+
       def execute
         result = validate_options
         return result if result
@@ -213,14 +224,18 @@ module Teems
 
       protected
 
+      SYNC_OPTIONS = {
+        '--since' => ->(opts, args) { opts[:since_days] = args.shift.to_i },
+        '--chat' => ->(opts, args) { opts[:chat_id] = args.shift },
+        '--dry-run' => ->(opts, _args) { opts[:dry_run] = true },
+        '--auth' => ->(opts, _args) { opts[:auth] = true }
+      }.freeze
+
       def handle_option(arg, args, _remaining)
-        case arg
-        when '--since'  then @options[:since_days] = args.shift.to_i
-        when '--chat'   then @options[:chat_id] = args.shift
-        when '--dry-run' then @options[:dry_run] = true
-        when '--auth' then @options[:auth] = true
-        else super
-        end
+        handler = SYNC_OPTIONS[arg]
+        return super unless handler
+
+        handler.call(@options, args)
       end
 
       def help_text = SYNC_HELP
@@ -238,10 +253,8 @@ module Teems
       end
 
       def save_login_tokens(tokens)
-        saved = token_store.save(
-          name: 'default', auth_token: tokens[:auth_token], skype_token: tokens[:skype_token],
-          skype_spaces_token: tokens[:skype_spaces_token], chatsvc_token: tokens[:chatsvc_token]
-        )
+        saved = token_store.save(name: 'default', **tokens.slice(:auth_token, :skype_token,
+                                                                 :skype_spaces_token, :chatsvc_token))
         return error('Authentication tokens extracted but failed to save') || 1 unless saved
 
         success('Authentication successful!')
@@ -254,6 +267,10 @@ module Teems
         return 1 unless chats
         return show_dry_run(chats) if @options[:dry_run]
 
+        sync_all_chats(chats)
+      end
+
+      def sync_all_chats(chats)
         chats.each_with_index { |chat_data, index| sync_or_skip_chat(chat_data, index, chats.length) }
         save_state_safely
         show_summary
@@ -276,8 +293,7 @@ module Teems
 
       def sync_engine
         @sync_engine ||= Services::SyncEngine.new(
-          runner: runner, sync_store: @sync_store, state: @state,
-          output: output, verbose: @options[:verbose]
+          runner: runner, sync_store: @sync_store, state: @state, output: output
         )
       end
 

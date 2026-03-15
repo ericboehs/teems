@@ -6,26 +6,20 @@ module Teems
     class TokenStore
       TOKENS_FILE = 'tokens.json'
 
-      def initialize(paths: nil)
-        @paths = paths || Support::XdgPaths.new
+      def initialize(paths: Support::XdgPaths.new)
+        @paths = paths
       end
 
       def account
         data = load_tokens
         return nil if data.empty?
-        return nil unless data['auth_token'] && data['skype_token']
 
-        Models::Account.new(
-          name: data['name'] || 'default',
-          auth_token: data['auth_token'],
-          skype_token: data['skype_token'],
-          chatsvc_token: data['chatsvc_token']
-        )
+        build_account(data)
       end
 
-      def save(name:, auth_token:, skype_token:, skype_spaces_token: nil, chatsvc_token: nil)
+      def save(name:, auth_token:, skype_token: nil, **extra_tokens)
         @paths.ensure_config_dir
-        data = build_save_data(name, auth_token, skype_token, skype_spaces_token, chatsvc_token)
+        data = build_save_data(name, auth_token, skype_token, extra_tokens)
         write_token_file(data)
       rescue SystemCallError, IOError => save_error
         warn "teems: Could not save tokens: #{save_error.message}"
@@ -37,11 +31,7 @@ module Teems
         data = load_tokens
         return false if data.empty?
 
-        data['skype_token'] = skype_token
-        data['skype_token_refreshed_at'] = Time.now.iso8601
-        File.write(tokens_file, JSON.pretty_generate(data))
-        File.chmod(0o600, tokens_file)
-        true
+        apply_skype_token(data, skype_token)
       rescue SystemCallError, IOError => update_error
         warn "teems: Could not update token file: #{update_error.message}"
         false
@@ -78,10 +68,23 @@ module Teems
         @paths.config_file(TOKENS_FILE)
       end
 
-      def build_save_data(name, auth_token, skype_token, skype_spaces_token, chatsvc_token)
+      def build_account(data)
+        return nil unless data['auth_token'] && data['skype_token']
+
+        Models::Account.new(
+          name: data['name'] || 'default', auth_token: data['auth_token'],
+          skype_token: data['skype_token'], chatsvc_token: data['chatsvc_token']
+        )
+      end
+
+      def apply_skype_token(data, skype_token)
+        data.merge!('skype_token' => skype_token, 'skype_token_refreshed_at' => Time.now.iso8601)
+        write_token_file(data)
+      end
+
+      def build_save_data(name, auth_token, skype_token, extra_tokens)
         { 'name' => name, 'auth_token' => auth_token, 'skype_token' => skype_token,
-          'skype_spaces_token' => skype_spaces_token, 'chatsvc_token' => chatsvc_token,
-          'saved_at' => Time.now.iso8601 }.compact
+          'saved_at' => Time.now.iso8601 }.merge(extra_tokens.transform_keys(&:to_s)).compact
       end
 
       def write_token_file(data)

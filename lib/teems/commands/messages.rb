@@ -26,6 +26,11 @@ module Teems
 
     # Read messages from a channel or chat
     class Messages < Base
+      def initialize(args, runner:)
+        @options = {}
+        super
+      end
+
       def execute
         result = validate_options
         return result if result
@@ -41,11 +46,16 @@ module Teems
 
       protected
 
+      MESSAGES_OPTIONS = {
+        '-t' => ->(opts, args) { opts[:team_id] = args.shift },
+        '--team' => ->(opts, args) { opts[:team_id] = args.shift }
+      }.freeze
+
       def handle_option(arg, args, _remaining)
-        case arg
-        when '-t', '--team' then @options[:team_id] = args.shift
-        else super
-        end
+        handler = MESSAGES_OPTIONS[arg]
+        return super unless handler
+
+        handler.call(@options, args)
       end
 
       def help_text = MESSAGES_HELP

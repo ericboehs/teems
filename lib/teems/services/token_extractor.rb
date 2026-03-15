@@ -10,10 +10,12 @@ module Teems
     module SafariAutomation
       private
 
-      def run_safari_js(js_code, wrap: true)
-        escaped = wrap ? escape_js_for_applescript(js_code) : js_code
-        script = wrap ? safari_js_script(escaped) : safari_readystate_script
-        run_applescript(script)
+      def run_safari_js(js_code)
+        run_applescript(safari_js_script(escape_js_for_applescript(js_code)))
+      end
+
+      def run_safari_readystate
+        run_applescript(safari_readystate_script)
       end
 
       def safari_js_script(escaped_js)
@@ -63,17 +65,23 @@ module Teems
         return applescript_failure(status) unless status.success?
 
         output.strip
-      rescue Errno::ENOENT => not_found_error
-        log("osascript not found: #{not_found_error.message}")
-        nil
-      rescue IOError, SystemCallError => io_error
-        log("AppleScript I/O error: #{io_error.message}")
-        nil
+      rescue IOError, SystemCallError => run_error
+        log_applescript_error(run_error)
       end
 
       def applescript_failure(status)
         log("AppleScript execution failed with status #{status.exitstatus}")
         nil
+      end
+
+      def log_applescript_error(run_error)
+        log(applescript_error_message(run_error))
+        nil
+      end
+
+      def applescript_error_message(run_error)
+        label = run_error.is_a?(Errno::ENOENT) ? 'osascript not found' : 'AppleScript I/O error'
+        "#{label}: #{run_error.message}"
       end
     end
 
@@ -105,26 +113,33 @@ module Teems
       def poll_decrypt_result
         read_js = READ_DECRYPT_RESULT_JS.gsub('{{result_key}}', DECRYPT_RESULT_KEY)
         10.times do |attempt|
-          sleep 1
-          result = run_safari_js(read_js).to_s.strip
-          next if result.empty? || result == 'null'
-
-          return parse_decrypt_result(result, attempt)
+          result = check_decrypt_result(read_js, attempt)
+          return result if result
         end
         log('Timed out waiting for v2 token decryption')
         nil
       end
 
+      def check_decrypt_result(read_js, attempt)
+        sleep 1
+        result = run_safari_js(read_js).to_s.strip
+        return nil if result.empty? || result == 'null'
+
+        parse_decrypt_result(result, attempt)
+      end
+
       def parse_decrypt_result(result, attempt)
         parsed = JSON.parse(result)
-        if parsed['error']
-          log("Decryption error: #{parsed['error']}")
-          return nil
-        end
+        return log_decrypt_error(parsed['error']) if parsed['error']
         return nil unless parsed['auth_token']
 
         log("V2 tokens decrypted after #{attempt + 1}s")
         finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'])
+      end
+
+      def log_decrypt_error(message)
+        log("Decryption error: #{message}")
+        nil
       end
     end
 
@@ -143,17 +158,20 @@ module Teems
       end
 
       def exchange_skype_token(skype_spaces_token)
-        exchange_js = build_exchange_script(skype_spaces_token)
-        result = run_safari_js(exchange_js)
-        return nil if result.nil? || result.empty?
+        result = run_safari_js(build_exchange_script(skype_spaces_token))
+        return nil if result.to_s.empty?
 
+        parse_exchange_result(result)
+      rescue JSON::ParserError => parse_error
+        log("Failed to parse token exchange result: #{parse_error.message}")
+        nil
+      end
+
+      def parse_exchange_result(result)
         parsed = JSON.parse(result)
         return nil if parsed['error']
 
         { skype_token: parsed['skype_token'], region: parsed['region'], chat_service: parsed['chat_service'] }
-      rescue JSON::ParserError => parse_error
-        log("Failed to parse token exchange result: #{parse_error.message}")
-        nil
       end
 
       def build_exchange_script(skype_spaces_token)
@@ -174,16 +192,20 @@ module Teems
       def wait_for_tokens
         v2_attempted = false
         TOKEN_POLL_MAX_SECONDS.times do |attempt|
-          tokens = extract_tokens_v1
-          return tokens if tokens&.dig(:auth_token)
-
-          tokens, v2_attempted = try_v2_if_needed(attempt, v2_attempted)
+          tokens, v2_attempted = poll_once(attempt, v2_attempted)
           return tokens if tokens&.dig(:auth_token)
 
           log_poll_progress(attempt)
           sleep TOKEN_POLL_INTERVAL
         end
         nil
+      end
+
+      def poll_once(attempt, v2_attempted)
+        tokens = extract_tokens_v1
+        return [tokens, v2_attempted] if tokens&.dig(:auth_token)
+
+        try_v2_if_needed(attempt, v2_attempted)
       end
 
       def try_v2_if_needed(attempt, v2_attempted)
@@ -194,20 +216,25 @@ module Teems
       end
 
       def log_poll_progress(attempt)
-        log("Tokens not yet available, retrying... (#{attempt + 1}s)") if ((attempt + 1) % 5).zero?
+        elapsed = attempt + 1
+        log("Tokens not yet available, retrying... (#{elapsed}s)") if (elapsed % 5).zero?
       end
 
       def extract_tokens_v1
-        result = run_safari_js(EXTRACT_TOKENS_JS)
-        return nil if result.nil? || result.empty?
-
-        parsed = JSON.parse(result)
-        return nil unless parsed['auth_token']
+        parsed = parse_safari_json(EXTRACT_TOKENS_JS)
+        return nil unless parsed&.dig('auth_token')
 
         finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'])
       rescue JSON::ParserError => parse_error
         log("Failed to parse v1 token extraction result: #{parse_error.message}")
         nil
+      end
+
+      def parse_safari_json(js_code)
+        result = run_safari_js(js_code)
+        return nil if result.to_s.empty?
+
+        JSON.parse(result)
       end
 
       def finalize_tokens(auth_token, skype_spaces_token)
@@ -308,11 +335,15 @@ module Teems
       end
 
       def page_ready?
-        result = run_safari_js('document.readyState', wrap: false)
+        result = run_safari_readystate
         return false unless result
 
         url, ready_state = result.split('|', 2)
-        url.to_s.include?('teams.microsoft.com') && !url.to_s.include?('login') && ready_state.to_s == 'complete'
+        teams_page_loaded?(url.to_s, ready_state.to_s)
+      end
+
+      def teams_page_loaded?(url, ready_state)
+        url.include?('teams.microsoft.com') && !url.include?('login') && ready_state == 'complete'
       end
 
       def log(message) = @output&.debug(message)
