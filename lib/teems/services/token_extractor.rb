@@ -326,9 +326,15 @@ module Teems
       end
 
       def wait_for_login
+        consecutive_ready = 0
         60.times do |second|
           sleep 1
-          break if page_ready?
+          if page_ready?
+            consecutive_ready += 1
+            break if consecutive_ready >= 3
+          else
+            consecutive_ready = 0
+          end
 
           log("Waiting... (#{second + 1}s)") if ((second + 1) % 10).zero?
         end

@@ -45,8 +45,8 @@ class TokenExtractorTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login: page_ready? check - URL with teams and complete state
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: page_ready? needs 3 consecutive complete checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # extract_tokens_v1
     extractor.applescript_results << '{"auth_token":"test-auth","skype_spaces_token":"test-skype-spaces"}'
     # exchange_skype_if_available call
@@ -68,8 +68,8 @@ class TokenExtractorTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login: page_ready? returns ready
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: page_ready? needs 3 consecutive complete checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # extract_tokens_v1 returns empty for all polls, plus v2 decryption
     60.times { extractor.applescript_results << nil }
     # close_teams_tab
@@ -97,8 +97,8 @@ class TokenV2DecryptorTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # v1 polls (5 attempts before v2 is tried)
     6.times { extractor.applescript_results << nil }
     # v2 kick_off_decryption returns 'no_key'
@@ -119,8 +119,8 @@ class TokenV2DecryptorTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # v1 polls (6 fails, to reach v2 threshold)
     6.times { extractor.applescript_results << nil }
     # v2 kick_off_decryption returns 'started'
@@ -145,8 +145,8 @@ class TokenV2DecryptorTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # v1 polls
     6.times { extractor.applescript_results << nil }
     # v2 kick_off returns 'started'
@@ -169,8 +169,8 @@ class TokenV2DecryptorTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # v1 polls
     6.times { extractor.applescript_results << nil }
     # v2 kick_off returns 'started'
@@ -193,8 +193,8 @@ class TokenV2DecryptorTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # v1 polls
     6.times { extractor.applescript_results << nil }
     # v2 kick_off returns 'started'
@@ -217,8 +217,8 @@ class TokenV2DecryptorTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # v1 polls
     6.times { extractor.applescript_results << nil }
     # v2 kick_off returns 'started'
@@ -243,8 +243,8 @@ class TokenExchangerTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # extract_tokens_v1 with auth_token but no skype_spaces_token
     extractor.applescript_results << '{"auth_token":"test-auth","skype_spaces_token":null}'
     # close tab
@@ -264,8 +264,8 @@ class TokenExchangerTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # extract_tokens_v1 with both tokens
     extractor.applescript_results << '{"auth_token":"test-auth","skype_spaces_token":"test-spaces"}'
     # exchange returns empty
@@ -286,8 +286,8 @@ class TokenExchangerTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # extract_tokens_v1
     extractor.applescript_results << '{"auth_token":"test-auth","skype_spaces_token":"test-spaces"}'
     # exchange returns error
@@ -307,8 +307,8 @@ class TokenExchangerTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # extract_tokens_v1
     extractor.applescript_results << '{"auth_token":"test-auth","skype_spaces_token":"test-spaces"}'
     # exchange returns invalid json
@@ -330,8 +330,8 @@ class TokenPollingTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # extract_tokens_v1 succeeds immediately
     extractor.applescript_results << '{"auth_token":"v1-auth","skype_spaces_token":"v1-spaces"}'
     # exchange
@@ -352,8 +352,8 @@ class TokenPollingTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # First v1 attempt returns bad JSON
     extractor.applescript_results << 'bad json'
     # Second v1 attempt succeeds
@@ -375,8 +375,8 @@ class TokenPollingTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    # wait_for_login: 3 consecutive ready checks
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # v1 returns result without auth_token
     extractor.applescript_results << '{"auth_token":null}'
     # More v1 polls
@@ -401,10 +401,9 @@ class TokenExtractorPageReadyTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login: not ready (login page)
+    # wait_for_login: not ready (login page), then 3 consecutive ready checks
     extractor.applescript_results << 'https://login.microsoftonline.com/|complete'
-    # wait_for_login: ready
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # extract_tokens_v1
     extractor.applescript_results << '{"auth_token":"ready-auth","skype_spaces_token":null}'
     # close tab
@@ -422,10 +421,9 @@ class TokenExtractorPageReadyTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login: not ready (loading)
+    # wait_for_login: not ready (loading), then 3 consecutive ready checks
     extractor.applescript_results << 'https://teams.microsoft.com/v2/|loading'
-    # wait_for_login: ready
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # extract_tokens_v1
     extractor.applescript_results << '{"auth_token":"ready-auth","skype_spaces_token":null}'
     # close tab
@@ -443,10 +441,9 @@ class TokenExtractorPageReadyTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login: nil responses
+    # wait_for_login: nil response, then 3 consecutive ready checks
     extractor.applescript_results << nil
-    # eventually ready
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # extract_tokens_v1
     extractor.applescript_results << '{"auth_token":"test","skype_spaces_token":null}'
     # close tab
@@ -467,9 +464,9 @@ class TokenExtractorWaitForLoginTest < Minitest::Test
 
     # open_teams_in_safari
     extractor.applescript_results << nil
-    # wait_for_login: 10 iterations of not ready, then ready at 11th
+    # wait_for_login: 10 iterations of not ready, then 3 consecutive ready checks
     10.times { extractor.applescript_results << 'https://login.microsoftonline.com/|loading' }
-    extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete'
+    3.times { extractor.applescript_results << 'https://teams.microsoft.com/v2/|complete' }
     # extract_tokens_v1
     extractor.applescript_results << '{"auth_token":"delayed-auth","skype_spaces_token":null}'
     # close tab
