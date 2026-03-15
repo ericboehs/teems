@@ -23,17 +23,24 @@ detectors:
   BooleanParameter:
     enabled: false
 
-  # Repeated (state, chat_id) in SyncStore is the store's core abstraction
+  # Repeated (state, chat_id) in SyncStore is the store's core abstraction;
+  # repeated (endpoint_key, path, account:) in ApiClient mirrors the HTTP layer
   DataClump:
     exclude:
       - "Teems::Services::SyncStore"
       - "Teems::Services::ApiClient"
 
+  # 404 is an HTTP status code; v1/v2 are token format versions
+  UncommunicativeMethodName:
+    accept:
+      - /404/
+      - /v\d+$/
+
   # Default of 5 is strict; 7 suits a CLI with multi-step methods
   TooManyStatements:
     max_statements: 7
 
-  # CLI entry points, base classes, and output helpers have many small methods
+  # CLI, Commands::Base, and Output have 20-28 methods; 30 gives headroom
   TooManyMethods:
     max_methods: 30
 
@@ -46,7 +53,7 @@ detectors:
     enabled: false
 
   # Formatters work with external objects; builders configure objects they create;
-  # data parsers extract from hashes — all inherently reference external state
+  # data parsers extract from hashes; command classes coordinate multiple services
   FeatureEnvy:
     exclude:
       - "Teems::Formatters"
@@ -66,7 +73,7 @@ detectors:
       - "Teems::Services::SyncSerializer#parse_stored_reactions"
       - "Teems::Support::HelpFormatter::Section#render_item"
 
-  # Callback setters are intentional API design
+  # Callback setters (ApiClient: on_request/on_response; Configuration: on_warning)
   Attribute:
     exclude:
       - "Teems::Services::ApiClient"

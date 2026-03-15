@@ -85,7 +85,6 @@ module Teems
 
       private
 
-      # :reek:UncommunicativeMethodName - v2 refers to token format version
       def extract_tokens_v2
         status = kick_off_decryption
         return nil if status == 'no_key'
@@ -198,7 +197,6 @@ module Teems
         log("Tokens not yet available, retrying... (#{attempt + 1}s)") if ((attempt + 1) % 5).zero?
       end
 
-      # :reek:UncommunicativeMethodName - v1 refers to token format version
       def extract_tokens_v1
         result = run_safari_js(EXTRACT_TOKENS_JS)
         return nil if result.nil? || result.empty?

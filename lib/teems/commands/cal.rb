@@ -243,7 +243,7 @@ module Teems
 
       protected
 
-      # :reek:DuplicateMethodCall { allow_calls: ['args.shift'] }
+      # :reek:DuplicateMethodCall { allow_calls: ['args.shift'] } - each option consumes the next arg
       def handle_option(arg, args, _remaining)
         case arg
         when '--days'    then @options[:days] = args.shift.to_i

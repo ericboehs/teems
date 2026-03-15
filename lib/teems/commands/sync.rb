@@ -93,7 +93,6 @@ module Teems
         @stats[:messages_total] += count
       end
 
-      # :reek:UncommunicativeMethodName - 404 refers to HTTP status code
       def with_404_retry(chat, &)
         yield
       rescue ApiError => api_error
@@ -108,7 +107,6 @@ module Teems
         @stats[:errors] += 1
       end
 
-      # :reek:UncommunicativeMethodName - 404 refers to HTTP status code
       def retry_after_404(chat)
         debug("  Got 404, retrying in #{RETRY_DELAY_SECONDS}s...")
         sleep(RETRY_DELAY_SECONDS)
@@ -117,7 +115,6 @@ module Teems
         handle_persistent_404(chat, api_error)
       end
 
-      # :reek:UncommunicativeMethodName - 404 refers to HTTP status code
       def handle_persistent_404(chat, error)
         display_name = chat.display_name
         if error.not_found?
