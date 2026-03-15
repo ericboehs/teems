@@ -215,6 +215,18 @@ module SyncCommandTests
       runner
     end
 
+    def run_auth_with_expired_tokens
+      exit_code = nil
+      expired = Teems::ApiError.new('Invalid token', status_code: 401)
+      result = capture_output do |output|
+        runner = build_auth_runner(output: output, save_result: true)
+        runner.api_client.stub_transient_error('conversations', expired, times: 1)
+        runner.api_client.stub('conversations', { 'conversations' => [] })
+        exit_code = Teems::Commands::Sync.new(['--auth'], runner: runner).execute
+      end
+      [exit_code, result]
+    end
+
     def setup_retry_404_api_client(runner)
       call_count = 0
       runner.api_client.define_singleton_method(:get) do |_endpoint, path, **_opts|
@@ -665,15 +677,46 @@ module SyncCommandTests
 
     def test_auth_flag_succeeds_when_tokens_saved
       with_temp_config do
+        exit_code, result = run_auth_with_expired_tokens
+        assert_equal 0, exit_code
+        assert_match(/Authentication successful/, result[:stdout])
+      end
+    end
+
+    def test_auth_flag_skips_browser_when_tokens_valid
+      with_temp_config do
         exit_code = nil
         result = capture_output do |output|
-          runner = build_auth_runner(output: output, save_result: true)
+          runner = configured_runner(output: output)
           runner.api_client.stub('conversations', { 'conversations' => [] })
           exit_code = Teems::Commands::Sync.new(['--auth'], runner: runner).execute
         end
 
         assert_equal 0, exit_code
-        assert_match(/Authentication successful/, result[:stdout])
+        assert_match(/tokens still valid/, result[:stdout])
+      end
+    end
+
+    def test_auth_flag_opens_browser_when_tokens_expired
+      with_temp_config do
+        exit_code, result = run_auth_cmd(['--auth'],
+                                         extract_result: nil, save_result: false,
+                                         configured: true)
+
+        assert_equal 1, exit_code
+        assert_match(/Failed to authenticate via Safari/, result[:stderr])
+      end
+    end
+
+    def test_auth_flag_fails_when_only_auth_token_extracted
+      with_temp_config do
+        tokens = { auth_token: 'test-auth', skype_token: nil }
+        exit_code, result = run_auth_cmd(['--auth'],
+                                         extract_result: tokens, save_result: false,
+                                         configured: false)
+
+        assert_equal 1, exit_code
+        assert_match(/Failed to authenticate via Safari/, result[:stderr])
       end
     end
   end
