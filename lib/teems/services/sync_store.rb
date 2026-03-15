@@ -11,8 +11,8 @@ module Teems
       STATE_FILE = 'sync_state.json'
       CHATS_DIR = 'chats'
 
-      def initialize(xdg_paths: nil)
-        @xdg_paths = xdg_paths || Support::XdgPaths.new
+      def initialize(xdg_paths: Support::XdgPaths.new)
+        @xdg_paths = xdg_paths
       end
 
       def sync_dir = @sync_dir ||= File.join(@xdg_paths.data_dir, SYNC_DIR)
@@ -107,13 +107,9 @@ module Teems
 
       def maybe_rename(entry, new_dir_name, chat_type)
         current = entry['dir_name']
-        return unless current && dir_name_changed?(current, new_dir_name, entry['chat_type'], chat_type)
+        return unless current && (current != new_dir_name || entry['chat_type'] != chat_type)
 
         perform_rename(entry['chat_type'], current, chat_type, new_dir_name)
-      end
-
-      def dir_name_changed?(current, new_name, current_type, new_type)
-        current != new_name || current_type != new_type
       end
 
       def perform_rename(old_type, old_name, new_type, new_name)

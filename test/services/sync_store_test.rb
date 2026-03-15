@@ -505,17 +505,13 @@ class SyncStoreTest < Minitest::Test
   end
 
   def test_type_dir_mapping
-    with_temp_config do
-      store = Teems::Services::SyncStore.new
-
-      assert_equal 'dms', store.type_dir('oneOnOne')
-      assert_equal 'groups', store.type_dir('group')
-      assert_equal 'meetings', store.type_dir('meeting')
-      assert_equal 'channels', store.type_dir('channel')
-      assert_equal 'spaces', store.type_dir('space')
-      assert_equal 'other', store.type_dir(nil)
-      assert_equal 'other', store.type_dir('unknown')
-    end
+    assert_equal 'dms', Teems::Services::SyncDirNaming.type_dir('oneOnOne')
+    assert_equal 'groups', Teems::Services::SyncDirNaming.type_dir('group')
+    assert_equal 'meetings', Teems::Services::SyncDirNaming.type_dir('meeting')
+    assert_equal 'channels', Teems::Services::SyncDirNaming.type_dir('channel')
+    assert_equal 'spaces', Teems::Services::SyncDirNaming.type_dir('space')
+    assert_equal 'other', Teems::Services::SyncDirNaming.type_dir(nil)
+    assert_equal 'other', Teems::Services::SyncDirNaming.type_dir('unknown')
   end
 
   def test_update_chat_state_stores_chat_type

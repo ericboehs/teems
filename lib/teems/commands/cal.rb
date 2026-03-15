@@ -235,6 +235,13 @@ module Teems
       include CalSubcommandParser
       include CalEventActions
 
+      def initialize(args, runner:)
+        @options = {}
+        @subcommand = nil
+        @event_number = nil
+        super
+      end
+
       def execute
         result = validate_options
         return result if result
@@ -247,16 +254,19 @@ module Teems
 
       protected
 
-      # :reek:DuplicateMethodCall { allow_calls: ['args.shift'] } - each option consumes the next arg
+      CAL_OPTIONS = {
+        '--days' => ->(opts, args) { opts[:days] = args.shift.to_i },
+        '--week' => ->(opts, _args) { opts[:week] = true },
+        '--date' => ->(opts, args) { opts[:date] = args.shift },
+        '--comment' => ->(opts, args) { opts[:comment] = args.shift },
+        '--no-send' => ->(opts, _args) { opts[:send_response] = false }
+      }.freeze
+
       def handle_option(arg, args, _remaining)
-        case arg
-        when '--days'    then @options[:days] = args.shift.to_i
-        when '--week'    then @options[:week] = true
-        when '--date'    then @options[:date] = args.shift
-        when '--comment' then @options[:comment] = args.shift
-        when '--no-send' then @options[:send_response] = false
-        else super
-        end
+        handler = CAL_OPTIONS[arg]
+        return super unless handler
+
+        handler.call(@options, args)
       end
 
       def help_text = CAL_HELP

@@ -11,6 +11,11 @@ module Teems
         'none' => 'Pending'
       }.freeze
 
+      RESPONSE_SYMBOLS = {
+        'accepted' => [:green, '✓'], 'declined' => [:red, '✗'],
+        'tentativelyAccepted' => [:yellow, '?']
+      }.freeze
+
       private
 
       def format_attendee_sections(event)
@@ -50,12 +55,8 @@ module Teems
       end
 
       def response_to_symbol(response)
-        case response
-        when 'accepted'             then @output.green('✓')
-        when 'declined'             then @output.red('✗')
-        when 'tentativelyAccepted'  then @output.yellow('?')
-        else @output.gray('·')
-        end
+        color, symbol = RESPONSE_SYMBOLS.fetch(response, [:gray, '·'])
+        @output.public_send(color, symbol)
       end
 
       def response_label(response) = RESPONSE_LABELS[response] || response&.capitalize || 'Pending'
@@ -73,9 +74,16 @@ module Teems
 
       # Compact agenda view with numbered events
       def format_event_list(events, verbose: false)
+        verbose ? format_event_list_verbose(events) : format_event_list_compact(events)
+      end
+
+      def format_event_list_compact(events)
+        events.each_with_index.map { |event, index| format_list_item(event, index + 1) }.join("\n")
+      end
+
+      def format_event_list_verbose(events)
         events.each_with_index.flat_map do |event, index|
-          item = format_list_item(event, index + 1, verbose: verbose)
-          verbose ? [item, ''] : [item]
+          [format_list_item_verbose(event, index + 1), '']
         end.join("\n")
       end
 
@@ -86,8 +94,12 @@ module Teems
 
       private
 
-      def format_list_item(event, number, verbose: false)
-        build_list_item_line(event, number) + (verbose ? list_item_verbose_suffix(event) : '')
+      def format_list_item(event, number)
+        build_list_item_line(event, number)
+      end
+
+      def format_list_item_verbose(event, number)
+        build_list_item_line(event, number) + list_item_verbose_suffix(event)
       end
 
       def build_list_item_line(event, number)

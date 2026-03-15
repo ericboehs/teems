@@ -4,6 +4,11 @@ module Teems
   module Commands
     # List joined teams and their channels
     class Channels < Base
+      def initialize(args, runner:)
+        @options = {}
+        super
+      end
+
       def execute
         result = validate_options
         return result if result

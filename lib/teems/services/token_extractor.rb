@@ -10,10 +10,12 @@ module Teems
     module SafariAutomation
       private
 
-      def run_safari_js(js_code, wrap: true)
-        escaped = wrap ? escape_js_for_applescript(js_code) : js_code
-        script = wrap ? safari_js_script(escaped) : safari_readystate_script
-        run_applescript(script)
+      def run_safari_js(js_code)
+        run_applescript(safari_js_script(escape_js_for_applescript(js_code)))
+      end
+
+      def run_safari_readystate
+        run_applescript(safari_readystate_script)
       end
 
       def safari_js_script(escaped_js)
@@ -333,7 +335,7 @@ module Teems
       end
 
       def page_ready?
-        result = run_safari_js('document.readyState', wrap: false)
+        result = run_safari_readystate
         return false unless result
 
         url, ready_state = result.split('|', 2)

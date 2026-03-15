@@ -201,6 +201,14 @@ module Teems
       DEFAULT_SINCE_DAYS = 180
       SKIP_PREFIXES = %w[48:].freeze
 
+      def initialize(args, runner:)
+        @options = {}
+        @sync_store = nil
+        @state = nil
+        @stats = nil
+        super
+      end
+
       def execute
         result = validate_options
         return result if result
@@ -216,14 +224,18 @@ module Teems
 
       protected
 
+      SYNC_OPTIONS = {
+        '--since' => ->(opts, args) { opts[:since_days] = args.shift.to_i },
+        '--chat' => ->(opts, args) { opts[:chat_id] = args.shift },
+        '--dry-run' => ->(opts, _args) { opts[:dry_run] = true },
+        '--auth' => ->(opts, _args) { opts[:auth] = true }
+      }.freeze
+
       def handle_option(arg, args, _remaining)
-        case arg
-        when '--since'  then @options[:since_days] = args.shift.to_i
-        when '--chat'   then @options[:chat_id] = args.shift
-        when '--dry-run' then @options[:dry_run] = true
-        when '--auth' then @options[:auth] = true
-        else super
-        end
+        handler = SYNC_OPTIONS[arg]
+        return super unless handler
+
+        handler.call(@options, args)
       end
 
       def help_text = SYNC_HELP

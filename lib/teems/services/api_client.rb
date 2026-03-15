@@ -140,13 +140,10 @@ module Teems
       end
 
       def parse_json_body(response)
-        return {} if !response.body || response.body.empty?
+        body = response.body
+        return {} if body.to_s.empty?
 
-        parse_json(response.body)
-      end
-
-      def parse_json(text)
-        JSON.parse(text)
+        JSON.parse(body)
       rescue JSON::ParserError
         raise ApiError, 'Invalid JSON response from Teams API'
       end

@@ -27,7 +27,7 @@ module Teems
       end
 
       def parse_stored_reactions(reactions)
-        (reactions || []).map { |reaction| { type: reaction['type'], count: reaction['count'] } }
+        Array(reactions).map { |reaction| { type: reaction['type'], count: reaction['count'] } }
       end
 
       def stored_msg_attrs(data)

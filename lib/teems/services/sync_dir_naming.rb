@@ -11,6 +11,8 @@ module Teems
         'channel' => 'channels', 'space' => 'spaces'
       }.freeze
 
+      module_function
+
       def type_dir(chat_type) = TYPE_DIRS[chat_type] || 'other'
 
       private

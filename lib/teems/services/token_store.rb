@@ -6,8 +6,8 @@ module Teems
     class TokenStore
       TOKENS_FILE = 'tokens.json'
 
-      def initialize(paths: nil)
-        @paths = paths || Support::XdgPaths.new
+      def initialize(paths: Support::XdgPaths.new)
+        @paths = paths
       end
 
       def account
