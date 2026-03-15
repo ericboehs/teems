@@ -157,7 +157,7 @@ class SyncEngineTest < Minitest::Test
   def test_verbose_debug_output
     with_temp_config do
       err = StringIO.new
-      output = Teems::Formatters::Output.new(io: StringIO.new, err: err, color: false, verbose: true)
+      output = Teems::Formatters::Output.new(io: StringIO.new, err: err, color: false, mode: :verbose)
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       state = sync_store.load_state
@@ -345,7 +345,7 @@ class SyncEngineTest < Minitest::Test
         public :parse_page_messages
       end
       err = StringIO.new
-      output = Teems::Formatters::Output.new(io: StringIO.new, err: err, color: false, verbose: true)
+      output = Teems::Formatters::Output.new(io: StringIO.new, err: err, color: false, mode: :verbose)
       runner = configured_runner(output: output)
       sync_store = Teems::Services::SyncStore.new
       engine = engine_class.new(runner: runner, sync_store: sync_store, state: {},

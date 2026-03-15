@@ -30,7 +30,7 @@ module Teems
       def build_dir_name(chat_id, display_name)
         sanitized = sanitize_display_name(display_name)
         return sanitize_id(chat_id) unless sanitized
-        return sanitized unless GENERIC_LABELS.include?(display_name&.strip)
+        return sanitized unless GENERIC_LABELS.include?(display_name.strip)
 
         "#{sanitized} (#{sanitize_id(chat_id)[0, 20]})"
       end

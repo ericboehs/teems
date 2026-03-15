@@ -15,10 +15,9 @@ module Teems
       'help' => Commands::Help
     }.freeze
 
-    # :reek:ControlParameter - DI constructor with lazy default
-    def initialize(argv, output: nil)
+    def initialize(argv, output: Formatters::Output.new)
       @argv = argv.dup
-      @output = output || Formatters::Output.new
+      @output = output
     end
 
     def run
@@ -97,7 +96,7 @@ module Teems
     end
 
     def verbose_output
-      @output&.with_verbose(true) || Formatters::Output.new(verbose: true)
+      @output.with_verbose(true)
     end
 
     def setup_verbose_logging(runner, output)

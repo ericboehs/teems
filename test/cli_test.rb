@@ -243,7 +243,7 @@ class CLIErrorHandlingTest < Minitest::Test
       write_tokens_file(dir, { 'auth_token' => 'test', 'skype_token' => 'test' })
       out = StringIO.new
       err = StringIO.new
-      output = Teems::Formatters::Output.new(io: out, err: err, color: false, verbose: true)
+      output = Teems::Formatters::Output.new(io: out, err: err, color: false, mode: :verbose)
 
       cli = Teems::CLI.new(['auth', 'status', '-v'], output: output)
       cli.run
@@ -295,7 +295,7 @@ class CLIErrorHandlingTest < Minitest::Test
       write_tokens_file(dir, { 'auth_token' => 'test', 'skype_token' => 'test' })
       out = StringIO.new
       err = StringIO.new
-      output = Teems::Formatters::Output.new(io: out, err: err, color: false, verbose: true)
+      output = Teems::Formatters::Output.new(io: out, err: err, color: false, mode: :verbose)
 
       cli = Teems::CLI.new(['auth', 'status', '-v'], output: output)
       exit_code = cli.run
@@ -309,7 +309,7 @@ class CLIErrorHandlingTest < Minitest::Test
       write_tokens_file(dir, { 'auth_token' => 'test', 'skype_token' => 'test' })
       out = StringIO.new
       err = StringIO.new
-      output = Teems::Formatters::Output.new(io: out, err: err, color: false, verbose: true)
+      output = Teems::Formatters::Output.new(io: out, err: err, color: false, mode: :verbose)
 
       cli = Teems::CLI.new(['auth', 'status', '-v'], output: output)
       cli.run
@@ -322,7 +322,7 @@ class CLIErrorHandlingTest < Minitest::Test
     with_temp_config do
       out = StringIO.new
       err = StringIO.new
-      output = Teems::Formatters::Output.new(io: out, err: err, color: false, verbose: true)
+      output = Teems::Formatters::Output.new(io: out, err: err, color: false, mode: :verbose)
 
       cli = MockVerboseApiCLI.new(['channels', '-v'], output: output)
       cli.run
@@ -336,7 +336,7 @@ class CLIErrorHandlingTest < Minitest::Test
       write_tokens_file(dir, { 'auth_token' => 'test', 'skype_token' => 'test' })
       out = StringIO.new
       err = StringIO.new
-      output = Teems::Formatters::Output.new(io: out, err: err, color: false, verbose: true)
+      output = Teems::Formatters::Output.new(io: out, err: err, color: false, mode: :verbose)
 
       cli = Teems::CLI.new(['auth', 'status', '--verbose'], output: output)
       exit_code = cli.run

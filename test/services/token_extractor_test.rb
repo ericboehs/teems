@@ -461,7 +461,7 @@ end
 class TokenExtractorWaitForLoginTest < Minitest::Test
   def test_wait_for_login_logs_progress_every_10s
     err = StringIO.new
-    output = Teems::Formatters::Output.new(err: err, color: false, verbose: true)
+    output = Teems::Formatters::Output.new(err: err, color: false, mode: :verbose)
     extractor = TestableTokenExtractor.new(output: output)
     extractor.system_result = true
 
@@ -486,7 +486,7 @@ end
 class TokenExtractorWithOutputTest < Minitest::Test
   def test_logs_debug_messages_with_output
     err = StringIO.new
-    output = Teems::Formatters::Output.new(err: err, color: false, verbose: true)
+    output = Teems::Formatters::Output.new(err: err, color: false, mode: :verbose)
     extractor = TestableTokenExtractor.new(output: output)
     extractor.system_result = false
 

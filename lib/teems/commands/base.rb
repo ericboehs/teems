@@ -10,7 +10,8 @@ module Teems
         @runner = runner
         @options = default_options
         @unknown_options = []
-        @positional_args = parse_options(args)
+        @positional_args = []
+        parse_options(args)
       end
 
       def execute
@@ -30,42 +31,37 @@ module Teems
         { verbose: false, quiet: false, json: false, limit: 20 }
       end
 
-      # :reek:FeatureEnvy - args parsing inherently works with the args array
       def parse_options(args)
-        remaining = []
-        args = args.dup
-
-        while args.any?
-          arg = args.shift
-          next remaining << arg unless arg.start_with?('-')
-
-          parse_single_option(arg, args, remaining)
+        pending = args.dup
+        while pending.any?
+          arg = pending.shift
+          if arg.start_with?('-')
+            parse_single_option(arg, pending)
+          else
+            @positional_args << arg
+          end
         end
-
-        remaining
+        @positional_args
       end
 
       private
 
-      def parse_single_option(arg, args, remaining)
+      def parse_single_option(arg, pending)
         case arg
-        when '-n', '--limit' then @options[:limit] = args.shift.to_i
+        when '-n', '--limit' then @options[:limit] = pending.shift.to_i
         when '-v', '--verbose' then @options[:verbose] = true
         when '-q', '--quiet' then @options[:quiet] = true
         when '--json' then @options[:json] = true
         when '-h', '--help' then @options[:help] = true
-        else handle_option(arg, args, remaining)
+        else handle_option(arg, pending)
         end
       end
 
       protected
 
       # Override in subclass to handle command-specific options
-      # -- not a predicate
-      def handle_option(arg, _args, _remaining)
-        @unknown_options ||= []
+      def handle_option(arg, _pending)
         @unknown_options << arg
-        false
       end
 
       def check_unknown_options
@@ -77,7 +73,7 @@ module Teems
       end
 
       def unknown_options?
-        @unknown_options&.any?
+        @unknown_options.any?
       end
 
       def show_help?

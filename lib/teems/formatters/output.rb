@@ -16,17 +16,18 @@ module Teems
         reset: "\e[0m"
       }.freeze
 
-      attr_reader :verbose, :quiet
-      alias quiet? quiet
+      attr_reader :mode
 
-      # :reek:BooleanParameter - verbose/quiet are fundamental CLI output flags
-      def initialize(io: $stdout, err: $stderr, color: nil, verbose: false, quiet: false)
+      def initialize(io: $stdout, err: $stderr, color: nil, mode: :normal)
         @io = io
         @err = err
         @color = [true, false].include?(color) ? color : io.tty?
-        @verbose = verbose
-        @quiet = quiet
+        @mode = mode
       end
+
+      def verbose = @mode == :verbose
+      def quiet = @mode == :quiet
+      alias quiet? quiet
 
       def puts(message = '')
         @io.puts(message) unless quiet?
@@ -57,7 +58,7 @@ module Teems
       end
 
       def debug(message)
-        return unless @verbose
+        return unless verbose
 
         @err.puts(colorize("#{gray('[debug]')} #{message}"))
       end
@@ -73,11 +74,11 @@ module Teems
       def bold(text) = wrap(:bold, text)
 
       def with_verbose(value)
-        self.class.new(io: @io, err: @err, color: @color, verbose: value, quiet: @quiet)
+        self.class.new(io: @io, err: @err, color: @color, mode: value ? :verbose : :normal)
       end
 
       def with_quiet(value)
-        self.class.new(io: @io, err: @err, color: @color, verbose: @verbose, quiet: value)
+        self.class.new(io: @io, err: @err, color: @color, mode: value ? :quiet : :normal)
       end
 
       private

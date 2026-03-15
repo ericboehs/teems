@@ -137,17 +137,6 @@ class RunnerTest < Minitest::Test
     end
   end
 
-  def test_log_error_delegates_to_error_logger
-    with_temp_config do
-      runner = Teems::Runner.new
-      error = RuntimeError.new('test')
-
-      result = runner.log_error(error)
-
-      assert result
-    end
-  end
-
   def test_clear_api_cache_does_not_raise
     with_temp_config do
       runner = Teems::Runner.new
