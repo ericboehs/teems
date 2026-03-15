@@ -171,12 +171,15 @@ module Teems
 
     # Mock token store class
     class MockTokenStore
-      attr_accessor :skype_spaces_token, :save_result
+      attr_accessor :skype_spaces_token, :save_result, :refresh_token, :client_id, :tenant_id
 
       def initialize(account: nil, configured: true)
         @account = account
         @configured = configured
         @skype_spaces_token = nil
+        @refresh_token = nil
+        @client_id = nil
+        @tenant_id = nil
         @save_result = true
       end
 
@@ -187,6 +190,7 @@ module Teems
       def clear = nil
       def token_age = nil
       def update_skype_token(_token) = :ok
+      def update_all_tokens(**_kwargs) = true
     end
 
     # Mock API client for testing

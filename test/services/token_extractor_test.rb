@@ -63,6 +63,9 @@ module TokenExtractorTests
     def add_v2_tokens(extractor)
       extractor.applescript_results << 'started'
       extractor.applescript_results << '{"auth_token":"v2-auth","skype_spaces_token":"v2-skype-spaces"}'
+      # extract_v1_refresh_data runs EXTRACT_TOKENS_JS to grab refresh token (always V1)
+      extractor.applescript_results << '{"auth_token":null,"skype_spaces_token":null,' \
+                                       '"refresh_token":null,"client_id":null,"tenant_id":null}'
       extractor.applescript_results << '{"skype_token":"v2-skype","region":"us","chat_service":"https://chat.com"}'
       extractor.applescript_results << nil
     end

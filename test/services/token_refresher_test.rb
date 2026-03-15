@@ -241,4 +241,203 @@ module TokenRefresherTests
       response
     end
   end
+
+  # Testable refresher that mocks both OIDC and authsvc HTTP calls
+  class OidcTestableRefresher < Teems::Services::TokenRefresher
+    attr_accessor :oidc_responses, :authsvc_response, :authsvc_error
+
+    def initialize(token_store:, output: nil)
+      super
+      @oidc_responses = {}
+      @authsvc_response = nil
+      @authsvc_error = nil
+    end
+
+    private
+
+    def oidc_token_request(scope, refresh_token: nil)
+      @oidc_responses[scope]
+    end
+
+    def exchange_token(skype_spaces_token)
+      raise authsvc_error if authsvc_error
+
+      authsvc_response
+    end
+  end
+
+  class OidcRefreshTest < Minitest::Test
+    GRAPH = Teems::Services::TokenRefresher::GRAPH_SCOPE
+    SKYPE = Teems::Services::TokenRefresher::SKYPE_SCOPE
+
+    def test_oidc_refresh_succeeds_with_all_tokens
+      with_temp_config do |dir|
+        refresher, store = build_oidc_refresher(dir)
+        refresher.oidc_responses = {
+          GRAPH => { 'access_token' => 'new-auth', 'refresh_token' => 'rt2' },
+          SKYPE => { 'access_token' => 'new-spaces', 'refresh_token' => 'rt3' }
+        }
+        refresher.authsvc_response = 'new-skype'
+
+        assert refresher.refresh
+        assert_equal 'new-auth', store.account.auth_token
+        assert_equal 'new-skype', store.account.skype_token
+      end
+    end
+
+    def test_oidc_refresh_saves_new_refresh_token
+      with_temp_config do |dir|
+        refresher, store = build_oidc_refresher(dir)
+        refresher.oidc_responses = {
+          GRAPH => { 'access_token' => 'new-auth', 'refresh_token' => 'rt2' },
+          SKYPE => { 'access_token' => 'new-spaces', 'refresh_token' => 'rt3' }
+        }
+        refresher.authsvc_response = 'new-skype'
+
+        refresher.refresh
+        assert_equal 'rt3', store.refresh_token
+      end
+    end
+
+    def test_oidc_refresh_saves_skype_spaces_token
+      with_temp_config do |dir|
+        refresher, store = build_oidc_refresher(dir)
+        refresher.oidc_responses = {
+          GRAPH => { 'access_token' => 'new-auth', 'refresh_token' => 'rt2' },
+          SKYPE => { 'access_token' => 'new-spaces', 'refresh_token' => 'rt3' }
+        }
+        refresher.authsvc_response = 'new-skype'
+
+        refresher.refresh
+        assert_equal 'new-spaces', store.skype_spaces_token
+      end
+    end
+
+    def test_oidc_falls_back_to_authsvc_when_graph_fails
+      with_temp_config do |dir|
+        refresher, store = build_oidc_refresher(dir)
+        refresher.oidc_responses = { GRAPH => nil, SKYPE => nil }
+        refresher.authsvc_response = 'fallback-skype'
+
+        assert refresher.refresh
+        assert_equal 'fallback-skype', store.account.skype_token
+      end
+    end
+
+    def test_oidc_falls_back_to_authsvc_when_skype_scope_fails
+      with_temp_config do |dir|
+        refresher, store = build_oidc_refresher(dir)
+        refresher.oidc_responses = {
+          GRAPH => { 'access_token' => 'new-auth', 'refresh_token' => 'rt2' },
+          SKYPE => nil
+        }
+        refresher.authsvc_response = 'fallback-skype'
+
+        assert refresher.refresh
+        assert_equal 'fallback-skype', store.account.skype_token
+      end
+    end
+
+    def test_oidc_falls_back_when_authsvc_exchange_fails_in_oidc_flow
+      with_temp_config do |dir|
+        refresher, store = build_oidc_refresher(dir)
+        refresher.oidc_responses = {
+          GRAPH => { 'access_token' => 'new-auth', 'refresh_token' => 'rt2' },
+          SKYPE => { 'access_token' => 'new-spaces', 'refresh_token' => 'rt3' }
+        }
+        # authsvc exchange fails for both OIDC and fallback
+        refresher.authsvc_response = nil
+
+        refute refresher.refresh
+      end
+    end
+
+    def test_skips_oidc_when_no_refresh_token
+      with_temp_config do |dir|
+        write_tokens_file(dir, {
+                            'auth_token' => 'old-auth', 'skype_token' => 'old-skype',
+                            'skype_spaces_token' => 'spaces', 'client_id' => 'cid', 'tenant_id' => 'tid'
+                          })
+        store = Teems::Services::TokenStore.new
+        refresher = OidcTestableRefresher.new(token_store: store)
+        refresher.authsvc_response = 'new-skype'
+
+        assert refresher.refresh
+        assert_equal 'new-skype', store.account.skype_token
+      end
+    end
+
+    def test_oidc_falls_back_on_network_error
+      with_temp_config do |dir|
+        refresher, store = build_oidc_refresher(dir)
+        # Override to raise network error
+        refresher.define_singleton_method(:oidc_token_request) { |*| raise SocketError, 'fail' }
+        refresher.authsvc_response = 'fallback-skype'
+
+        assert refresher.refresh
+        assert_equal 'fallback-skype', store.account.skype_token
+      end
+    end
+
+    private
+
+    def build_oidc_refresher(dir)
+      write_tokens_file(dir, {
+                          'auth_token' => 'old-auth', 'skype_token' => 'old-skype',
+                          'skype_spaces_token' => 'spaces',
+                          'refresh_token' => 'rt1', 'client_id' => 'cid', 'tenant_id' => 'tid'
+                        })
+      store = Teems::Services::TokenStore.new
+      refresher = OidcTestableRefresher.new(token_store: store)
+      [refresher, store]
+    end
+  end
+
+  class OidcBuildMethodsTest < Minitest::Test
+    class ExposedOidc < Teems::Services::TokenRefresher
+      public :build_oidc_http, :build_oidc_request, :oidc_token_uri
+    end
+
+    def test_build_oidc_http_returns_ssl_client
+      with_temp_config do
+        store = mock_token_store
+        store.tenant_id = 'test-tenant'
+        refresher = ExposedOidc.new(token_store: store)
+
+        http = refresher.build_oidc_http(refresher.oidc_token_uri)
+
+        assert_instance_of Net::HTTP, http
+        assert http.use_ssl?
+      end
+    end
+
+    def test_build_oidc_request_uses_form_encoding
+      with_temp_config do
+        store = mock_token_store
+        store.tenant_id = 'test-tenant'
+        store.client_id = 'test-client'
+        refresher = ExposedOidc.new(token_store: store)
+
+        uri = refresher.oidc_token_uri
+        request = refresher.build_oidc_request(uri, 'https://graph.microsoft.com/.default', 'my-rt')
+
+        assert_instance_of Net::HTTP::Post, request
+        assert_equal 'application/x-www-form-urlencoded', request['Content-Type']
+        assert_includes request.body, 'grant_type=refresh_token'
+        assert_includes request.body, 'client_id=test-client'
+        assert_includes request.body, 'refresh_token=my-rt'
+      end
+    end
+
+    def test_oidc_token_uri_uses_tenant_id
+      with_temp_config do
+        store = mock_token_store
+        store.tenant_id = 'my-tenant-123'
+        refresher = ExposedOidc.new(token_store: store)
+
+        assert_equal 'https://login.microsoftonline.com/my-tenant-123/oauth2/v2.0/token',
+                     refresher.oidc_token_uri.to_s
+      end
+    end
+  end
 end

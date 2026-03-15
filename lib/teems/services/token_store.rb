@@ -42,6 +42,22 @@ module Teems
         load_tokens['skype_spaces_token']
       end
 
+      # Get OIDC refresh credentials
+      def refresh_token = load_tokens['refresh_token']
+      def client_id = load_tokens['client_id']
+      def tenant_id = load_tokens['tenant_id']
+
+      # Update all tokens at once (used by OIDC refresh)
+      def update_all_tokens(auth_token:, skype_token:, skype_spaces_token: nil, refresh_token: nil)
+        data = load_tokens
+        return false if data.empty?
+
+        apply_all_tokens(data, auth_token, skype_token, skype_spaces_token, refresh_token)
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not update token file: #{e.message}"
+        false
+      end
+
       def clear
         FileUtils.rm_f(tokens_file)
       end
@@ -79,6 +95,15 @@ module Teems
 
       def apply_skype_token(data, skype_token)
         data.merge!('skype_token' => skype_token, 'skype_token_refreshed_at' => Time.now.iso8601)
+        write_token_file(data)
+      end
+
+      def apply_all_tokens(data, auth_token, skype_token, skype_spaces_token, refresh_token)
+        updates = { 'auth_token' => auth_token, 'skype_token' => skype_token,
+                    'tokens_refreshed_at' => Time.now.iso8601 }
+        updates['skype_spaces_token'] = skype_spaces_token if skype_spaces_token
+        updates['refresh_token'] = refresh_token if refresh_token
+        data.merge!(updates)
         write_token_file(data)
       end
 
