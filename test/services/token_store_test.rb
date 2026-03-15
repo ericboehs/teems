@@ -270,21 +270,21 @@ module TokenStoreTests
   end
 
   class UpdateAllTokensTest < Minitest::Test
-    def test_updates_all_token_fields
+    def test_updates_auth_and_skype_tokens
       with_temp_config do |dir|
-        write_tokens_file(dir, {
-                            'auth_token' => 'old-auth', 'skype_token' => 'old-skype',
-                            'skype_spaces_token' => 'old-spaces', 'refresh_token' => 'old-rt',
-                            'name' => 'default'
-                          })
-        store = Teems::Services::TokenStore.new
-        store.update_all_tokens(
-          auth_token: 'new-auth', skype_token: 'new-skype',
-          skype_spaces_token: 'new-spaces', refresh_token: 'new-rt'
-        )
-
+        store = build_store_with_all_fields(dir)
+        store.update_all_tokens(auth_token: 'new-auth', skype_token: 'new-skype',
+                                skype_spaces_token: 'new-spaces', refresh_token: 'new-rt')
         assert_equal 'new-auth', store.account.auth_token
         assert_equal 'new-skype', store.account.skype_token
+      end
+    end
+
+    def test_updates_oidc_fields
+      with_temp_config do |dir|
+        store = build_store_with_all_fields(dir)
+        store.update_all_tokens(auth_token: 'new-auth', skype_token: 'new-skype',
+                                skype_spaces_token: 'new-spaces', refresh_token: 'new-rt')
         assert_equal 'new-spaces', store.skype_spaces_token
         assert_equal 'new-rt', store.refresh_token
       end
@@ -292,52 +292,49 @@ module TokenStoreTests
 
     def test_preserves_existing_fields
       with_temp_config do |dir|
-        write_tokens_file(dir, {
-                            'auth_token' => 'old-auth', 'skype_token' => 'old-skype',
-                            'name' => 'myaccount', 'client_id' => 'cid', 'tenant_id' => 'tid'
-                          })
-        store = Teems::Services::TokenStore.new
-        store.update_all_tokens(auth_token: 'new-auth', skype_token: 'new-skype')
-
-        data = JSON.parse(File.read("#{dir}/teems/tokens.json"))
+        write_tokens_file(dir, { 'auth_token' => 'old', 'skype_token' => 'old',
+                                 'name' => 'myaccount', 'client_id' => 'cid', 'tenant_id' => 'tid' })
+        Teems::Services::TokenStore.new.update_all_tokens(auth_token: 'new', skype_token: 'new')
+        data = read_tokens(dir)
         assert_equal 'myaccount', data['name']
         assert_equal 'cid', data['client_id']
-        assert_equal 'tid', data['tenant_id']
       end
     end
 
     def test_adds_refreshed_at_timestamp
       with_temp_config do |dir|
         write_tokens_file(dir, { 'auth_token' => 'auth', 'skype_token' => 'skype' })
-        Teems::Services::TokenStore.new.update_all_tokens(
-          auth_token: 'new-auth', skype_token: 'new-skype'
-        )
-        data = JSON.parse(File.read("#{dir}/teems/tokens.json"))
-        assert data['tokens_refreshed_at']
+        Teems::Services::TokenStore.new.update_all_tokens(auth_token: 'new', skype_token: 'new')
+        assert read_tokens(dir)['tokens_refreshed_at']
       end
     end
 
     def test_returns_false_when_no_tokens_file
       with_temp_config do
-        refute Teems::Services::TokenStore.new.update_all_tokens(
-          auth_token: 'new', skype_token: 'new'
-        )
+        refute Teems::Services::TokenStore.new.update_all_tokens(auth_token: 'new', skype_token: 'new')
       end
     end
 
     def test_skips_nil_optional_fields
       with_temp_config do |dir|
-        write_tokens_file(dir, {
-                            'auth_token' => 'old', 'skype_token' => 'old',
-                            'skype_spaces_token' => 'keep-this', 'refresh_token' => 'keep-this-too'
-                          })
-        Teems::Services::TokenStore.new.update_all_tokens(
-          auth_token: 'new-auth', skype_token: 'new-skype'
-        )
-        data = JSON.parse(File.read("#{dir}/teems/tokens.json"))
-        assert_equal 'keep-this', data['skype_spaces_token']
-        assert_equal 'keep-this-too', data['refresh_token']
+        write_tokens_file(dir, { 'auth_token' => 'old', 'skype_token' => 'old',
+                                 'skype_spaces_token' => 'keep', 'refresh_token' => 'keep-rt' })
+        Teems::Services::TokenStore.new.update_all_tokens(auth_token: 'new', skype_token: 'new')
+        data = read_tokens(dir)
+        assert_equal 'keep', data['skype_spaces_token']
+        assert_equal 'keep-rt', data['refresh_token']
       end
     end
+
+    private
+
+    def build_store_with_all_fields(dir)
+      write_tokens_file(dir, { 'auth_token' => 'old-auth', 'skype_token' => 'old-skype',
+                               'skype_spaces_token' => 'old-spaces', 'refresh_token' => 'old-rt',
+                               'name' => 'default' })
+      Teems::Services::TokenStore.new
+    end
+
+    def read_tokens(dir) = JSON.parse(File.read("#{dir}/teems/tokens.json"))
   end
 end

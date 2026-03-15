@@ -190,7 +190,7 @@ module Teems
       def clear = nil
       def token_age = nil
       def update_skype_token(_token) = :ok
-      def update_all_tokens(**_kwargs) = true
+      def update_all_tokens(**_kwargs) = :ok
     end
 
     # Mock API client for testing
