@@ -115,6 +115,16 @@ module TokenStoreTests
       end
     end
 
+    def test_token_age_prefers_tokens_refreshed_at_over_saved_at
+      with_temp_config do |dir|
+        saved_at = (Time.now - 7200).iso8601
+        refreshed_at = (Time.now - 600).iso8601
+        write_tokens_file(dir, { 'auth_token' => 'auth', 'skype_token' => 'skype',
+                                 'saved_at' => saved_at, 'tokens_refreshed_at' => refreshed_at })
+        assert_in_delta 600, Teems::Services::TokenStore.new.token_age, 5
+      end
+    end
+
     def test_creates_config_directory_if_needed
       with_temp_config do |dir|
         config_dir = "#{dir}/teems"

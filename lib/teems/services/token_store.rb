@@ -70,10 +70,10 @@ module Teems
         return nil unless File.exist?(tokens_file)
 
         data = load_tokens
-        return nil unless data['saved_at']
+        timestamp = data['tokens_refreshed_at'] || data['saved_at']
+        return nil unless timestamp
 
-        saved_at = Time.parse(data['saved_at'])
-        Time.now - saved_at
+        Time.now - Time.parse(timestamp)
       rescue ArgumentError
         nil
       end
