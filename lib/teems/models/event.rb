@@ -112,7 +112,7 @@ module Teems
       end
 
       def pending_attendees
-        attendees.select { |att| att[:response] == 'none' || att[:response].nil? }
+        attendees.select { |att| !att[:response] || att[:response] == 'none' }
       end
     end
   end

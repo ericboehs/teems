@@ -151,7 +151,7 @@ module Teems
 
       def exchange_skype_token(skype_spaces_token)
         result = run_safari_js(build_exchange_script(skype_spaces_token))
-        return nil if result.nil? || result.empty?
+        return nil if result.to_s.empty?
 
         parse_exchange_result(result)
       rescue JSON::ParserError => parse_error
@@ -223,7 +223,7 @@ module Teems
 
       def parse_safari_json(js_code)
         result = run_safari_js(js_code)
-        return nil if result.nil? || result.empty?
+        return nil if result.to_s.empty?
 
         JSON.parse(result)
       end

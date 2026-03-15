@@ -5,6 +5,7 @@ module Teems
   class Runner
     attr_reader :output, :config, :token_store, :api_client, :cache_store
 
+    # :reek:ControlParameter - DI constructor with lazy defaults
     def initialize(
       output: nil,
       config: nil,
@@ -79,7 +80,7 @@ module Teems
       token_refresher.refresh
     end
 
-    # Logging
+    # :reek:UtilityFunction - delegates to ErrorLogger; self provides the public API surface
     def log_error(error)
       Support::ErrorLogger.log(error)
     end

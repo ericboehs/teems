@@ -9,6 +9,7 @@ module Teems
       def initialize(args, runner:)
         @runner = runner
         @options = default_options
+        @unknown_options = []
         @positional_args = parse_options(args)
       end
 
@@ -29,10 +30,10 @@ module Teems
         { verbose: false, quiet: false, json: false, limit: 20 }
       end
 
+      # :reek:FeatureEnvy - args parsing inherently works with the args array
       def parse_options(args)
         remaining = []
         args = args.dup
-        @unknown_options = []
 
         while args.any?
           arg = args.shift
@@ -68,7 +69,7 @@ module Teems
       end
 
       def check_unknown_options
-        return nil if @unknown_options.nil? || @unknown_options.empty?
+        return nil if @unknown_options.empty?
 
         error("Unknown option: #{@unknown_options.first}")
         error('Run with --help for available options.')

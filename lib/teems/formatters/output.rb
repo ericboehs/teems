@@ -19,10 +19,11 @@ module Teems
       attr_reader :verbose, :quiet
       alias quiet? quiet
 
+      # :reek:BooleanParameter - verbose/quiet are fundamental CLI output flags
       def initialize(io: $stdout, err: $stderr, color: nil, verbose: false, quiet: false)
         @io = io
         @err = err
-        @color = color.nil? ? io.tty? : color
+        @color = [true, false].include?(color) ? color : io.tty?
         @verbose = verbose
         @quiet = quiet
       end

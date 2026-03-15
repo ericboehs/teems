@@ -71,7 +71,7 @@ module Teems
 
       def append_message_body(lines, msg)
         content = msg.content
-        lines << content unless content.nil? || content.empty?
+        lines << content unless content.to_s.empty?
         lines.concat(format_message_attachments(msg))
         lines.concat(format_message_reactions(msg))
       end

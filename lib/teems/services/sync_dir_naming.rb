@@ -18,7 +18,7 @@ module Teems
       def sanitize_id(id) = id.gsub(/[:@]/, '_')
 
       def sanitize_display_name(name)
-        return nil if name.nil? || name.strip.empty?
+        return nil if name.to_s.strip.empty?
 
         sanitized = name.strip.gsub(%r{[/\\:*?"<>|]}, '-').gsub(/\s+/, ' ')
         sanitized = sanitized[0, MAX_DIR_NAME_LENGTH].gsub(/[\s.]+\z/, '')

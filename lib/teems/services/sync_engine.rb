@@ -129,7 +129,7 @@ module Teems
 
       def message_with_timestamp(msg, start_time)
         timestamp = msg.created_at || Time.at(0)
-        [timestamp, msg] if msg.created_at.nil? || timestamp >= start_time
+        [timestamp, msg] if !msg.created_at || timestamp >= start_time
       end
 
       def merge_messages(existing, new_messages)

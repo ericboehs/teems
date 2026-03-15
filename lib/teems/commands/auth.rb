@@ -36,7 +36,7 @@ module Teems
         puts '(Tokens are long - you can also use: teems auth set-tokens <file>)'
         puts
         auth_token = prompt_for_token('Auth token (from Authorization: Bearer header or authtoken cookie)')
-        return error('Auth token is required') if auth_token.nil? || auth_token.empty?
+        return error('Auth token is required') if auth_token.to_s.empty?
 
         save_extracted_tokens(auth_token, prompt_for_skype_token)
       end
@@ -103,6 +103,12 @@ module Teems
       end
     end
 
+    AUTH_ACTIONS = {
+      'login' => :login, 'logout' => :logout, 'clear' => :logout,
+      'status' => :status, 'manual' => :show_manual_instructions,
+      'set-tokens' => :set_tokens, 'set' => :set_tokens
+    }.freeze
+
     # Manages authentication with Microsoft Teams
     class Auth < Base
       include AuthTokenInput
@@ -121,14 +127,10 @@ module Teems
       private
 
       def dispatch_action(action)
-        case action
-        when 'login'              then login
-        when 'logout', 'clear'    then logout
-        when 'status', nil        then status
-        when 'manual'             then show_manual_instructions
-        when 'set-tokens', 'set'  then set_tokens
-        else unknown_action(action)
-        end
+        method_name = AUTH_ACTIONS[action || 'status']
+        return unknown_action(action) unless method_name
+
+        send(method_name)
       end
 
       def unknown_action(action)

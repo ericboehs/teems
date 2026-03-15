@@ -3,6 +3,8 @@
 module Teems
   # Command-line interface entry point that dispatches to commands
   class CLI
+    ERROR_LABELS = { AuthError => 'Auth error', ApiError => 'API error' }.freeze
+
     COMMANDS = {
       'auth' => Commands::Auth,
       'cal' => Commands::Cal,
@@ -13,6 +15,7 @@ module Teems
       'help' => Commands::Help
     }.freeze
 
+    # :reek:ControlParameter - DI constructor with lazy default
     def initialize(argv, output: nil)
       @argv = argv.dup
       @output = output || Formatters::Output.new
@@ -33,7 +36,7 @@ module Teems
 
     private
 
-    def help_requested?(name) = name.nil? || ['-h', '--help'].include?(name)
+    def help_requested?(name) = !name || ['-h', '--help'].include?(name)
     def version_requested?(name) = ['--version', '-V', 'version'].include?(name)
 
     def show_help = run_command('help', [])
@@ -63,12 +66,7 @@ module Teems
       1
     end
 
-    def error_label(error)
-      case error
-      when AuthError then 'Auth error'
-      when ApiError then 'API error'
-      end
-    end
+    def error_label(error) = ERROR_LABELS[error.class]
 
     def handle_interrupt
       @output.puts
