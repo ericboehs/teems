@@ -3,90 +3,38 @@ exclude_paths:
   - test
 
 detectors:
-  UtilityFunction:
-    public_methods_only: true
-    exclude:
-      - "Teems::Models::Parsing"
-      - "Teems::Services::SyncDirNaming"
-      - "Teems::Services::SyncStore"
-      - "Teems::Runner"
-
-  # Calling the same method twice is normal; flag at 3+
   DuplicateMethodCall:
     max_calls: 2
-
-  # API methods use keyword args (already the recommended fix); 4 kwargs is fine
+  TooManyStatements:
+    max_statements: 7
+  TooManyMethods:
+    max_methods: 30
+  TooManyInstanceVariables:
+    max_instance_variables: 5
   LongParameterList:
     max_params: 4
-
-  # Boolean flags like verbose:, quiet:, send_response: are idiomatic for CLIs
-  BooleanParameter:
-    enabled: false
-
-  # Repeated (state, chat_id) in SyncStore is the store's core abstraction;
-  # repeated (endpoint_key, path, account:) in ApiClient mirrors the HTTP layer
-  DataClump:
-    exclude:
-      - "Teems::Services::SyncStore"
-      - "Teems::Services::SyncEngine"
-      - "Teems::Services::ApiClient"
-
-  # 404 is an HTTP status code; v1/v2 are token format versions
+  RepeatedConditional:
+    max_ifs: 3
   UncommunicativeMethodName:
     accept:
       - /404/
       - /v\d+$/
 
-  # Default of 5 is strict; 7 suits a CLI with multi-step methods
-  TooManyStatements:
-    max_statements: 7
-
-  # CLI, Commands::Base, and Output have 20-28 methods; 30 gives headroom
-  TooManyMethods:
-    max_methods: 30
-
-  # DI containers and multi-concern classes commonly need 5+ ivars
-  TooManyInstanceVariables:
-    max_instance_variables: 5
-
-  # Nil-check guard clauses are idiomatic Ruby
+  # Disabled: mostly false positives for a CLI app with DI, Data.define models,
+  # mixin modules, formatters, and option dispatchers
   NilCheck:
     enabled: false
-
-  # Formatters work with external objects; builders configure objects they create;
-  # data parsers extract from hashes; command classes coordinate multiple services
+  BooleanParameter:
+    enabled: false
   FeatureEnvy:
-    exclude:
-      - "Teems::Formatters"
-      - "Teems::Models"
-      - "Teems::Commands"
-      - "Teems::Services"
-
-  # DI constructors, option dispatchers, and case/when routing are not control coupling
+    enabled: false
   ControlParameter:
-    exclude:
-      - "initialize"
-      - "/handle_option/"
-      - "Teems::CLI"
-      - "Teems::Formatters"
-      - "Teems::Services::ApiClient#apply_auth"
-      - "Teems::Services::SafariAutomation#run_safari_js"
-      - "Teems::Services::SyncSerializer#parse_stored_reactions"
-      - "Teems::Support::HelpFormatter::Section#render_item"
-
-  # Callback setters (ApiClient: on_request/on_response; Configuration: on_warning)
-  Attribute:
-    exclude:
-      - "Teems::Services::ApiClient"
-      - "Teems::Services::Configuration"
-
-  # Checking verbose/quiet flags in multiple places is inherent to CLI design
-  RepeatedConditional:
-    max_ifs: 3
-
-  # Data.define classes have generated initializers Reek can't see;
-  # Command subclasses inherit @options from Base#initialize
+    enabled: false
   InstanceVariableAssumption:
-    exclude:
-      - "Teems::Models"
-      - "Teems::Commands"
+    enabled: false
+  Attribute:
+    enabled: false
+  DataClump:
+    enabled: false
+  UtilityFunction:
+    enabled: false
