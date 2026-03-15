@@ -2,515 +2,341 @@
 
 require 'test_helper'
 
-class CalCommandTest < Minitest::Test
-  def test_requires_auth
-    with_temp_config do
-      result = capture_output do |output|
-        store = mock_token_store(configured: false)
-        runner = Teems::Runner.new(output: output, token_store: store)
-        cmd = Teems::Commands::Cal.new([], runner: runner)
-        cmd.execute
-      end
+module CalCommandTests
+  module SharedHelpers
+    private
 
-      assert_match(/Not authenticated/, result[:stderr])
+    def run_cal(args = [], stubs: {})
+      with_temp_config do
+        return capture_output do |output|
+          runner = configured_runner(output: output)
+          stubs.each { |path, resp| runner.api_client.stub(path, resp) }
+          Teems::Commands::Cal.new(args, runner: runner).execute
+        end
+      end
+    end
+
+    def run_cal_runner(args = [], stubs: {})
+      with_temp_config do
+        runner = configured_runner
+        stubs.each { |path, resp| runner.api_client.stub(path, resp) }
+        yield runner if block_given?
+        Teems::Commands::Cal.new(args, runner: runner).execute
+        return runner
+      end
+    end
+
+    def run_cal_with_cached_show(args, num, event_id)
+      with_temp_config do
+        return capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.cache_store.save_calendar_ids({ num => event_id })
+          runner.api_client.stub('events', sample_event_data)
+          Teems::Commands::Cal.new(args, runner: runner).execute
+        end
+      end
+    end
+
+    def run_cal_with_rsvp(args, num, event_id, stub_key)
+      with_temp_config do
+        return capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.cache_store.save_calendar_ids({ num => event_id })
+          runner.api_client.stub(stub_key, {})
+          Teems::Commands::Cal.new(args, runner: runner).execute
+        end
+      end
+    end
+
+    def run_cal_rsvp_runner(args, num, event_id, stub_key)
+      with_temp_config do
+        runner = configured_runner
+        runner.cache_store.save_calendar_ids({ num => event_id })
+        runner.api_client.stub(stub_key, {})
+        Teems::Commands::Cal.new(args, runner: runner).execute
+        return runner
+      end
+    end
+
+    def with_tz(zone)
+      original_tz = ENV.fetch('TZ', nil)
+      zone ? ENV['TZ'] = zone : ENV.delete('TZ')
+      yield
+    ensure
+      original_tz ? ENV['TZ'] = original_tz : ENV.delete('TZ')
+    end
+
+    def build_nil_time_event
+      Teems::Models::Event.new(
+        id: 'e1', subject: 'Test', start_time: nil, end_time: nil,
+        location: nil, is_all_day: false, organizer: nil, attendees: [],
+        body_preview: nil, online_meeting_url: nil, show_as: nil,
+        importance: nil, is_cancelled: false, response_status: nil,
+        sensitivity: nil
+      )
     end
   end
 
-  def test_shows_help_with_help_flag
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(['--help'], runner: runner)
-        cmd.execute
-      end
+  class BasicTest < Minitest::Test
+    include SharedHelpers
 
+    def test_requires_auth
+      with_temp_config do
+        result = capture_output do |output|
+          store = mock_token_store(configured: false)
+          runner = Teems::Runner.new(output: output, token_store: store)
+          Teems::Commands::Cal.new([], runner: runner).execute
+        end
+        assert_match(/Not authenticated/, result[:stderr])
+      end
+    end
+
+    def test_shows_help_with_help_flag
+      result = run_cal(['--help'])
       assert_match(/teems cal/, result[:stdout])
       assert_match(/USAGE:/, result[:stdout])
       assert_match(/--days/, result[:stdout])
       assert_match(/--week/, result[:stdout])
       assert_match(/--date/, result[:stdout])
     end
-  end
 
-  def test_help_includes_show_subcommand
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(['--help'], runner: runner)
-        cmd.execute
-      end
-
+    def test_help_includes_show_subcommand
+      result = run_cal(['--help'])
       assert_match(/show <N>/, result[:stdout])
     end
-  end
 
-  def test_unknown_option
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(['--unknown'], runner: runner)
-        cmd.execute
-      end
-
+    def test_unknown_option
+      result = run_cal(['--unknown'])
       assert_match(/Unknown option/, result[:stderr])
     end
-  end
 
-  def test_default_listing_today_events
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub('calendarView', { 'value' => [sample_event_data] })
-        cmd = Teems::Commands::Cal.new([], runner: runner)
-        cmd.execute
-      end
-
+    def test_default_listing_today_events
+      result = run_cal([], stubs: { 'calendarView' => { 'value' => [sample_event_data] } })
       assert_match(/Weekly Standup/, result[:stdout])
     end
-  end
 
-  def test_listing_with_no_events
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub('calendarView', { 'value' => [] })
-        cmd = Teems::Commands::Cal.new([], runner: runner)
-        cmd.execute
-      end
-
+    def test_listing_with_no_events
+      result = run_cal([], stubs: { 'calendarView' => { 'value' => [] } })
       assert_match(/No events found/, result[:stdout])
     end
-  end
 
-  def test_days_option
-    with_temp_config do
-      runner = configured_runner
-      runner.api_client.stub('calendarView', { 'value' => [] })
-      cmd = Teems::Commands::Cal.new(['--days', '3'], runner: runner)
-
-      assert_equal 3, cmd.options[:days]
-      cmd.execute
-    end
-  end
-
-  def test_week_option
-    with_temp_config do
-      runner = configured_runner
-      runner.api_client.stub('calendarView', { 'value' => [] })
-      cmd = Teems::Commands::Cal.new(['--week'], runner: runner)
-
-      assert cmd.options[:week]
-      cmd.execute
-    end
-  end
-
-  def test_date_option
-    with_temp_config do
-      runner = configured_runner
-      runner.api_client.stub('calendarView', { 'value' => [] })
-      cmd = Teems::Commands::Cal.new(['--date', '2026-01-20'], runner: runner)
-
-      assert_equal '2026-01-20', cmd.options[:date]
-      cmd.execute
-    end
-  end
-
-  def test_invalid_date_option
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(['--date', 'not-a-date'], runner: runner)
-        cmd.execute
+    def test_days_option
+      runner = run_cal_runner(['--days', '3'], stubs: { 'calendarView' => { 'value' => [] } }) do |r|
+        assert_equal 3, Teems::Commands::Cal.new(['--days', '3'], runner: r).options[:days]
       end
+      assert runner
+    end
 
+    def test_week_option
+      runner = run_cal_runner(['--week'], stubs: { 'calendarView' => { 'value' => [] } }) do |r|
+        assert Teems::Commands::Cal.new(['--week'], runner: r).options[:week]
+      end
+      assert runner
+    end
+
+    def test_date_option
+      runner = run_cal_runner(['--date', '2026-01-20'], stubs: { 'calendarView' => { 'value' => [] } }) do |r|
+        assert_equal '2026-01-20', Teems::Commands::Cal.new(['--date', '2026-01-20'], runner: r).options[:date]
+      end
+      assert runner
+    end
+
+    def test_invalid_date_option
+      result = run_cal(['--date', 'not-a-date'])
       assert_match(/Invalid date/, result[:stderr])
     end
-  end
 
-  def test_json_output
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub('calendarView', { 'value' => [sample_event_data] })
-        cmd = Teems::Commands::Cal.new(['--json'], runner: runner)
-        cmd.execute
-      end
-
+    def test_json_output
+      result = run_cal(['--json'], stubs: { 'calendarView' => { 'value' => [sample_event_data] } })
       json = JSON.parse(result[:stdout])
       assert_instance_of Array, json
       assert_equal 'Weekly Standup', json[0]['subject']
     end
-  end
 
-  def test_verbose_mode
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub('calendarView', { 'value' => [sample_event_data] })
-        cmd = Teems::Commands::Cal.new(['-v'], runner: runner)
-        cmd.execute
-      end
-
+    def test_verbose_mode
+      result = run_cal(['-v'], stubs: { 'calendarView' => { 'value' => [sample_event_data] } })
       assert_match(/Weekly Standup/, result[:stdout])
       assert_match(/Alice Manager/, result[:stdout])
     end
-  end
 
-  def test_show_subcommand_without_number
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(['show'], runner: runner)
-        cmd.execute
-      end
-
-      assert_match(/Event number required/, result[:stderr])
-    end
-  end
-
-  def test_show_subcommand_with_uncached_number
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(%w[show 1], runner: runner)
-        cmd.execute
-      end
-
-      assert_match(/not found/, result[:stderr])
-    end
-  end
-
-  def test_show_subcommand_with_cached_event
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.cache_store.save_calendar_ids({ '1' => 'AAMkAGVmMDEzMTM4LTZmYWUtNDdkNC1hMDZe' })
-        runner.api_client.stub('events', sample_event_data)
-        cmd = Teems::Commands::Cal.new(%w[show 1], runner: runner)
-        cmd.execute
-      end
-
-      assert_match(/Weekly Standup/, result[:stdout])
-      assert_match(/Conference Room A/, result[:stdout])
-    end
-  end
-
-  def test_show_subcommand_with_json
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.cache_store.save_calendar_ids({ '1' => 'event-123' })
-        runner.api_client.stub('events', sample_event_data)
-        cmd = Teems::Commands::Cal.new(['show', '1', '--json'], runner: runner)
-        cmd.execute
-      end
-
-      json = JSON.parse(result[:stdout])
-      assert_equal 'Weekly Standup', json['subject']
-    end
-  end
-
-  def test_api_error_handling_list
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub_error('calendarView', Teems::ApiError.new('Forbidden', status_code: 403))
-        cmd = Teems::Commands::Cal.new([], runner: runner)
-        cmd.execute
-      end
-
-      assert_match(/Failed to fetch calendar/, result[:stderr])
-    end
-  end
-
-  def test_api_error_handling_show
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.cache_store.save_calendar_ids({ '1' => 'event-123' })
-        runner.api_client.stub_error('events', Teems::ApiError.new('Not found', status_code: 404))
-        cmd = Teems::Commands::Cal.new(%w[show 1], runner: runner)
-        cmd.execute
-      end
-
-      assert_match(/Failed to fetch event/, result[:stderr])
-    end
-  end
-
-  def test_events_are_numbered_in_output
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        events = [
-          sample_event_data,
-          sample_event_data.merge('id' => 'event-2', 'subject' => 'Lunch Break')
-        ]
-        runner.api_client.stub('calendarView', { 'value' => events })
-        cmd = Teems::Commands::Cal.new([], runner: runner)
-        cmd.execute
-      end
-
+    def test_events_are_numbered_in_output
+      events = [sample_event_data, sample_event_data.merge('id' => 'event-2', 'subject' => 'Lunch Break')]
+      result = run_cal([], stubs: { 'calendarView' => { 'value' => events } })
       assert_match(/\[1\]/, result[:stdout])
       assert_match(/\[2\]/, result[:stdout])
       assert_match(/Weekly Standup/, result[:stdout])
       assert_match(/Lunch Break/, result[:stdout])
     end
-  end
 
-  def test_limit_option_passed_to_api
-    with_temp_config do
-      runner = configured_runner
-      runner.api_client.stub('calendarView', { 'value' => [] })
-      cmd = Teems::Commands::Cal.new(['-n', '10'], runner: runner)
-      cmd.execute
-
-      call = runner.api_client.calls.first
-      assert_equal 10, call[:params]['$top']
+    def test_limit_option_passed_to_api
+      runner = run_cal_runner(['-n', '10'], stubs: { 'calendarView' => { 'value' => [] } })
+      assert_equal 10, runner.api_client.calls.first[:params]['$top']
     end
   end
 
-  # today/tomorrow aliases
+  class ShowAndAliasTest < Minitest::Test
+    include SharedHelpers
 
-  def test_today_alias_lists_events
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub('calendarView', { 'value' => [sample_event_data] })
-        cmd = Teems::Commands::Cal.new(['today'], runner: runner)
-        cmd.execute
+    def test_show_subcommand_without_number
+      result = run_cal(['show'])
+      assert_match(/Event number required/, result[:stderr])
+    end
+
+    def test_show_subcommand_with_uncached_number
+      result = run_cal(%w[show 1])
+      assert_match(/not found/, result[:stderr])
+    end
+
+    def test_show_subcommand_with_cached_event
+      result = run_cal_with_cached_show(%w[show 1], '1', 'AAMkAGVmMDEzMTM4LTZmYWUtNDdkNC1hMDZe')
+      assert_match(/Weekly Standup/, result[:stdout])
+      assert_match(/Conference Room A/, result[:stdout])
+    end
+
+    def test_show_subcommand_with_json
+      result = run_cal_with_cached_show(['show', '1', '--json'], '1', 'event-123')
+      json = JSON.parse(result[:stdout])
+      assert_equal 'Weekly Standup', json['subject']
+    end
+
+    def test_api_error_handling_list
+      with_temp_config do
+        result = capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.api_client.stub_error('calendarView', Teems::ApiError.new('Forbidden', status_code: 403))
+          Teems::Commands::Cal.new([], runner: runner).execute
+        end
+        assert_match(/Failed to fetch calendar/, result[:stderr])
       end
+    end
 
+    def test_api_error_handling_show
+      with_temp_config do
+        result = capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.cache_store.save_calendar_ids({ '1' => 'event-123' })
+          runner.api_client.stub_error('events', Teems::ApiError.new('Not found', status_code: 404))
+          Teems::Commands::Cal.new(%w[show 1], runner: runner).execute
+        end
+        assert_match(/Failed to fetch event/, result[:stderr])
+      end
+    end
+
+    def test_today_alias_lists_events
+      result = run_cal(['today'], stubs: { 'calendarView' => { 'value' => [sample_event_data] } })
       assert_match(/Weekly Standup/, result[:stdout])
     end
-  end
 
-  def test_today_alias_uses_today_date_range
-    with_temp_config do
-      runner = configured_runner
-      runner.api_client.stub('calendarView', { 'value' => [] })
-      cmd = Teems::Commands::Cal.new(['today'], runner: runner)
-      cmd.execute
-
-      call = runner.api_client.calls.first
+    def test_today_alias_uses_today_date_range
+      runner = run_cal_runner(['today'], stubs: { 'calendarView' => { 'value' => [] } })
       today = Date.today.strftime('%Y-%m-%d')
+      call = runner.api_client.calls.first
       assert call[:params]['startDateTime'].start_with?(today), "Expected start to be today (#{today})"
       assert call[:params]['endDateTime'].start_with?(today), "Expected end to be today (#{today})"
     end
-  end
 
-  def test_tomorrow_alias_uses_tomorrow_date
-    with_temp_config do
-      runner = configured_runner
-      runner.api_client.stub('calendarView', { 'value' => [] })
-      cmd = Teems::Commands::Cal.new(['tomorrow'], runner: runner)
-      cmd.execute
-
-      call = runner.api_client.calls.first
+    def test_tomorrow_alias_uses_tomorrow_date
+      runner = run_cal_runner(['tomorrow'], stubs: { 'calendarView' => { 'value' => [] } })
       tomorrow = (Date.today + 1).strftime('%Y-%m-%d')
-      assert call[:params]['startDateTime'].start_with?(tomorrow), "Expected start to be tomorrow (#{tomorrow})"
-      assert call[:params]['endDateTime'].start_with?(tomorrow), "Expected end to be tomorrow (#{tomorrow})"
+      call = runner.api_client.calls.first
+      assert call[:params]['startDateTime'].start_with?(tomorrow), "Expected start: #{tomorrow}"
+      assert call[:params]['endDateTime'].start_with?(tomorrow), "Expected end: #{tomorrow}"
     end
-  end
 
-  def test_tomorrow_alias_with_options
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub('calendarView', { 'value' => [sample_event_data] })
-        cmd = Teems::Commands::Cal.new(['tomorrow', '-v'], runner: runner)
-        cmd.execute
-      end
-
+    def test_tomorrow_alias_with_options
+      result = run_cal(['tomorrow', '-v'], stubs: { 'calendarView' => { 'value' => [sample_event_data] } })
       assert_match(/Weekly Standup/, result[:stdout])
     end
-  end
 
-  def test_help_includes_today_and_tomorrow
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(['--help'], runner: runner)
-        cmd.execute
-      end
-
+    def test_help_includes_today_and_tomorrow
+      result = run_cal(['--help'])
       assert_match(/today/, result[:stdout])
       assert_match(/tomorrow/, result[:stdout])
     end
   end
 
-  # RSVP subcommands
+  class RsvpTest < Minitest::Test
+    include SharedHelpers
 
-  def test_accept_event
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.cache_store.save_calendar_ids({ '1' => 'event-123' })
-        runner.api_client.stub('accept', {})
-        cmd = Teems::Commands::Cal.new(%w[accept 1], runner: runner)
-        cmd.execute
-      end
-
+    def test_accept_event
+      result = run_cal_with_rsvp(%w[accept 1], '1', 'event-123', 'accept')
       assert_match(/accepted/, result[:stdout])
     end
-  end
 
-  def test_accept_sends_correct_api_call
-    with_temp_config do
-      runner = configured_runner
-      runner.cache_store.save_calendar_ids({ '3' => 'event-xyz' })
-      runner.api_client.stub('accept', {})
-      cmd = Teems::Commands::Cal.new(%w[accept 3], runner: runner)
-      cmd.execute
-
+    def test_accept_sends_correct_api_call
+      runner = run_cal_rsvp_runner(%w[accept 3], '3', 'event-xyz', 'accept')
       call = runner.api_client.calls.first
       assert_equal :post, call[:method]
       assert_includes call[:path], '/accept'
       assert_includes call[:path], 'event-xyz'
       assert_equal true, call[:body][:sendResponse]
     end
-  end
 
-  def test_decline_event
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.cache_store.save_calendar_ids({ '2' => 'event-456' })
-        runner.api_client.stub('decline', {})
-        cmd = Teems::Commands::Cal.new(%w[decline 2], runner: runner)
-        cmd.execute
-      end
-
+    def test_decline_event
+      result = run_cal_with_rsvp(%w[decline 2], '2', 'event-456', 'decline')
       assert_match(/declined/, result[:stdout])
     end
-  end
 
-  def test_decline_sends_correct_api_call
-    with_temp_config do
-      runner = configured_runner
-      runner.cache_store.save_calendar_ids({ '1' => 'event-abc' })
-      runner.api_client.stub('decline', {})
-      cmd = Teems::Commands::Cal.new(%w[decline 1], runner: runner)
-      cmd.execute
-
+    def test_decline_sends_correct_api_call
+      runner = run_cal_rsvp_runner(%w[decline 1], '1', 'event-abc', 'decline')
       call = runner.api_client.calls.first
       assert_equal :post, call[:method]
       assert_includes call[:path], '/decline'
     end
-  end
 
-  def test_tentative_event
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.cache_store.save_calendar_ids({ '1' => 'event-789' })
-        runner.api_client.stub('tentativelyAccept', {})
-        cmd = Teems::Commands::Cal.new(%w[tentative 1], runner: runner)
-        cmd.execute
-      end
-
+    def test_tentative_event
+      result = run_cal_with_rsvp(%w[tentative 1], '1', 'event-789', 'tentativelyAccept')
       assert_match(/tentatively accepted/, result[:stdout])
     end
-  end
 
-  def test_tentative_sends_tentativelyAccept_action
-    with_temp_config do
-      runner = configured_runner
-      runner.cache_store.save_calendar_ids({ '1' => 'event-abc' })
-      runner.api_client.stub('tentativelyAccept', {})
-      cmd = Teems::Commands::Cal.new(%w[tentative 1], runner: runner)
-      cmd.execute
-
+    def test_tentative_sends_tentatively_accept_action
+      runner = run_cal_rsvp_runner(%w[tentative 1], '1', 'event-abc', 'tentativelyAccept')
       call = runner.api_client.calls.first
       assert_equal :post, call[:method]
       assert_includes call[:path], '/tentativelyAccept'
     end
-  end
 
-  def test_rsvp_with_comment
-    with_temp_config do
-      runner = configured_runner
-      runner.cache_store.save_calendar_ids({ '1' => 'event-123' })
-      runner.api_client.stub('accept', {})
-      cmd = Teems::Commands::Cal.new(['accept', '1', '--comment', 'Looking forward to it'], runner: runner)
-      cmd.execute
-
-      call = runner.api_client.calls.first
-      assert_equal 'Looking forward to it', call[:body][:comment]
+    def test_rsvp_with_comment
+      runner = run_cal_rsvp_runner(['accept', '1', '--comment', 'Looking forward to it'],
+                                   '1', 'event-123', 'accept')
+      assert_equal 'Looking forward to it', runner.api_client.calls.first[:body][:comment]
     end
-  end
 
-  def test_rsvp_with_no_send
-    with_temp_config do
-      runner = configured_runner
-      runner.cache_store.save_calendar_ids({ '1' => 'event-123' })
-      runner.api_client.stub('decline', {})
-      cmd = Teems::Commands::Cal.new(['decline', '1', '--no-send'], runner: runner)
-      cmd.execute
-
-      call = runner.api_client.calls.first
-      assert_equal false, call[:body][:sendResponse]
+    def test_rsvp_with_no_send
+      runner = run_cal_rsvp_runner(['decline', '1', '--no-send'], '1', 'event-123', 'decline')
+      assert_equal false, runner.api_client.calls.first[:body][:sendResponse]
     end
-  end
 
-  def test_rsvp_without_number
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(['accept'], runner: runner)
-        cmd.execute
-      end
-
+    def test_rsvp_without_number
+      result = run_cal(['accept'])
       assert_match(/Event number required/, result[:stderr])
     end
-  end
 
-  def test_rsvp_with_uncached_number
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(%w[decline 99], runner: runner)
-        cmd.execute
-      end
-
+    def test_rsvp_with_uncached_number
+      result = run_cal(%w[decline 99])
       assert_match(/not found/, result[:stderr])
     end
-  end
 
-  def test_rsvp_api_error
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.cache_store.save_calendar_ids({ '1' => 'event-123' })
-        runner.api_client.stub_error('accept', Teems::ApiError.new('Forbidden', status_code: 403))
-        cmd = Teems::Commands::Cal.new(%w[accept 1], runner: runner)
-        cmd.execute
+    def test_rsvp_api_error
+      with_temp_config do
+        result = capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.cache_store.save_calendar_ids({ '1' => 'event-123' })
+          runner.api_client.stub_error('accept', Teems::ApiError.new('Forbidden', status_code: 403))
+          Teems::Commands::Cal.new(%w[accept 1], runner: runner).execute
+        end
+        assert_match(/Failed to respond to event/, result[:stderr])
       end
-
-      assert_match(/Failed to respond to event/, result[:stderr])
     end
-  end
 
-  def test_rsvp_without_comment_omits_comment_key
-    with_temp_config do
-      runner = configured_runner
-      runner.cache_store.save_calendar_ids({ '1' => 'event-123' })
-      runner.api_client.stub('accept', {})
-      cmd = Teems::Commands::Cal.new(%w[accept 1], runner: runner)
-      cmd.execute
-
-      call = runner.api_client.calls.first
-      refute call[:body].key?(:comment), 'Expected no comment key in body when --comment not provided'
+    def test_rsvp_without_comment_omits_comment_key
+      runner = run_cal_rsvp_runner(%w[accept 1], '1', 'event-123', 'accept')
+      refute runner.api_client.calls.first[:body].key?(:comment),
+             'Expected no comment key in body when --comment not provided'
     end
-  end
 
-  def test_help_includes_rsvp_subcommands
-    with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        cmd = Teems::Commands::Cal.new(['--help'], runner: runner)
-        cmd.execute
-      end
-
+    def test_help_includes_rsvp_subcommands
+      result = run_cal(['--help'])
       assert_match(/accept <N>/, result[:stdout])
       assert_match(/decline <N>/, result[:stdout])
       assert_match(/tentative <N>/, result[:stdout])
@@ -519,108 +345,72 @@ class CalCommandTest < Minitest::Test
     end
   end
 
-  def test_detect_timezone_with_tz_env_iana
-    with_temp_config do
-      original_tz = ENV.fetch('TZ', nil)
-      ENV['TZ'] = 'America/New_York'
-      begin
-        runner = configured_runner
-        cmd = Teems::Commands::Cal.new([], runner: runner)
-        tz = cmd.send(:detect_timezone)
-        assert_equal 'America/New_York', tz
-      ensure
-        ENV['TZ'] = original_tz
+  class TimezoneAndDateRangeTest < Minitest::Test
+    include SharedHelpers
+
+    def test_detect_timezone_with_tz_env_iana
+      with_temp_config do
+        with_tz('America/New_York') do
+          cmd = Teems::Commands::Cal.new([], runner: configured_runner)
+          assert_equal 'America/New_York', cmd.send(:detect_timezone)
+        end
       end
     end
-  end
 
-  def test_detect_timezone_with_tz_env_abbreviation
-    with_temp_config do
-      original_tz = ENV.fetch('TZ', nil)
-      ENV['TZ'] = 'EST'
-      begin
-        runner = configured_runner
-        cmd = Teems::Commands::Cal.new([], runner: runner)
-        tz = cmd.send(:detect_timezone)
-        assert_equal 'America/New_York', tz
-      ensure
-        ENV['TZ'] = original_tz
+    def test_detect_timezone_with_tz_env_abbreviation
+      with_temp_config do
+        with_tz('EST') do
+          cmd = Teems::Commands::Cal.new([], runner: configured_runner)
+          assert_equal 'America/New_York', cmd.send(:detect_timezone)
+        end
       end
     end
-  end
 
-  def test_detect_timezone_with_tz_env_unknown
-    with_temp_config do
-      original_tz = ENV.fetch('TZ', nil)
-      ENV['TZ'] = 'CUSTOM'
-      begin
-        runner = configured_runner
-        cmd = Teems::Commands::Cal.new([], runner: runner)
-        tz = cmd.send(:detect_timezone)
-        assert_equal 'CUSTOM', tz
-      ensure
-        ENV['TZ'] = original_tz
+    def test_detect_timezone_with_tz_env_unknown
+      with_temp_config do
+        with_tz('CUSTOM') do
+          cmd = Teems::Commands::Cal.new([], runner: configured_runner)
+          assert_equal 'CUSTOM', cmd.send(:detect_timezone)
+        end
       end
     end
-  end
 
-  def test_detect_timezone_no_tz_env
-    with_temp_config do
-      original_tz = ENV.fetch('TZ', nil)
-      ENV.delete('TZ')
-      begin
-        runner = configured_runner
-        cmd = Teems::Commands::Cal.new([], runner: runner)
-        tz = cmd.send(:detect_timezone)
-        # Should return a timezone string based on system locale
-        assert_kind_of String, tz
-      ensure
-        ENV['TZ'] = original_tz if original_tz
+    def test_detect_timezone_no_tz_env
+      with_temp_config do
+        with_tz(nil) do
+          cmd = Teems::Commands::Cal.new([], runner: configured_runner)
+          assert_kind_of String, cmd.send(:detect_timezone)
+        end
       end
     end
-  end
 
-  def test_date_range_for_week
-    with_temp_config do
-      runner = configured_runner
-      cmd = Teems::Commands::Cal.new(['--week'], runner: runner)
-      range = cmd.send(:compute_date_range)
-      assert_instance_of Array, range
-      assert_equal 2, range.length
-    end
-  end
-
-  def test_date_range_for_week_on_sunday
-    with_temp_config do
-      runner = configured_runner
-      cmd = Teems::Commands::Cal.new(['--week'], runner: runner)
-      # Stub Date.today to return a Sunday
-      sunday = Date.new(2026, 3, 15) # March 15, 2026 is a Sunday
-      Date.stub(:today, sunday) do
+    def test_date_range_for_week
+      with_temp_config do
+        cmd = Teems::Commands::Cal.new(['--week'], runner: configured_runner)
         range = cmd.send(:compute_date_range)
         assert_instance_of Array, range
-        # Monday should be March 9 (6 days back from Sunday)
-        assert_includes range.first, '2026-03-09'
+        assert_equal 2, range.length
       end
     end
-  end
 
-  def test_event_to_hash_nil_times
-    with_temp_config do
-      runner = configured_runner
-      cmd = Teems::Commands::Cal.new([], runner: runner)
-      event = Teems::Models::Event.new(
-        id: 'e1', subject: 'Test', start_time: nil, end_time: nil,
-        location: nil, is_all_day: false, organizer: nil, attendees: [],
-        body_preview: nil, online_meeting_url: nil, show_as: nil,
-        importance: nil, is_cancelled: false, response_status: nil,
-        sensitivity: nil
-      )
+    def test_date_range_for_week_on_sunday
+      with_temp_config do
+        cmd = Teems::Commands::Cal.new(['--week'], runner: configured_runner)
+        Date.stub(:today, Date.new(2026, 3, 15)) do
+          range = cmd.send(:compute_date_range)
+          assert_instance_of Array, range
+          assert_includes range.first, '2026-03-09'
+        end
+      end
+    end
 
-      hash = cmd.send(:event_to_hash, event)
-
-      assert_nil hash[:start_time]
-      assert_nil hash[:end_time]
+    def test_event_to_hash_nil_times
+      with_temp_config do
+        cmd = Teems::Commands::Cal.new([], runner: configured_runner)
+        hash = cmd.send(:event_to_hash, build_nil_time_event)
+        assert_nil hash[:start_time]
+        assert_nil hash[:end_time]
+      end
     end
   end
 end

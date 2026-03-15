@@ -2,340 +2,336 @@
 
 require 'test_helper'
 
-class ApiClientTest < Minitest::Test
-  def test_endpoints_constant_defined
-    endpoints = Teems::Services::ApiClient::ENDPOINTS
+module ApiClientTests
+  class BasicTest < Minitest::Test
+    def test_endpoints_constant_defined
+      endpoints = Teems::Services::ApiClient::ENDPOINTS
 
-    assert_equal 'https://graph.microsoft.com', endpoints[:graph]
-    assert_equal 'https://teams.microsoft.com', endpoints[:teams]
-    assert_equal 'https://ng.msg.gcc.teams.microsoft.com', endpoints[:msgservice]
-  end
-
-  def test_network_errors_constant_defined
-    errors = Teems::Services::ApiClient::NETWORK_ERRORS
-
-    assert_includes errors, SocketError
-    assert_includes errors, Errno::ECONNREFUSED
-    assert_includes errors, Net::OpenTimeout
-    assert_includes errors, Net::ReadTimeout
-  end
-
-  def test_initializes_with_zero_call_count
-    client = Teems::Services::ApiClient.new
-    assert_equal 0, client.call_count
-  end
-
-  def test_get_raises_for_unknown_endpoint
-    client = Teems::Services::ApiClient.new
-    account = mock_account
-
-    error = assert_raises(ArgumentError) do
-      client.get(:unknown, '/path', account: account)
+      assert_equal 'https://graph.microsoft.com', endpoints[:graph]
+      assert_equal 'https://teams.microsoft.com', endpoints[:teams]
+      assert_equal 'https://ng.msg.gcc.teams.microsoft.com', endpoints[:msgservice]
     end
 
-    assert_match(/Unknown endpoint/, error.message)
-  end
+    def test_network_errors_constant_defined
+      errors = Teems::Services::ApiClient::NETWORK_ERRORS
 
-  def test_post_raises_for_unknown_endpoint
-    client = Teems::Services::ApiClient.new
-    account = mock_account
-
-    error = assert_raises(ArgumentError) do
-      client.post(:unknown, '/path', account: account)
+      assert_includes errors, SocketError
+      assert_includes errors, Errno::ECONNREFUSED
+      assert_includes errors, Net::OpenTimeout
+      assert_includes errors, Net::ReadTimeout
     end
 
-    assert_match(/Unknown endpoint/, error.message)
-  end
-
-  def test_on_request_callback_can_be_set
-    client = Teems::Services::ApiClient.new
-    callback = ->(path, count) { "#{path} #{count}" }
-
-    client.on_request = callback
-
-    assert_equal callback, client.on_request
-  end
-
-  def test_on_response_callback_can_be_set
-    client = Teems::Services::ApiClient.new
-    callback = ->(path, code) { "#{path} #{code}" }
-
-    client.on_response = callback
-
-    assert_equal callback, client.on_response
-  end
-
-  def test_close_does_not_raise
-    client = Teems::Services::ApiClient.new
-
-    # Should not raise even when no connections exist
-    # close returns the cleared hash (empty)
-    client.close
-    # If we get here without exception, test passes
-    pass
-  end
-end
-
-class ApiClientHandleResponseTest < Minitest::Test
-  # Test subclass to expose private methods for testing
-  class ExposedApiClient < Teems::Services::ApiClient
-    public :handle_response, :apply_auth, :resolve_endpoint
-  end
-
-  def test_handle_response_401_raises_unauthorized
-    client = ExposedApiClient.new
-    response = build_http_response('401', 'Unauthorized', '')
-
-    error = assert_raises(Teems::ApiError) { client.handle_response(response) }
-
-    assert_equal 401, error.status_code
-    assert error.unauthorized?
-  end
-
-  def test_handle_response_403_raises_forbidden
-    client = ExposedApiClient.new
-    response = build_http_response('403', 'Forbidden', '')
-
-    error = assert_raises(Teems::ApiError) { client.handle_response(response) }
-
-    assert_equal 403, error.status_code
-    assert error.forbidden?
-  end
-
-  def test_handle_response_429_raises_rate_limited
-    client = ExposedApiClient.new
-    response = build_http_response('429', 'Too Many Requests', '', headers: { 'Retry-After' => '30' })
-
-    error = assert_raises(Teems::ApiError) { client.handle_response(response) }
-
-    assert_equal 429, error.status_code
-    assert error.rate_limited?
-    assert_match(/retry after 30/, error.message)
-  end
-
-  def test_handle_response_500_raises_with_status_code
-    client = ExposedApiClient.new
-    response = build_http_response('500', 'Internal Server Error', '')
-
-    error = assert_raises(Teems::ApiError) { client.handle_response(response) }
-
-    assert_equal 500, error.status_code
-    assert_match(/HTTP 500/, error.message)
-  end
-
-  def test_handle_response_200_parses_json
-    client = ExposedApiClient.new
-    response = build_http_response('200', 'OK', '{"key":"value"}')
-
-    result = client.handle_response(response)
-
-    assert_equal({ 'key' => 'value' }, result)
-  end
-
-  def test_apply_auth_graph_uses_bearer
-    client = ExposedApiClient.new
-    account = mock_account
-    request = Net::HTTP::Get.new('/')
-
-    client.apply_auth(request, account, :graph)
-
-    assert request['Authorization'].start_with?('Bearer ')
-    assert_equal 'application/json', request['Content-Type']
-  end
-
-  def test_apply_auth_msgservice_uses_skype
-    client = ExposedApiClient.new
-    account = mock_account
-    request = Net::HTTP::Get.new('/')
-
-    client.apply_auth(request, account, :msgservice)
-
-    assert request['Authentication'].start_with?('skypetoken=')
-  end
-
-  def test_apply_auth_teams_uses_bearer_skype_token
-    client = ExposedApiClient.new
-    account = mock_account
-    request = Net::HTTP::Get.new('/')
-
-    client.apply_auth(request, account, :teams)
-
-    assert request['Authorization'].start_with?('Bearer ')
-  end
-
-  def test_resolve_endpoint_raises_for_unknown
-    client = ExposedApiClient.new
-
-    assert_raises(ArgumentError) { client.resolve_endpoint(:unknown) }
-  end
-
-  # Real-ish mock HTTP responses using Net::HTTP class hierarchy
-  def build_http_response(code, message, body, headers: {})
-    response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, message)
-    response.instance_variable_set(:@body, body)
-    response.instance_variable_set(:@read, true)
-    headers.each { |k, v| response[k] = v }
-    response
-  end
-end
-
-class ApiClientCallbacksTest < Minitest::Test
-  def test_on_request_callback_receives_path_and_count
-    mock_client = Teems::TestHelpers::MockApiClient.new
-    mock_client.stub('joinedTeams', { 'value' => [] })
-    calls = []
-    mock_client.on_request = ->(path, count) { calls << [path, count] }
-    account = mock_account
-
-    Teems::Api::Channels.new(mock_client, account).list_teams
-
-    assert_equal 1, calls.length
-    assert_includes calls.first[0], 'joinedTeams'
-    assert_equal 1, calls.first[1]
-  end
-
-  def test_on_response_callback_receives_path_and_status
-    mock_client = Teems::TestHelpers::MockApiClient.new
-    mock_client.stub('joinedTeams', { 'value' => [] })
-    calls = []
-    mock_client.on_response = ->(path, code) { calls << [path, code] }
-    account = mock_account
-
-    Teems::Api::Channels.new(mock_client, account).list_teams
-
-    assert_equal 1, calls.length
-    assert_equal '200', calls.first[1]
-  end
-end
-
-class ApiClientResponseHandlingTest < Minitest::Test
-  # Test subclass to expose private methods for testing
-  class TestableApiClient < Teems::Services::ApiClient
-    public :parse_json_body, :raise_rate_limit
-  end
-
-  def test_parse_json_body_handles_json
-    client = TestableApiClient.new
-    response = MockBody.new('{"key": "value"}')
-
-    result = client.parse_json_body(response)
-
-    assert_equal({ 'key' => 'value' }, result)
-  end
-
-  def test_parse_json_body_handles_empty_body
-    client = TestableApiClient.new
-    response = MockBody.new('')
-
-    result = client.parse_json_body(response)
-
-    assert_equal({}, result)
-  end
-
-  def test_parse_json_body_handles_nil_body
-    client = TestableApiClient.new
-    response = MockBody.new(nil)
-
-    result = client.parse_json_body(response)
-
-    assert_equal({}, result)
-  end
-
-  def test_parse_json_body_raises_on_invalid_json
-    client = TestableApiClient.new
-    response = MockBody.new('not json')
-
-    error = assert_raises(Teems::ApiError) do
-      client.parse_json_body(response)
+    def test_initializes_with_zero_call_count
+      client = Teems::Services::ApiClient.new
+      assert_equal 0, client.call_count
     end
 
-    assert_match(/Invalid JSON/, error.message)
-  end
+    def test_get_raises_for_unknown_endpoint
+      client = Teems::Services::ApiClient.new
+      account = mock_account
 
-  def test_raise_rate_limit_with_retry_after
-    client = TestableApiClient.new
-    response = MockRateLimit.new('60')
+      error = assert_raises(ArgumentError) do
+        client.get(:unknown, '/path', account: account)
+      end
 
-    error = assert_raises(Teems::ApiError) do
-      client.raise_rate_limit(response)
+      assert_match(/Unknown endpoint/, error.message)
     end
 
-    assert_match(/retry after 60/, error.message)
-    assert_equal 429, error.status_code
-  end
+    def test_post_raises_for_unknown_endpoint
+      client = Teems::Services::ApiClient.new
+      account = mock_account
 
-  def test_raise_rate_limit_without_retry_after
-    client = TestableApiClient.new
-    response = MockRateLimit.new(nil)
+      error = assert_raises(ArgumentError) do
+        client.post(:unknown, '/path', account: account)
+      end
 
-    error = assert_raises(Teems::ApiError) do
-      client.raise_rate_limit(response)
+      assert_match(/Unknown endpoint/, error.message)
     end
 
-    assert_match(/Rate limited/, error.message)
-    assert_equal 429, error.status_code
-  end
+    def test_on_request_callback_can_be_set
+      client = Teems::Services::ApiClient.new
+      callback = ->(path, count) { "#{path} #{count}" }
 
-  # Simple mocks for response body testing
-  class MockBody
-    attr_reader :body
+      client.on_request = callback
 
-    def initialize(body)
-      @body = body
+      assert_equal callback, client.on_request
+    end
+
+    def test_on_response_callback_can_be_set
+      client = Teems::Services::ApiClient.new
+      callback = ->(path, code) { "#{path} #{code}" }
+
+      client.on_response = callback
+
+      assert_equal callback, client.on_response
+    end
+
+    def test_close_does_not_raise
+      client = Teems::Services::ApiClient.new
+
+      client.close
+      pass
     end
   end
 
-  class MockRateLimit
-    def initialize(retry_after)
-      @retry_after = retry_after
+  class HandleResponseTest < Minitest::Test
+    class ExposedApiClient < Teems::Services::ApiClient
+      public :handle_response, :apply_auth, :resolve_endpoint
     end
 
-    def [](key)
-      @retry_after if key == 'Retry-After'
+    def test_handle_response_401_raises_unauthorized
+      client = ExposedApiClient.new
+      response = build_http_response('401', 'Unauthorized', '')
+
+      error = assert_raises(Teems::ApiError) { client.handle_response(response) }
+
+      assert_equal 401, error.status_code
+      assert error.unauthorized?
+    end
+
+    def test_handle_response_403_raises_forbidden
+      client = ExposedApiClient.new
+      response = build_http_response('403', 'Forbidden', '')
+
+      error = assert_raises(Teems::ApiError) { client.handle_response(response) }
+
+      assert_equal 403, error.status_code
+      assert error.forbidden?
+    end
+
+    def test_handle_response_429_raises_rate_limited
+      client = ExposedApiClient.new
+      response = build_http_response('429', 'Too Many Requests', '', headers: { 'Retry-After' => '30' })
+
+      error = assert_raises(Teems::ApiError) { client.handle_response(response) }
+
+      assert_equal 429, error.status_code
+      assert error.rate_limited?
+      assert_match(/retry after 30/, error.message)
+    end
+
+    def test_handle_response_500_raises_with_status_code
+      client = ExposedApiClient.new
+      response = build_http_response('500', 'Internal Server Error', '')
+
+      error = assert_raises(Teems::ApiError) { client.handle_response(response) }
+
+      assert_equal 500, error.status_code
+      assert_match(/HTTP 500/, error.message)
+    end
+
+    def test_handle_response_200_parses_json
+      client = ExposedApiClient.new
+      response = build_http_response('200', 'OK', '{"key":"value"}')
+
+      result = client.handle_response(response)
+
+      assert_equal({ 'key' => 'value' }, result)
+    end
+
+    def test_apply_auth_graph_uses_bearer
+      client = ExposedApiClient.new
+      account = mock_account
+      request = Net::HTTP::Get.new('/')
+
+      client.apply_auth(request, account, :graph)
+
+      assert request['Authorization'].start_with?('Bearer ')
+      assert_equal 'application/json', request['Content-Type']
+    end
+
+    def test_apply_auth_msgservice_uses_skype
+      client = ExposedApiClient.new
+      account = mock_account
+      request = Net::HTTP::Get.new('/')
+
+      client.apply_auth(request, account, :msgservice)
+
+      assert request['Authentication'].start_with?('skypetoken=')
+    end
+
+    def test_apply_auth_teams_uses_bearer_skype_token
+      client = ExposedApiClient.new
+      account = mock_account
+      request = Net::HTTP::Get.new('/')
+
+      client.apply_auth(request, account, :teams)
+
+      assert request['Authorization'].start_with?('Bearer ')
+    end
+
+    def test_resolve_endpoint_raises_for_unknown
+      client = ExposedApiClient.new
+
+      assert_raises(ArgumentError) { client.resolve_endpoint(:unknown) }
+    end
+
+    def build_http_response(code, message, body, headers: {})
+      response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, message)
+      response.instance_variable_set(:@body, body)
+      response.instance_variable_set(:@read, true)
+      headers.each { |k, v| response[k] = v }
+      response
     end
   end
-end
 
-class ApiErrorTest < Minitest::Test
-  def test_status_code_is_nil_by_default
-    error = Teems::ApiError.new('Some error')
-    assert_nil error.status_code
+  class CallbacksTest < Minitest::Test
+    def test_on_request_callback_receives_path_and_count
+      calls = []
+      client = build_mock_client_with_callback(:on_request) { |path, count| calls << [path, count] }
+      Teems::Api::Channels.new(client, mock_account).list_teams
+
+      assert_equal 1, calls.length
+      assert_includes calls.first[0], 'joinedTeams'
+      assert_equal 1, calls.first[1]
+    end
+
+    def test_on_response_callback_receives_path_and_status
+      calls = []
+      client = build_mock_client_with_callback(:on_response) { |path, code| calls << [path, code] }
+      Teems::Api::Channels.new(client, mock_account).list_teams
+
+      assert_equal 1, calls.length
+      assert_equal '200', calls.first[1]
+    end
+
+    private
+
+    def build_mock_client_with_callback(callback_name, &block)
+      client = Teems::TestHelpers::MockApiClient.new
+      client.stub('joinedTeams', { 'value' => [] })
+      client.send(:"#{callback_name}=", block)
+      client
+    end
   end
 
-  def test_status_code_can_be_set
-    error = Teems::ApiError.new('Not Found', status_code: 404)
-    assert_equal 404, error.status_code
+  class ResponseHandlingTest < Minitest::Test
+    class TestableApiClient < Teems::Services::ApiClient
+      public :parse_json_body, :raise_rate_limit
+    end
+
+    def test_parse_json_body_handles_json
+      client = TestableApiClient.new
+      response = MockBody.new('{"key": "value"}')
+
+      result = client.parse_json_body(response)
+
+      assert_equal({ 'key' => 'value' }, result)
+    end
+
+    def test_parse_json_body_handles_empty_body
+      client = TestableApiClient.new
+      response = MockBody.new('')
+
+      result = client.parse_json_body(response)
+
+      assert_equal({}, result)
+    end
+
+    def test_parse_json_body_handles_nil_body
+      client = TestableApiClient.new
+      response = MockBody.new(nil)
+
+      result = client.parse_json_body(response)
+
+      assert_equal({}, result)
+    end
+
+    def test_parse_json_body_raises_on_invalid_json
+      client = TestableApiClient.new
+      response = MockBody.new('not json')
+
+      error = assert_raises(Teems::ApiError) do
+        client.parse_json_body(response)
+      end
+
+      assert_match(/Invalid JSON/, error.message)
+    end
+
+    def test_raise_rate_limit_with_retry_after
+      client = TestableApiClient.new
+      response = MockRateLimit.new('60')
+
+      error = assert_raises(Teems::ApiError) do
+        client.raise_rate_limit(response)
+      end
+
+      assert_match(/retry after 60/, error.message)
+      assert_equal 429, error.status_code
+    end
+
+    def test_raise_rate_limit_without_retry_after
+      client = TestableApiClient.new
+      response = MockRateLimit.new(nil)
+
+      error = assert_raises(Teems::ApiError) do
+        client.raise_rate_limit(response)
+      end
+
+      assert_match(/Rate limited/, error.message)
+      assert_equal 429, error.status_code
+    end
+
+    class MockBody
+      attr_reader :body
+
+      def initialize(body)
+        @body = body
+      end
+    end
+
+    class MockRateLimit
+      def initialize(retry_after)
+        @retry_after = retry_after
+      end
+
+      def [](key)
+        @retry_after if key == 'Retry-After'
+      end
+    end
   end
 
-  def test_not_found_predicate
-    assert Teems::ApiError.new('Not Found', status_code: 404).not_found?
-    refute Teems::ApiError.new('Server Error', status_code: 500).not_found?
-    refute Teems::ApiError.new('No status').not_found?
-  end
+  class ErrorTest < Minitest::Test
+    def test_status_code_is_nil_by_default
+      error = Teems::ApiError.new('Some error')
+      assert_nil error.status_code
+    end
 
-  def test_unauthorized_predicate
-    assert Teems::ApiError.new('Unauthorized', status_code: 401).unauthorized?
-    refute Teems::ApiError.new('Not Found', status_code: 404).unauthorized?
-  end
+    def test_status_code_can_be_set
+      error = Teems::ApiError.new('Not Found', status_code: 404)
+      assert_equal 404, error.status_code
+    end
 
-  def test_forbidden_predicate
-    assert Teems::ApiError.new('Forbidden', status_code: 403).forbidden?
-    refute Teems::ApiError.new('Not Found', status_code: 404).forbidden?
-  end
+    def test_not_found_predicate
+      assert Teems::ApiError.new('Not Found', status_code: 404).not_found?
+      refute Teems::ApiError.new('Server Error', status_code: 500).not_found?
+      refute Teems::ApiError.new('No status').not_found?
+    end
 
-  def test_rate_limited_predicate
-    assert Teems::ApiError.new('Rate limited', status_code: 429).rate_limited?
-    refute Teems::ApiError.new('Not Found', status_code: 404).rate_limited?
-  end
+    def test_unauthorized_predicate
+      assert Teems::ApiError.new('Unauthorized', status_code: 401).unauthorized?
+      refute Teems::ApiError.new('Not Found', status_code: 404).unauthorized?
+    end
 
-  def test_message_is_preserved
-    error = Teems::ApiError.new('HTTP 404: Not Found', status_code: 404)
-    assert_equal 'HTTP 404: Not Found', error.message
-  end
+    def test_forbidden_predicate
+      assert Teems::ApiError.new('Forbidden', status_code: 403).forbidden?
+      refute Teems::ApiError.new('Not Found', status_code: 404).forbidden?
+    end
 
-  def test_backwards_compatible_with_positional_message
-    error = Teems::ApiError.new('Legacy error')
-    assert_equal 'Legacy error', error.message
-    assert_nil error.status_code
+    def test_rate_limited_predicate
+      assert Teems::ApiError.new('Rate limited', status_code: 429).rate_limited?
+      refute Teems::ApiError.new('Not Found', status_code: 404).rate_limited?
+    end
+
+    def test_message_is_preserved
+      error = Teems::ApiError.new('HTTP 404: Not Found', status_code: 404)
+      assert_equal 'HTTP 404: Not Found', error.message
+    end
+
+    def test_backwards_compatible_with_positional_message
+      error = Teems::ApiError.new('Legacy error')
+      assert_equal 'Legacy error', error.message
+      assert_nil error.status_code
+    end
   end
 end
