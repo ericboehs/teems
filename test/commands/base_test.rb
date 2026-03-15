@@ -112,6 +112,15 @@ class BaseCommandTest < Minitest::Test
     end
   end
 
+  def test_check_unknown_options_returns_nil_when_none
+    with_temp_config do
+      runner = test_runner
+      cmd = TestCommand.new([], runner: runner)
+
+      assert_nil cmd.send(:check_unknown_options)
+    end
+  end
+
   def test_show_help_returns_true_with_help_flag
     with_temp_config do
       runner = test_runner
@@ -212,7 +221,7 @@ class BaseCommandOutputTest < Minitest::Test
   def test_debug_outputs_with_verbose
     with_temp_config do
       err = StringIO.new
-      verbose_output = Teems::Formatters::Output.new(err: err, color: false, verbose: true)
+      verbose_output = Teems::Formatters::Output.new(err: err, color: false, mode: :verbose)
       runner = test_runner(output: verbose_output)
       cmd = OutputTestCommand.new(['-v'], runner: runner)
       cmd.send(:debug, 'Debug info')

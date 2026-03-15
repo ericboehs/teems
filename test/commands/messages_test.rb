@@ -177,7 +177,7 @@ class MessagesCommandUrlParsingTest < Minitest::Test
   def test_url_with_verbose_shows_debug
     with_temp_config do
       err = StringIO.new
-      output = Teems::Formatters::Output.new(err: err, color: false, verbose: true)
+      output = Teems::Formatters::Output.new(err: err, color: false, mode: :verbose)
       runner = configured_runner(output: output)
       runner.api_client.stub('messages', { 'messages' => [] })
       cmd = Teems::Commands::Messages.new(

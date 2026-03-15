@@ -231,11 +231,11 @@ module Teems
         '--auth' => ->(opts, _args) { opts[:auth] = true }
       }.freeze
 
-      def handle_option(arg, args, _remaining)
+      def handle_option(arg, pending)
         handler = SYNC_OPTIONS[arg]
         return super unless handler
 
-        handler.call(@options, args)
+        handler.call(@options, pending)
       end
 
       def help_text = SYNC_HELP

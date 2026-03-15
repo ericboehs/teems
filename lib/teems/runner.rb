@@ -5,19 +5,18 @@ module Teems
   class Runner
     attr_reader :output, :config, :token_store, :api_client, :cache_store
 
-    # :reek:ControlParameter - DI constructor with lazy defaults
     def initialize(
-      output: nil,
-      config: nil,
-      token_store: nil,
-      api_client: nil,
-      cache_store: nil
+      output: Formatters::Output.new,
+      config: Services::Configuration.new,
+      token_store: Services::TokenStore.new,
+      api_client: Services::ApiClient.new,
+      cache_store: Services::CacheStore.new
     )
-      @output = output || Formatters::Output.new
-      @config = config || Services::Configuration.new
-      @token_store = token_store || Services::TokenStore.new
-      @api_client = api_client || Services::ApiClient.new
-      @cache_store = cache_store || Services::CacheStore.new
+      @output = output
+      @config = config
+      @token_store = token_store
+      @api_client = api_client
+      @cache_store = cache_store
 
       wire_up_warnings
     end
@@ -78,11 +77,6 @@ module Teems
     # Attempt to refresh the skype_token
     def refresh_tokens
       token_refresher.refresh
-    end
-
-    # :reek:UtilityFunction - delegates to ErrorLogger; self provides the public API surface
-    def log_error(error)
-      Support::ErrorLogger.log(error)
     end
 
     private

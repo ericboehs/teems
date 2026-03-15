@@ -51,11 +51,11 @@ module Teems
         '--team' => ->(opts, args) { opts[:team_id] = args.shift }
       }.freeze
 
-      def handle_option(arg, args, _remaining)
+      def handle_option(arg, pending)
         handler = MESSAGES_OPTIONS[arg]
         return super unless handler
 
-        handler.call(@options, args)
+        handler.call(@options, pending)
       end
 
       def help_text = MESSAGES_HELP
@@ -96,7 +96,7 @@ module Teems
       def fetch_channel_messages(channel_id)
         response = with_token_refresh do
           runner.messages_api.channel_messages(
-            team_id: @options[:team_id], channel_id: channel_id, limit: @options[:limit]
+            channel_id: channel_id, limit: @options[:limit]
           )
         end
         display_messages(extract_messages_data(response))

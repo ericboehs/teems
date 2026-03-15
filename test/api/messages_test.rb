@@ -32,7 +32,7 @@ class MessagesApiTest < Minitest::Test
   def test_channel_messages_calls_correct_endpoint
     @api_client.stub('messages', { 'messages' => [] })
 
-    @messages_api.channel_messages(team_id: 'team-1', channel_id: '19:chan@thread.tacv2')
+    @messages_api.channel_messages(channel_id: '19:chan@thread.tacv2')
 
     call = @api_client.calls.first
     assert_equal :get, call[:method]

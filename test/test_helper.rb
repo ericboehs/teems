@@ -22,12 +22,12 @@ module Teems
     end
 
     def test_runner(output: nil, config: nil, token_store: nil, api_client: nil)
-      Runner.new(
+      Runner.new(**{
         output: output || test_output,
         config: config,
         token_store: token_store,
         api_client: api_client
-      )
+      }.compact)
     end
 
     def with_temp_config

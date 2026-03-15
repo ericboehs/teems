@@ -262,11 +262,11 @@ module Teems
         '--no-send' => ->(opts, _args) { opts[:no_send] = true }
       }.freeze
 
-      def handle_option(arg, args, _remaining)
+      def handle_option(arg, pending)
         handler = CAL_OPTIONS[arg]
         return super unless handler
 
-        handler.call(@options, args)
+        handler.call(@options, pending)
       end
 
       def help_text = CAL_HELP

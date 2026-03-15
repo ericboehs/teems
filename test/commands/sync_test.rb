@@ -584,7 +584,7 @@ class SyncCommandTest < Minitest::Test
     with_temp_config do
       out = StringIO.new
       err = StringIO.new
-      verbose_output = Teems::Formatters::Output.new(io: out, err: err, color: false, verbose: true)
+      verbose_output = Teems::Formatters::Output.new(io: out, err: err, color: false, mode: :verbose)
       runner = configured_runner(output: verbose_output)
       runner.api_client.stub('conversations', { 'conversations' => [] })
       cmd = Teems::Commands::Sync.new(['-v'], runner: runner)
@@ -804,7 +804,7 @@ class SyncCommandTest < Minitest::Test
     with_temp_config do
       err = StringIO.new
       out = StringIO.new
-      verbose_output = Teems::Formatters::Output.new(io: out, err: err, color: false, verbose: true)
+      verbose_output = Teems::Formatters::Output.new(io: out, err: err, color: false, mode: :verbose)
       runner = configured_runner(output: verbose_output)
       runner.api_client.stub('conversations', {
                                'conversations' => [sample_ngmsg_chat]
