@@ -60,127 +60,125 @@ if branch_percent
   puts ''
 end
 
+def format_range(range)
+  range.length == 1 ? range.first.to_s : "#{range.first}-#{range.last}"
+end
+
+def format_line_ranges(lines)
+  return '' if lines.empty?
+
+  ranges = lines.map(&:to_i).sort.slice_when { |a, b| b != a + 1 }.map { |c| format_range(c) }
+  "L#{ranges.join(', L')}"
+end
+
+def file_fully_covered?(row)
+  line_cov = row.css('.t-file__coverage').first&.text&.strip
+  branch_cov = row.css('.t-file__branch-coverage').first&.text&.strip
+  line_cov == '100.00 %' && (!branch_cov || branch_cov == '100.00 %')
+end
+
+def collect_files_with_issues(doc)
+  files_shown = Set.new
+  doc.css('tbody .t-file').reject { |row| file_fully_covered?(row) }.each_with_object([]) do |row, files|
+    name = row.css('.t-file__name a').first&.text&.strip
+    next if files_shown.include?(name)
+
+    files_shown.add(name)
+    files << row
+  end
+end
+
+def classify_line(item)
+  cls = item.attr('class')
+  return :missed_branch if cls&.include?('missed-branch')
+  return :missed_line if cls&.include?('missed')
+
+  nil
+end
+
+def extract_line_details(file_section)
+  missed_lines = []
+  missed_branches = []
+  file_section.css('li').each do |item|
+    case classify_line(item)
+    when :missed_branch then missed_branches << item.attr('data-linenumber')
+    when :missed_line then missed_lines << item.attr('data-linenumber')
+    end
+  end
+  [missed_lines, missed_branches]
+end
+
+def file_section_for(doc, file_link)
+  return nil unless file_link
+
+  section = doc.css("##{file_link.delete('#')}")
+  section.any? ? section : nil
+end
+
+def parse_line_summary(section)
+  text = section.css('.t-line-summary').text
+  total = text.match(/(\d+)\s+relevant\s+lines/)&.captures&.first.to_i
+  covered = text.match(/(\d+)\s+lines\s+covered/)&.captures&.first.to_i
+  [total, covered]
+end
+
+def parse_branch_summary(section)
+  spans = section.css('.t-branch-summary span b')
+  return [0, 0] unless spans.any?
+
+  [spans[0]&.text.to_i, spans[1]&.text.to_i]
+end
+
+def css_text(row, selector)
+  row.css(selector).first&.text&.strip
+end
+
+def extract_row_fields(row)
+  name_link = row.css('.t-file__name a').first
+  { name: name_link&.text&.strip, link: name_link&.attr('href'),
+    line_cov: css_text(row, '.t-file__coverage'),
+    branch_cov: css_text(row, '.t-file__branch-coverage') }
+end
+
+def print_file_coverage(row, doc)
+  fields = extract_row_fields(row)
+  section = file_section_for(doc, fields[:link])
+
+  branch_display = fields[:branch_cov] ? "Branch: #{fields[:branch_cov]}" : 'Branch: N/A'
+  puts "  #{fields[:name]} (Line: #{fields[:line_cov]}, #{branch_display}):"
+  print_details(section) if section
+  puts ''
+end
+
+def print_details(section)
+  total_lines, covered_lines = parse_line_summary(section)
+  total_branches, covered_branches = parse_branch_summary(section)
+  missed_lines, missed_branches = extract_line_details(section)
+
+  line_info = "Lines: #{covered_lines}/#{total_lines}"
+  line_info += " (missed: #{format_line_ranges(missed_lines)})" unless missed_lines.empty?
+  puts "         #{line_info}"
+
+  return unless total_branches.positive?
+
+  branch_info = "Branches: #{covered_branches}/#{total_branches}"
+  branch_info += " (missed: #{format_line_ranges(missed_branches)})" unless missed_branches.empty?
+  puts "         #{branch_info}"
+end
+
 # Show file-by-file breakdown if there are missed lines or branches
 if missed_lines.to_i.positive? || overall_missed_branches&.to_i&.positive?
-  files_with_issues = []
-  files_shown = Set.new
-
-  doc.css('tbody .t-file').each do |row|
-    file_name = row.css('.t-file__name a').first&.text&.strip
-    line_coverage = row.css('.t-file__coverage').first&.text&.strip
-    branch_coverage = row.css('.t-file__branch-coverage').first&.text&.strip
-
-    should_skip = files_shown.include?(file_name) ||
-                  (line_coverage == '100.00 %' && (!branch_coverage || branch_coverage == '100.00 %'))
-    next if should_skip
-
-    files_shown.add(file_name)
-    files_with_issues << row
-  end
-
-  total_files_with_issues = files_with_issues.length
+  files_with_issues = collect_files_with_issues(doc)
   files_to_show = files_with_issues.take(50)
 
   puts '### Files with missing coverage:'
   puts ''
-  if total_files_with_issues > 50
-    puts "Showing top 50 of #{total_files_with_issues} files with missing coverage:"
+  if files_with_issues.length > 50
+    puts "Showing top 50 of #{files_with_issues.length} files with missing coverage:"
     puts ''
   end
 
-  def format_line_ranges(lines)
-    return '' if lines.empty?
-
-    ranges = []
-    current_range = [lines.first.to_i]
-
-    lines.map(&:to_i).sort[1..]&.each do |line|
-      if line == current_range.last + 1
-        current_range << line
-      else
-        ranges << format_range(current_range)
-        current_range = [line]
-      end
-    end
-    ranges << format_range(current_range)
-
-    "L#{ranges.join(', L')}"
-  end
-
-  def format_range(range)
-    if range.length == 1
-      range.first.to_s
-    else
-      "#{range.first}-#{range.last}"
-    end
-  end
-
-  files_to_show.each do |row|
-    file_name = row.css('.t-file__name a').first&.text&.strip
-    line_coverage = row.css('.t-file__coverage').first&.text&.strip
-    branch_coverage = row.css('.t-file__branch-coverage').first&.text&.strip
-    file_link = row.css('.t-file__name a').first&.attr('href')
-
-    missed_lines_list = []
-    missed_branches = []
-    total_file_lines = 0
-    covered_file_lines = 0
-
-    if file_link
-      file_id = file_link.gsub('#', '')
-      file_section = doc.css("##{file_id}")
-
-      if file_section.any?
-        line_summary = file_section.css('.t-line-summary')
-        if line_summary.any?
-          summary_text = line_summary.text
-          total_file_lines = Regexp.last_match(1).to_i if summary_text.match(/(\d+)\s+relevant\s+lines/)
-          covered_file_lines = Regexp.last_match(1).to_i if summary_text.match(/(\d+)\s+lines\s+covered/)
-        end
-
-        file_section.css('li').each do |line_item|
-          line_number = line_item.attr('data-linenumber')
-          line_class = line_item.attr('class')
-
-          if line_class&.include?('missed') && !line_class.include?('missed-branch')
-            missed_lines_list << line_number
-          elsif line_class&.include?('missed-branch')
-            missed_branches << line_number
-          end
-        end
-      end
-    end
-
-    covered_branches = 0
-    total_branches = 0
-
-    if file_link
-      file_id = file_link.gsub('#', '')
-      file_section = doc.css("##{file_id}")
-      branch_summary = file_section.css('.t-branch-summary')
-
-      if branch_summary.any?
-        branch_spans = branch_summary.css('span b')
-        total_branches = branch_spans[0]&.text.to_i
-        covered_branches = branch_spans[1]&.text.to_i
-      end
-    end
-
-    branch_display = branch_coverage ? "Branch: #{branch_coverage}" : 'Branch: N/A'
-    puts "  #{file_name} (Line: #{line_coverage}, #{branch_display}):"
-
-    line_info = "Lines: #{covered_file_lines}/#{total_file_lines}"
-    line_info += " (missed: #{format_line_ranges(missed_lines_list)})" unless missed_lines_list.empty?
-    puts "         #{line_info}"
-
-    if total_branches.positive?
-      branch_info = "Branches: #{covered_branches}/#{total_branches}"
-      branch_info += " (missed: #{format_line_ranges(missed_branches)})" unless missed_branches.empty?
-      puts "         #{branch_info}"
-    end
-
-    puts ''
-  end
+  files_to_show.each { |row| print_file_coverage(row, doc) }
 end
 
 # Write to GitHub Actions job summary if available
