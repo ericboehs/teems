@@ -6,8 +6,12 @@ module SyncCommandTests
   module SharedFixtures
     private
 
+    def msg_response
+      { 'messages' => [sample_ng_msg_message], '_metadata' => {} }
+    end
+
     def msg_stub
-      { 'messages' => { 'messages' => [sample_ng_msg_message], '_metadata' => {} } }
+      { 'messages' => msg_response }
     end
 
     def old_message_fixture
@@ -373,7 +377,7 @@ module SyncCommandTests
     def test_sync_skips_system_streams
       chats = [sample_ngmsg_chat,
                { 'id' => '48:notifications', 'threadProperties' => { 'threadType' => 'chat' } }]
-      result = with_temp_config { run_sync_with_chat_list(chats: chats, msg_stub: msg_stub, args: ['-v']) }
+      result = with_temp_config { run_sync_with_chat_list(chats: chats, msg_stub: msg_response, args: ['-v']) }
 
       assert_match(/Sync complete/, result[:stdout])
       assert_match(/Chats synced: 1/, result[:stdout])
@@ -388,14 +392,14 @@ module SyncCommandTests
     end
 
     def test_since_time_uses_default_when_not_set
-      result = with_temp_config { run_sync_with_chat_list(chats: [sample_ngmsg_chat], msg_stub: msg_stub) }
+      result = with_temp_config { run_sync_with_chat_list(chats: [sample_ngmsg_chat], msg_stub: msg_response) }
 
       assert_match(/Sync complete/, result[:stdout])
       with_temp_config { refute build_cmd([]).options[:since_days] }
     end
 
     def test_non_verbose_sync_api_logging
-      result = with_temp_config { run_sync_with_chat_list(chats: [sample_ngmsg_chat], msg_stub: msg_stub) }
+      result = with_temp_config { run_sync_with_chat_list(chats: [sample_ngmsg_chat], msg_stub: msg_response) }
 
       assert_match(/Sync complete/, result[:stdout])
     end
