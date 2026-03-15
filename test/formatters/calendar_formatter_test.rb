@@ -223,6 +223,154 @@ class CalendarFormatterTest < Minitest::Test
     refute_includes result, '()'
   end
 
+  def test_format_event_detail_nil_organizer
+    event = build_event(organizer: nil)
+
+    result = @formatter.format_event_detail(event)
+
+    refute_includes result, 'Organizer:'
+  end
+
+  def test_format_event_detail_nil_start_end_time
+    event = build_event(start_time: nil, end_time: nil, is_all_day: false)
+
+    result = @formatter.format_event_detail(event)
+
+    assert_includes result, '(unknown)'
+  end
+
+  def test_format_event_detail_show_as
+    event = build_event(show_as: 'tentative')
+
+    result = @formatter.format_event_detail(event)
+
+    assert_includes result, 'tentative'
+  end
+
+  def test_format_event_detail_empty_body_preview
+    event = build_event(body_preview: '   ')
+
+    result = @formatter.format_event_detail(event)
+
+    refute_includes result, 'Description:'
+  end
+
+  def test_format_event_list_verbose_no_organizer
+    events = [build_event(organizer: nil)]
+
+    result = @formatter.format_event_list(events, verbose: true)
+
+    refute_includes result, 'Organizer:'
+  end
+
+  def test_format_event_list_verbose_no_attendees
+    events = [build_event(attendees: [], organizer: nil)]
+
+    result = @formatter.format_event_list(events, verbose: true)
+
+    # No verbose suffix when no organizer and no attendees
+    refute_includes result, '|'
+  end
+
+  def test_response_label_unknown_response
+    formatter = Teems::Formatters::CalendarAttendeeFormatter
+    label = formatter.instance_method(:response_label).bind_call(@formatter, 'customStatus')
+
+    assert_equal 'Customstatus', label
+  end
+
+  def test_response_label_nil_response
+    formatter = Teems::Formatters::CalendarAttendeeFormatter
+    label = formatter.instance_method(:response_label).bind_call(@formatter, nil)
+
+    assert_equal 'Pending', label
+  end
+
+  def test_format_untyped_attendees
+    attendees = [
+      { name: 'Unknown Type', email: 'u@test.com', type: 'resource', response: 'accepted' }
+    ]
+    event = build_event(attendees: attendees)
+
+    result = @formatter.format_event_detail(event)
+
+    assert_includes result, 'Attendees:'
+    assert_includes result, 'Unknown Type'
+  end
+
+  def test_time_range_display_no_times
+    event = build_event(start_time: nil, end_time: nil, is_all_day: false)
+
+    assert_equal '', event.time_range_display
+  end
+
+  def test_attendee_without_name_uses_email
+    attendees = [
+      { name: nil, email: 'noname@test.com', type: 'required', response: 'accepted' }
+    ]
+    event = build_event(attendees: attendees)
+
+    result = @formatter.format_event_detail(event)
+
+    assert_includes result, 'noname@test.com'
+  end
+
+  def test_attendee_without_email
+    attendees = [
+      { name: 'No Email', email: nil, type: 'required', response: 'accepted' }
+    ]
+    event = build_event(attendees: attendees)
+
+    result = @formatter.format_event_detail(event)
+
+    assert_includes result, 'No Email'
+  end
+
+  def test_organizer_check_with_nil_email
+    attendees = [
+      { name: 'Null Email', email: nil, type: 'required', response: 'accepted' }
+    ]
+    event = build_event(attendees: attendees)
+
+    result = @formatter.format_event_detail(event)
+
+    # Should not crash with nil email comparison
+    assert_includes result, 'Null Email'
+  end
+
+  def test_non_cancelled_event_no_cancelled_status
+    event = build_event(is_cancelled: false)
+
+    result = @formatter.format_event_detail(event)
+
+    refute_includes result, 'CANCELLED'
+  end
+
+  def test_organizer_with_nil_email_not_matched
+    attendees = [
+      { name: 'Someone', email: 'someone@test.com', type: 'required', response: 'accepted' }
+    ]
+    event = build_event(
+      attendees: attendees,
+      organizer: { name: 'Organizer', email: nil }
+    )
+
+    result = @formatter.format_event_detail(event)
+
+    # Should not crash, organizer has nil email so no star symbol
+    assert_includes result, 'Someone'
+    refute_includes result, '★'
+  end
+
+  def test_format_event_detail_not_cancelled_no_status_line
+    event = build_event(is_cancelled: false, show_as: nil)
+
+    result = @formatter.format_event_detail(event)
+
+    refute_includes result, 'CANCELLED'
+    refute_includes result, 'Show as:'
+  end
+
   private
 
   def build_event(overrides = {})

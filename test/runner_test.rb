@@ -118,4 +118,52 @@ class RunnerTest < Minitest::Test
       assert_kind_of Teems::Services::TokenExtractor, runner.token_extractor
     end
   end
+
+  def test_token_refresher_returns_refresher
+    with_temp_config do
+      runner = Teems::Runner.new
+
+      assert_kind_of Teems::Services::TokenRefresher, runner.token_refresher
+    end
+  end
+
+  def test_refresh_tokens_delegates_to_refresher
+    with_temp_config do
+      store = mock_token_store
+      store.define_singleton_method(:skype_spaces_token) { nil }
+      runner = Teems::Runner.new(token_store: store)
+
+      refute runner.refresh_tokens
+    end
+  end
+
+  def test_log_error_delegates_to_error_logger
+    with_temp_config do
+      runner = Teems::Runner.new
+      error = RuntimeError.new('test')
+
+      result = runner.log_error(error)
+
+      assert result
+    end
+  end
+
+  def test_clear_api_cache_does_not_raise
+    with_temp_config do
+      runner = Teems::Runner.new
+      runner.clear_api_cache
+    end
+  end
+
+  def test_calendar_api_returns_calendar_api
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'test-auth',
+                          'skype_token' => 'test-skype'
+                        })
+      runner = Teems::Runner.new
+
+      assert_kind_of Teems::Api::Calendar, runner.calendar_api
+    end
+  end
 end

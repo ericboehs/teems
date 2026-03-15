@@ -245,8 +245,11 @@ module Teems
       def get(_endpoint, path, account:, params: {}, headers: {})
         @calls << { method: :get, path: path, params: params, headers: headers }
         @call_count += 1
+        @on_request&.call(path, @call_count)
         check_errors(path)
-        find_response(path) || { 'value' => [] }
+        result = find_response(path) || { 'value' => [] }
+        @on_response&.call(path, '200')
+        result
       end
 
       def post(_endpoint, path, account:, body: nil)
