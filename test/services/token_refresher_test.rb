@@ -255,7 +255,7 @@ module TokenRefresherTests
 
     private
 
-    def oidc_token_request(scope, refresh_token: nil)
+    def oidc_token_request(scope, _refresh_token)
       @oidc_responses[scope]
     end
 
@@ -395,20 +395,7 @@ module TokenRefresherTests
 
   class OidcBuildMethodsTest < Minitest::Test
     class ExposedOidc < Teems::Services::TokenRefresher
-      public :build_oidc_http, :build_oidc_request, :oidc_token_uri
-    end
-
-    def test_build_oidc_http_returns_ssl_client
-      with_temp_config do
-        store = mock_token_store
-        store.tenant_id = 'test-tenant'
-        refresher = ExposedOidc.new(token_store: store)
-
-        http = refresher.build_oidc_http(refresher.oidc_token_uri)
-
-        assert_instance_of Net::HTTP, http
-        assert http.use_ssl?
-      end
+      public :build_oidc_request, :oidc_token_uri
     end
 
     def test_build_oidc_request_uses_form_encoding
