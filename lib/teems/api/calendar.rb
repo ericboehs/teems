@@ -34,10 +34,10 @@ module Teems
       end
 
       # RSVP to an event (accept, decline, or tentatively accept)
-      def rsvp_event(event_id:, action:, comment: nil, send_response: true)
+      def rsvp_event(event_id:, action:, comment: nil, notify: :send)
         encoded_id = URI.encode_www_form_component(event_id)
         api_action = action == 'tentative' ? 'tentativelyAccept' : action
-        body = { sendResponse: send_response }
+        body = { sendResponse: notify == :send }
         body[:comment] = comment if comment
 
         post(:graph, "/v1.0/me/events/#{encoded_id}/#{api_action}", body: body)

@@ -209,10 +209,10 @@ class CalendarApiTest < Minitest::Test
     assert_equal true, call[:body][:sendResponse]
   end
 
-  def test_rsvp_with_send_response_false
+  def test_rsvp_with_notify_silent
     @api_client.stub('accept', {})
 
-    @calendar_api.rsvp_event(event_id: 'event-123', action: 'accept', send_response: false)
+    @calendar_api.rsvp_event(event_id: 'event-123', action: 'accept', notify: :silent)
 
     call = @api_client.calls.first
     assert_equal false, call[:body][:sendResponse]

@@ -293,8 +293,7 @@ module Teems
 
       def sync_engine
         @sync_engine ||= Services::SyncEngine.new(
-          runner: runner, sync_store: @sync_store, state: @state,
-          output: output, verbose: @options[:verbose]
+          runner: runner, sync_store: @sync_store, state: @state, output: output
         )
       end
 

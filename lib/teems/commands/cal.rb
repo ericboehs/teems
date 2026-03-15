@@ -202,7 +202,7 @@ module Teems
           runner.calendar_api.rsvp_event(
             event_id: event_id, action: @subcommand,
             comment: @options[:comment],
-            send_response: @options.fetch(:send_response, true)
+            notify: @options[:no_send] ? :silent : :send
           )
         end
 
@@ -259,7 +259,7 @@ module Teems
         '--week' => ->(opts, _args) { opts[:week] = true },
         '--date' => ->(opts, args) { opts[:date] = args.shift },
         '--comment' => ->(opts, args) { opts[:comment] = args.shift },
-        '--no-send' => ->(opts, _args) { opts[:send_response] = false }
+        '--no-send' => ->(opts, _args) { opts[:no_send] = true }
       }.freeze
 
       def handle_option(arg, args, _remaining)

@@ -54,12 +54,11 @@ module Teems
       API_DELAY_SECONDS = 0.5
       MAX_PAGES = 500
 
-      def initialize(runner:, sync_store:, state:, output:, verbose: false)
+      def initialize(runner:, sync_store:, state:, output:)
         @runner = runner
         @sync_store = sync_store
         @state = state
         @output = output
-        @verbose = verbose
       end
 
       # Fetch all messages from a chat since start_time with pagination
@@ -168,7 +167,7 @@ module Teems
           'type' => chat.chat_type, 'synced_at' => Time.now.iso8601 }
       end
 
-      def debug(message) = @verbose && @output&.debug(message)
+      def debug(message) = @output&.verbose && @output.debug(message)
     end
   end
 end
