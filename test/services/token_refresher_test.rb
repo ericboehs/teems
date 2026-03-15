@@ -413,6 +413,7 @@ module TokenRefresherTests
         assert_includes request.body, 'grant_type=refresh_token'
         assert_includes request.body, 'client_id=test-client'
         assert_includes request.body, 'refresh_token=my-rt'
+        assert_equal 'https://teams.microsoft.com', request['Origin']
       end
     end
 

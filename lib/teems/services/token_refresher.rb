@@ -67,6 +67,7 @@ module Teems
       def build_oidc_request(uri, scope, token)
         Net::HTTP::Post.new(uri).tap do |req|
           req['Content-Type'] = 'application/x-www-form-urlencoded'
+          req['Origin'] = 'https://teams.microsoft.com'
           req.body = URI.encode_www_form(
             'client_id' => @token_store.client_id, 'grant_type' => 'refresh_token',
             'refresh_token' => token, 'scope' => scope
