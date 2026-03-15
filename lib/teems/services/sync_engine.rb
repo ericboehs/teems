@@ -117,7 +117,7 @@ module Teems
 
       def filter_and_sort_messages(messages, start_time)
         messages.reject(&:system_message?)
-                .select { |msg| (ts = msg.created_at).nil? || ts >= start_time }
+                .select { |msg| msg.created_at.nil? || msg.created_at >= start_time }
                 .sort_by { |msg| msg.created_at || Time.at(0) }
       end
 

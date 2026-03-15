@@ -64,7 +64,6 @@ Lint/UnusedMethodArgument:
   Exclude:
     - 'test/**/*'
 
-# Allow descriptive rescue variable names (Reek requires non-single-char names)
+# Reek flags single-char rescue variables; allow descriptive names
 Naming/RescuedExceptionsVariableName:
-  PreferredName: e
   Enabled: false
