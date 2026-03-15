@@ -42,8 +42,8 @@ module Teems
 
         render_teams(teams)
         0
-      rescue ApiError => e
-        error("Failed to fetch teams: #{e.message}")
+      rescue ApiError => api_error
+        error("Failed to fetch teams: #{api_error.message}")
         1
       end
 
@@ -71,9 +71,9 @@ module Teems
 
       def display_team_channels(api, team_data)
         channels = api.list_channels(team_id: team_data['id'])['value'] || []
-        channels.each { |c| display_channel(c, team_data) }
-      rescue ApiError => e
-        puts "  #{output.red('Error:')} #{e.message}"
+        channels.each { |channel_data| display_channel(channel_data, team_data) }
+      rescue ApiError => api_error
+        puts "  #{output.red('Error:')} #{api_error.message}"
       end
 
       def display_channel(channel_data, team_data)
@@ -85,7 +85,7 @@ module Teems
 
       def build_json_output(teams)
         api = runner.channels_api
-        teams.map { |t| team_to_hash(api, t) }
+        teams.map { |team| team_to_hash(api, team) }
       end
 
       def team_to_hash(api, team_data)
@@ -93,8 +93,8 @@ module Teems
         {
           id: team_data['id'],
           name: team_data['displayName'],
-          channels: (channels_response['value'] || []).map do |c|
-            { id: c['id'], name: c['displayName'], membership_type: c['membershipType'] }
+          channels: (channels_response['value'] || []).map do |channel|
+            { id: channel['id'], name: channel['displayName'], membership_type: channel['membershipType'] }
           end
         }
       end

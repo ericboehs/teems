@@ -63,11 +63,11 @@ module Teems
         return applescript_failure(status) unless status.success?
 
         output.strip
-      rescue Errno::ENOENT => e
-        log("osascript not found: #{e.message}")
+      rescue Errno::ENOENT => not_found_error
+        log("osascript not found: #{not_found_error.message}")
         nil
-      rescue IOError, SystemCallError => e
-        log("AppleScript I/O error: #{e.message}")
+      rescue IOError, SystemCallError => io_error
+        log("AppleScript I/O error: #{io_error.message}")
         nil
       end
 
@@ -90,8 +90,8 @@ module Teems
         return nil if status == 'no_key'
 
         poll_decrypt_result
-      rescue JSON::ParserError => e
-        log("Failed to parse v2 token decryption result: #{e.message}")
+      rescue JSON::ParserError => parse_error
+        log("Failed to parse v2 token decryption result: #{parse_error.message}")
         nil
       end
 
@@ -151,8 +151,8 @@ module Teems
         return nil if parsed['error']
 
         { skype_token: parsed['skype_token'], region: parsed['region'], chat_service: parsed['chat_service'] }
-      rescue JSON::ParserError => e
-        log("Failed to parse token exchange result: #{e.message}")
+      rescue JSON::ParserError => parse_error
+        log("Failed to parse token exchange result: #{parse_error.message}")
         nil
       end
 
@@ -205,8 +205,8 @@ module Teems
         return nil unless parsed['auth_token']
 
         finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'])
-      rescue JSON::ParserError => e
-        log("Failed to parse v1 token extraction result: #{e.message}")
+      rescue JSON::ParserError => parse_error
+        log("Failed to parse v1 token extraction result: #{parse_error.message}")
         nil
       end
 
@@ -299,11 +299,11 @@ module Teems
       end
 
       def wait_for_login
-        60.times do |i|
+        60.times do |second|
           sleep 1
           break if page_ready?
 
-          log("Waiting... (#{i + 1}s)") if ((i + 1) % 10).zero?
+          log("Waiting... (#{second + 1}s)") if ((second + 1) % 10).zero?
         end
       end
 

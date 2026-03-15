@@ -45,7 +45,7 @@ module Teems
       def self.parse_ng_msg_reactions(emotions)
         return [] unless emotions.is_a?(Array)
 
-        emotions.map { |e| { type: e['key'], count: e['users']&.length || 1 } }
+        emotions.map { |emotion| { type: emotion['key'], count: emotion['users']&.length || 1 } }
       end
 
       def self.from_teams_internal_api(data)
@@ -93,7 +93,7 @@ module Teems
       def self.parse_reactions(reactions_data)
         return [] unless reactions_data.is_a?(Array)
 
-        reactions_data.map { |r| { type: r['reactionType'], count: r['user']&.length || 1 } }
+        reactions_data.map { |reaction| { type: reaction['reactionType'], count: reaction['user']&.length || 1 } }
       end
 
       def timestamp = created_at

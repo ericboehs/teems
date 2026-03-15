@@ -27,8 +27,8 @@ module Teems
       dispatch_command(command_name, args)
     rescue Interrupt
       handle_interrupt
-    rescue StandardError => e
-      handle_error(e)
+    rescue StandardError => error
+      handle_error(error)
     end
 
     private
@@ -45,8 +45,8 @@ module Teems
 
     def dispatch_command(command_name, args)
       COMMANDS[command_name] ? run_command(command_name, args) : show_unknown_command(command_name)
-    rescue ConfigError, AuthError, ApiError => e
-      handle_known_error(e)
+    rescue ConfigError, AuthError, ApiError => known_error
+      handle_known_error(known_error)
     end
 
     def show_unknown_command(command_name)
@@ -87,19 +87,20 @@ module Teems
       command_class = COMMANDS[name]
       return 1 unless command_class
 
-      runner = build_runner(args)
-      execute_command(command_class, args, runner)
+      verbose = verbose_mode?(args)
+      runner = build_runner(args, verbose)
+      execute_command(command_class, args, runner, verbose)
     ensure
       runner&.api_client&.close
     end
 
-    def build_runner(args)
-      out = resolve_output(args)
-      Runner.new(output: out).tap { |r| setup_verbose_logging(r, out) if verbose_mode?(args) }
+    def build_runner(args, verbose)
+      out = resolve_output(args, verbose)
+      Runner.new(output: out).tap { |new_runner| setup_verbose_logging(new_runner, out) if verbose }
     end
 
-    def resolve_output(args)
-      return @output unless verbose_mode?(args)
+    def resolve_output(_args, verbose)
+      return @output unless verbose
 
       @output&.with_verbose(true) || Formatters::Output.new(verbose: true)
     end
@@ -110,10 +111,10 @@ module Teems
       }
     end
 
-    def execute_command(command_class, args, runner)
+    def execute_command(command_class, args, runner, verbose)
       command = command_class.new(args, runner: runner)
       result = command.execute
-      log_api_call_count(runner) if verbose_mode?(args)
+      log_api_call_count(runner) if verbose
       result
     end
 

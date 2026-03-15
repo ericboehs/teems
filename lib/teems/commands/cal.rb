@@ -162,8 +162,8 @@ module Teems
         return 1 unless event_id
 
         render_single_event(event_id)
-      rescue ApiError => e
-        error("Failed to fetch event: #{e.message}")
+      rescue ApiError => api_error
+        error("Failed to fetch event: #{api_error.message}")
         1
       end
 
@@ -188,8 +188,8 @@ module Teems
         return 1 unless event_id
 
         send_rsvp(event_id)
-      rescue ApiError => e
-        error("Failed to respond to event: #{e.message}")
+      rescue ApiError => api_error
+        error("Failed to respond to event: #{api_error.message}")
         1
       end
 
@@ -243,6 +243,7 @@ module Teems
 
       protected
 
+      # :reek:DuplicateMethodCall { allow_calls: ['args.shift'] } - each option consumes the next arg
       def handle_option(arg, args, _remaining)
         case arg
         when '--days'    then @options[:days] = args.shift.to_i
@@ -276,8 +277,8 @@ module Teems
         cache_event_ids(events)
         render_events(events)
         0
-      rescue ApiError => e
-        error("Failed to fetch calendar: #{e.message}")
+      rescue ApiError => api_error
+        error("Failed to fetch calendar: #{api_error.message}")
         1
       end
 
@@ -293,13 +294,13 @@ module Teems
 
       def cache_event_ids(events)
         ids_hash = {}
-        events.each_with_index { |event, i| ids_hash[(i + 1).to_s] = event.id }
+        events.each_with_index { |event, index| ids_hash[(index + 1).to_s] = event.id }
         cache_store.save_calendar_ids(ids_hash)
       end
 
       def render_events(events)
         if @options[:json]
-          output_json(events.map { |e| event_to_hash(e) })
+          output_json(events.map { |event| event_to_hash(event) })
         else
           formatter = Formatters::CalendarFormatter.new(output: output)
           puts formatter.format_event_list(events, verbose: @options[:verbose])

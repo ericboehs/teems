@@ -65,13 +65,13 @@ module Teems
       def self.parse_attendees(attendees_data)
         return [] unless attendees_data.is_a?(Array)
 
-        attendees_data.map do |a|
-          email_data = a['emailAddress'] || {}
+        attendees_data.map do |att_data|
+          email_data = att_data['emailAddress'] || {}
           {
             name: email_data['name'],
             email: email_data['address'],
-            type: a['type'],
-            response: a.dig('status', 'response')
+            type: att_data['type'],
+            response: att_data.dig('status', 'response')
           }
         end
       end
@@ -92,27 +92,27 @@ module Teems
       end
 
       def required_attendees
-        attendees.select { |a| a[:type] == 'required' }
+        attendees.select { |att| att[:type] == 'required' }
       end
 
       def optional_attendees
-        attendees.select { |a| a[:type] == 'optional' }
+        attendees.select { |att| att[:type] == 'optional' }
       end
 
       def accepted_attendees
-        attendees.select { |a| a[:response] == 'accepted' }
+        attendees.select { |att| att[:response] == 'accepted' }
       end
 
       def declined_attendees
-        attendees.select { |a| a[:response] == 'declined' }
+        attendees.select { |att| att[:response] == 'declined' }
       end
 
       def tentative_attendees
-        attendees.select { |a| a[:response] == 'tentativelyAccepted' }
+        attendees.select { |att| att[:response] == 'tentativelyAccepted' }
       end
 
       def pending_attendees
-        attendees.select { |a| a[:response] == 'none' || a[:response].nil? }
+        attendees.select { |att| att[:response] == 'none' || att[:response].nil? }
       end
     end
   end

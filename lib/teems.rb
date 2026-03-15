@@ -10,6 +10,7 @@ require 'io/console'
 
 # Microsoft Teams CLI - A command-line interface for Microsoft Teams
 module Teems
+  # Base error class for all Teems errors
   class Error < StandardError; end
 
   # Error raised when a Teams API request fails (4xx/5xx responses)
@@ -27,8 +28,13 @@ module Teems
     def rate_limited? = status_code == 429
   end
 
+  # Error raised when required configuration is missing or invalid
   class ConfigError < Error; end
+
+  # Error raised when authentication fails or tokens are missing
   class AuthError < Error; end
+
+  # Error raised when token storage operations fail
   class TokenStoreError < Error; end
 
   autoload :VERSION, 'teems/version'

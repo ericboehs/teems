@@ -17,6 +17,7 @@ module Teems
       }.freeze
 
       attr_reader :verbose, :quiet
+      alias quiet? quiet
 
       def initialize(io: $stdout, err: $stderr, color: nil, verbose: false, quiet: false)
         @io = io
@@ -27,11 +28,11 @@ module Teems
       end
 
       def puts(message = '')
-        @io.puts(message) unless @quiet
+        @io.puts(message) unless quiet?
       end
 
       def print(message)
-        @io.print(message) unless @quiet
+        @io.print(message) unless quiet?
       end
 
       def flush
@@ -43,7 +44,7 @@ module Teems
       end
 
       def warn(message)
-        @err.puts(colorize("#{yellow('Warning:')} #{message}")) unless @quiet
+        @err.puts(colorize("#{yellow('Warning:')} #{message}")) unless quiet?
       end
 
       def success(message)

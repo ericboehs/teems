@@ -22,16 +22,17 @@ module Teems
       def format_attendee_group(title, attendees, event)
         return [] unless attendees.any?
 
-        [@output.bold(title), *attendees.map { |a| format_attendee(a, event) }, '']
+        [@output.bold(title), *attendees.map { |attendee| format_attendee(attendee, event) }, '']
       end
 
       def format_untyped_attendees(event)
-        untyped = event.attendees.reject { |a| %w[required optional].include?(a[:type]) }
+        untyped = event.attendees.reject { |attendee| %w[required optional].include?(attendee[:type]) }
         format_attendee_group('Attendees:', untyped, event)
       end
 
       def format_attendee(attendee, event)
-        name_email = "#{attendee[:name] || attendee[:email]}#{" (#{attendee[:email]})" if attendee[:email]}"
+        email = attendee[:email]
+        name_email = "#{attendee[:name] || email}#{" (#{email})" if email}"
         "  #{response_symbol(attendee, event)} #{name_email} — #{response_label(attendee[:response])}"
       end
 
@@ -116,14 +117,16 @@ module Teems
       end
 
       def append_detail_fields(lines, event)
-        lines << "  Location:  #{event.location}" if event.location && !event.location.empty?
+        location = event.location
+        lines << "  Location:  #{location}" if location && !location.empty?
         append_organizer_and_links(lines, event)
         lines << "  Status:    #{@output.red('CANCELLED')}" if event.cancelled?
         lines << "  Show as:   #{event.show_as}" if event.show_as
       end
 
       def append_organizer_and_links(lines, event)
-        lines << "  Organizer: #{event.organizer[:name]} (#{event.organizer[:email]})" if event.organizer
+        organizer = event.organizer
+        lines << "  Organizer: #{organizer[:name]} (#{organizer[:email]})" if organizer
         lines << "  Link:      #{event.online_meeting_url}" if event.online_meeting_url
       end
 

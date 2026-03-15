@@ -19,12 +19,16 @@ module Teems
       def msg_extras_hash(message)
         {
           'reply_to_id' => message.reply_to_id,
-          'reactions' => message.reactions.map { |r| { 'type' => r[:type], 'count' => r[:count] } },
+          'reactions' => message.reactions.map do |reaction|
+            { 'type' => reaction[:type], 'count' => reaction[:count] }
+          end,
           'attachments' => message.attachments, 'importance' => message.importance
         }
       end
 
-      def parse_stored_reactions(reactions) = (reactions || []).map { |r| { type: r['type'], count: r['count'] } }
+      def parse_stored_reactions(reactions)
+        (reactions || []).map { |reaction| { type: reaction['type'], count: reaction['count'] } }
+      end
 
       def stored_msg_attrs(data)
         {
@@ -68,7 +72,7 @@ module Teems
       end
 
       def merge_and_write(chat, existing_raw, new_messages)
-        existing = existing_raw.map { |m| message_from_stored(m) }
+        existing = existing_raw.map { |data| message_from_stored(data) }
         all_messages = merge_messages(existing, new_messages)
         write_chat_files(chat, all_messages)
         all_messages
@@ -93,8 +97,8 @@ module Teems
       end
 
       def parse_page_messages(page_messages, start_time)
-        parsed = page_messages.map { |m| Models::Message.from_api(m) }
-        oldest = parsed.min_by { |m| m.created_at || Time.now }
+        parsed = page_messages.map { |msg_data| Models::Message.from_api(msg_data) }
+        oldest = parsed.min_by { |msg| msg.created_at || Time.now }
         cutoff = oldest&.created_at && oldest.created_at < start_time
         debug('  Reached cutoff date, stopping pagination') if cutoff
         [parsed, cutoff]
@@ -113,20 +117,20 @@ module Teems
 
       def filter_and_sort_messages(messages, start_time)
         messages.reject(&:system_message?)
-                .select { |m| m.created_at.nil? || m.created_at >= start_time }
-                .sort_by { |m| m.created_at || Time.at(0) }
+                .select { |msg| msg.created_at.nil? || msg.created_at >= start_time }
+                .sort_by { |msg| msg.created_at || Time.at(0) }
       end
 
       def merge_messages(existing, new_messages)
-        by_id = existing.to_h { |m| [m.id, m] }
-        new_messages.each { |m| by_id[m.id] = m }
-        by_id.values.sort_by { |m| m.created_at || Time.at(0) }
+        by_id = existing.to_h { |msg| [msg.id, msg] }
+        new_messages.each { |msg| by_id[msg.id] = msg }
+        by_id.values.sort_by { |msg| msg.created_at || Time.at(0) }
       end
 
       def write_chat_files(chat, messages)
         fmt = Formatters::MarkdownFormatter.new(chat_name: chat.display_name,
                                                 chat_type: chat.chat_type, synced_at: Time.now)
-        json = JSON.pretty_generate(messages.map { |m| message_to_hash(m) })
+        json = JSON.pretty_generate(messages.map { |msg| message_to_hash(msg) })
         @sync_store.write_messages(chat.id, messages_md: fmt.format(messages), messages_json: json, state: @state)
         write_metadata(chat)
       end

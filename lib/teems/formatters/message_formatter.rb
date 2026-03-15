@@ -24,7 +24,7 @@ module Teems
       def format_reactions(message)
         return unless message.reactions.any?
 
-        str = message.reactions.map { |r| "#{r[:type]}(#{r[:count]})" }.join(' ')
+        str = message.reactions.map { |reaction| "#{reaction[:type]}(#{reaction[:count]})" }.join(' ')
         "  #{@output.gray(str)}"
       end
     end
