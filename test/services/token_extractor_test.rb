@@ -90,29 +90,6 @@ class TokenExtractorTest < Minitest::Test
   end
 end
 
-class SafariAutomationTest < Minitest::Test
-  def test_run_safari_js_returns_result
-    extractor = TestableTokenExtractor.new
-    extractor.applescript_results << 'test-result'
-
-    # Access via extract_tokens_v1 pathway which calls run_safari_js
-    # Instead, test the underlying applescript call count
-    assert_equal 0, extractor.applescript_call_count
-  end
-
-  def test_escape_js_for_applescript
-    extractor = TestableTokenExtractor.new
-
-    # The escape method is private - test it through the extractor behavior
-    # JavaScript with quotes and backslashes gets escaped for AppleScript
-    extractor.applescript_results << '{"auth_token":null}'
-    extractor.applescript_results << nil # close tab
-
-    # Verify no errors are raised
-    assert_equal 0, extractor.applescript_call_count
-  end
-end
-
 class TokenV2DecryptorTest < Minitest::Test
   def test_extract_tokens_v2_returns_nil_on_no_key
     extractor = TestableTokenExtractor.new

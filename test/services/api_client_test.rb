@@ -181,20 +181,30 @@ end
 
 class ApiClientCallbacksTest < Minitest::Test
   def test_on_request_callback_receives_path_and_count
-    # This tests the callback interface only - actual HTTP calls are mocked elsewhere
-    client = Teems::Services::ApiClient.new
+    mock_client = Teems::TestHelpers::MockApiClient.new
+    mock_client.stub('joinedTeams', { 'value' => [] })
     calls = []
-    client.on_request = ->(path, count) { calls << [path, count] }
+    mock_client.on_request = ->(path, count) { calls << [path, count] }
+    account = mock_account
 
-    assert_equal 0, calls.length
+    Teems::Api::Channels.new(mock_client, account).list_teams
+
+    assert_equal 1, calls.length
+    assert_includes calls.first[0], 'joinedTeams'
+    assert_equal 1, calls.first[1]
   end
 
-  def test_on_response_callback_interface
-    client = Teems::Services::ApiClient.new
+  def test_on_response_callback_receives_path_and_status
+    mock_client = Teems::TestHelpers::MockApiClient.new
+    mock_client.stub('joinedTeams', { 'value' => [] })
     calls = []
-    client.on_response = ->(path, code) { calls << [path, code] }
+    mock_client.on_response = ->(path, code) { calls << [path, code] }
+    account = mock_account
 
-    assert_equal 0, calls.length
+    Teems::Api::Channels.new(mock_client, account).list_teams
+
+    assert_equal 1, calls.length
+    assert_equal '200', calls.first[1]
   end
 end
 

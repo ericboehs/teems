@@ -582,16 +582,15 @@ class SyncCommandTest < Minitest::Test
 
   def test_verbose_api_logging
     with_temp_config do
-      result = capture_output do |output|
-        runner = configured_runner(output: Teems::Formatters::Output.new(io: output.instance_variable_get(:@io),
-                                                                         err: output.instance_variable_get(:@err),
-                                                                         color: false, verbose: true))
-        runner.api_client.stub('conversations', { 'conversations' => [] })
-        cmd = Teems::Commands::Sync.new(['-v'], runner: runner)
-        cmd.execute
-      end
+      out = StringIO.new
+      err = StringIO.new
+      verbose_output = Teems::Formatters::Output.new(io: out, err: err, color: false, verbose: true)
+      runner = configured_runner(output: verbose_output)
+      runner.api_client.stub('conversations', { 'conversations' => [] })
+      cmd = Teems::Commands::Sync.new(['-v'], runner: runner)
+      cmd.execute
 
-      assert_match(/No chats found/, result[:stdout])
+      assert_match(/No chats found/, out.string)
     end
   end
 

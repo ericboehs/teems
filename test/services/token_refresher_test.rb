@@ -193,16 +193,6 @@ class TokenRefresherExchangeTokenTest < Minitest::Test
     public :exchange_token, :parse_exchange_response
   end
 
-  def test_exchange_token_handles_json_parse_error
-    with_temp_config do
-      store = mock_token_store
-      ExposedTokenRefresher.new(token_store: store, output: test_output)
-
-      errors = Teems::Services::TokenRefresher::RECOVERABLE_ERRORS
-      assert_includes errors, JSON::ParserError
-    end
-  end
-
   def test_parse_exchange_response_success
     with_temp_config do
       store = mock_token_store

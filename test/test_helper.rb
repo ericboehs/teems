@@ -175,6 +175,15 @@ module Teems
       }
     end
 
+    # Temporarily replace $stdin with a StringIO for testing interactive input
+    def with_fake_stdin(content)
+      original = $stdin
+      $stdin = StringIO.new(content)
+      yield
+    ensure
+      $stdin = original
+    end
+
     # Capture output for command tests
     def capture_output
       out = StringIO.new
@@ -255,8 +264,11 @@ module Teems
       def post(_endpoint, path, account:, body: nil)
         @calls << { method: :post, path: path, body: body }
         @call_count += 1
+        @on_request&.call(path, @call_count)
         check_errors(path)
-        find_response(path) || {}
+        result = find_response(path) || {}
+        @on_response&.call(path, '200')
+        result
       end
 
       def close

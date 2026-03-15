@@ -243,7 +243,8 @@ class MessageTest < Minitest::Test
 
     result = message.to_s
     assert_includes result, 'John Doe'
-    assert_includes result, '[]' # nil&.strftime produces nil, shown as empty bracket
+    assert_includes result, 'Hello world'
+    refute_includes result, 'nil'
   end
 
   def test_system_message_returns_true_for_message_type_Message

@@ -124,7 +124,7 @@ class ChannelsCommandTest < Minitest::Test
       end
 
       assert_match(/Engineering Team/, result[:stdout])
-      assert_match(/Error:/, result[:stdout])
+      assert_match(/Error:.*Forbidden/, result[:stdout])
     end
   end
 

@@ -366,15 +366,9 @@ class AuthSetTokensStdinTest < Minitest::Test
         runner = Teems::Runner.new(output: output, token_store: store, api_client: Teems::TestHelpers::MockApiClient.new)
         cmd = Teems::Commands::Auth.new(['set-tokens'], runner: runner)
 
-        # Simulate stdin: auth token line, blank line (end), skype token line, blank line (end)
-        fake_stdin = StringIO.new("test-auth-token\n\ntest-skype-token\n\n")
-        original_stdin = $stdin
-        $stdin = fake_stdin
-        begin
+        with_fake_stdin("test-auth-token\n\ntest-skype-token\n\n") do
           exit_code = cmd.execute
           assert_equal 0, exit_code
-        ensure
-          $stdin = original_stdin
         end
       end
 
@@ -389,15 +383,9 @@ class AuthSetTokensStdinTest < Minitest::Test
         runner = Teems::Runner.new(output: output, token_store: store, api_client: Teems::TestHelpers::MockApiClient.new)
         cmd = Teems::Commands::Auth.new(['set-tokens'], runner: runner)
 
-        # Simulate stdin: just blank line (empty auth token)
-        fake_stdin = StringIO.new("\n")
-        original_stdin = $stdin
-        $stdin = fake_stdin
-        begin
+        with_fake_stdin("\n") do
           exit_code = cmd.execute
           assert_equal 1, exit_code
-        ensure
-          $stdin = original_stdin
         end
       end
 
@@ -412,15 +400,9 @@ class AuthSetTokensStdinTest < Minitest::Test
         runner = Teems::Runner.new(output: output, token_store: store, api_client: Teems::TestHelpers::MockApiClient.new)
         cmd = Teems::Commands::Auth.new(['set-tokens'], runner: runner)
 
-        # Simulate EOF immediately
-        fake_stdin = StringIO.new('')
-        original_stdin = $stdin
-        $stdin = fake_stdin
-        begin
+        with_fake_stdin('') do
           exit_code = cmd.execute
           assert_equal 1, exit_code
-        ensure
-          $stdin = original_stdin
         end
       end
 
