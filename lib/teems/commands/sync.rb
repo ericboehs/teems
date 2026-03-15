@@ -193,10 +193,59 @@ module Teems
       end
     end
 
+    # Authentication handling for sync --auth flag
+    module SyncAuth
+      private
+
+      def login_if_requested
+        return unless @options[:auth]
+        return if tokens_already_valid?
+
+        tokens = runner.token_extractor.extract
+        return save_login_tokens(tokens) if tokens&.dig(:auth_token) && tokens[:skype_token]
+
+        error('Failed to authenticate via Safari')
+        error('  auth_token extracted but skype_token exchange failed') if tokens&.dig(:auth_token)
+        1
+      end
+
+      def tokens_already_valid?
+        return false unless runner.configured?
+
+        unless token_store.account
+          debug('Stored tokens incomplete, re-authenticating...')
+          return false
+        end
+
+        check_tokens_with_api
+      end
+
+      def check_tokens_with_api
+        debug('Checking if existing tokens are still valid...')
+        runner.chats_api.list(limit: 1)
+        debug('Existing tokens are valid, skipping browser auth')
+        success('Using existing authentication (tokens still valid)')
+        true
+      rescue ApiError
+        debug('Existing tokens are expired or invalid, re-authenticating...')
+        false
+      end
+
+      def save_login_tokens(tokens)
+        saved = token_store.save(name: 'default', **tokens.slice(:auth_token, :skype_token,
+                                                                 :skype_spaces_token, :chatsvc_token))
+        return error('Authentication tokens extracted but failed to save') || 1 unless saved
+
+        success('Authentication successful!')
+        nil
+      end
+    end
+
     # Sync chat history locally as Markdown + JSON files
     class Sync < Base
       include SyncChatHandler
       include SyncDisplay
+      include SyncAuth
 
       DEFAULT_SINCE_DAYS = 180
       SKIP_PREFIXES = %w[48:].freeze
@@ -241,25 +290,6 @@ module Teems
       def help_text = SYNC_HELP
 
       private
-
-      def login_if_requested
-        return unless @options[:auth]
-
-        tokens = runner.token_extractor.extract
-        return save_login_tokens(tokens) if tokens&.dig(:auth_token)
-
-        error('Failed to authenticate via Safari')
-        1
-      end
-
-      def save_login_tokens(tokens)
-        saved = token_store.save(name: 'default', **tokens.slice(:auth_token, :skype_token,
-                                                                 :skype_spaces_token, :chatsvc_token))
-        return error('Authentication tokens extracted but failed to save') || 1 unless saved
-
-        success('Authentication successful!')
-        nil
-      end
 
       def run_sync
         init_sync_state

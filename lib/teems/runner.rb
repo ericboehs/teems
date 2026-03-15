@@ -63,7 +63,7 @@ module Teems
 
     # Token extractor for Safari automation
     def token_extractor
-      @token_extractor ||= Services::TokenExtractor.new
+      @token_extractor ||= Services::TokenExtractor.new(output: @output)
     end
 
     # Token refresher for automatic token refresh
