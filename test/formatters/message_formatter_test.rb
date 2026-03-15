@@ -114,26 +114,12 @@ class MessageFormatterTest < Minitest::Test
 
   private
 
-  def build_message(
-    id: '123',
-    sender_name: 'Test User',
-    content: 'Test message',
-    created_at: Time.now,
-    message_type: 'message',
-    importance: 'normal',
-    reactions: []
-  )
-    Teems::Models::Message.new(
-      id: id,
-      sender_id: 'user-123',
-      sender_name: sender_name,
-      content: content,
-      created_at: created_at,
-      message_type: message_type,
-      reply_to_id: nil,
-      reactions: reactions,
-      attachments: [],
-      importance: importance
-    )
+  def build_message(**overrides)
+    attrs = {
+      id: '123', sender_id: 'user-123', sender_name: 'Test User',
+      content: 'Test message', created_at: Time.now, message_type: 'message',
+      reply_to_id: nil, reactions: [], attachments: [], importance: 'normal'
+    }.merge(overrides)
+    Teems::Models::Message.new(**attrs)
   end
 end

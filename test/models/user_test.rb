@@ -4,15 +4,7 @@ require 'test_helper'
 
 class UserTest < Minitest::Test
   def test_from_api_extracts_fields
-    data = {
-      'id' => 'user-uuid-123',
-      'displayName' => 'John Doe',
-      'mail' => 'john.doe@example.com',
-      'userPrincipalName' => 'john.doe@example.onmicrosoft.com'
-    }
-
-    user = Teems::Models::User.from_api(data)
-
+    user = Teems::Models::User.from_api(sample_user_data)
     assert_equal 'user-uuid-123', user.id
     assert_equal 'John Doe', user.display_name
     assert_equal 'john.doe@example.com', user.email
@@ -113,5 +105,16 @@ class UserTest < Minitest::Test
 
     # Empty string should fall back to email
     assert_equal 'john@example.com', user.best_name
+  end
+
+  private
+
+  def sample_user_data
+    {
+      'id' => 'user-uuid-123',
+      'displayName' => 'John Doe',
+      'mail' => 'john.doe@example.com',
+      'userPrincipalName' => 'john.doe@example.onmicrosoft.com'
+    }
   end
 end

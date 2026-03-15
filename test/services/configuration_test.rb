@@ -87,21 +87,22 @@ class ConfigurationTest < Minitest::Test
 
   def test_on_warning_callback_called_on_corruption
     with_temp_config do |dir|
-      config_dir = "#{dir}/teems"
-      FileUtils.mkdir_p(config_dir)
-      File.write("#{config_dir}/config.json", 'invalid json')
-
+      write_invalid_config(dir)
       warnings = []
       config = Teems::Services::Configuration.new
       config.on_warning = ->(msg) { warnings << msg }
-
-      # Trigger the load by accessing config
       config.to_h
-
       assert_equal 1, warnings.size
       assert_match(/corrupted/, warnings.first)
     end
   end
+
+  def write_invalid_config(dir)
+    config_dir = "#{dir}/teems"
+    FileUtils.mkdir_p(config_dir)
+    File.write("#{config_dir}/config.json", 'invalid json')
+  end
+  private :write_invalid_config
 
   def test_creates_config_directory_if_needed
     with_temp_config do |dir|
