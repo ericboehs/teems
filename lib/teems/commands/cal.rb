@@ -321,7 +321,8 @@ module Teems
           output_json(events.map { |event| event_to_hash(event) })
         else
           formatter = Formatters::CalendarFormatter.new(output: output)
-          puts formatter.format_event_list(events, verbose: @options[:verbose])
+          method = @options[:verbose] ? :format_event_list_verbose : :format_event_list_compact
+          puts formatter.public_send(method, events)
         end
       end
     end

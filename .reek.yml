@@ -3,6 +3,8 @@ exclude_paths:
   - test
 
 detectors:
+  UtilityFunction:
+    public_methods_only: true
   DuplicateMethodCall:
     max_calls: 2
   TooManyStatements:
@@ -15,9 +17,9 @@ detectors:
     max_params: 4
   RepeatedConditional:
     max_ifs: 3
+  DataClump:
+    max_copies: 3
   UncommunicativeMethodName:
     accept:
       - /404/
       - /v\d+$/
-  UtilityFunction:
-    public_methods_only: true

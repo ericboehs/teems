@@ -77,10 +77,12 @@ module Teems
         verbose ? format_event_list_verbose(events) : format_event_list_compact(events)
       end
 
+      # Compact agenda listing
       def format_event_list_compact(events)
         events.each_with_index.map { |event, index| format_list_item(event, index + 1) }.join("\n")
       end
 
+      # Verbose agenda listing with organizer and RSVP summaries
       def format_event_list_verbose(events)
         events.each_with_index.flat_map do |event, index|
           [format_list_item_verbose(event, index + 1), '']
