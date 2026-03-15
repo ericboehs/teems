@@ -152,6 +152,65 @@ class MarkdownFormatterTest < Minitest::Test
     assert_includes result, "\u{1F4CE} photo.jpg"
   end
 
+  def test_format_message_nil_content
+    msg = build_message(content: nil)
+    formatter = build_formatter
+    result = formatter.format([msg])
+
+    assert_includes result, 'Test User'
+    # Should not crash, nil content is skipped
+  end
+
+  def test_format_message_empty_content
+    msg = build_message(content: '')
+    formatter = build_formatter
+    result = formatter.format([msg])
+
+    assert_includes result, 'Test User'
+  end
+
+  def test_format_message_nil_created_at
+    msg = build_message(created_at: nil)
+    formatter = build_formatter
+    result = formatter.format([msg])
+
+    assert_includes result, '??:??'
+  end
+
+  def test_format_message_nil_created_at_after_real_date
+    msg1 = build_message(sender_name: 'Alice', created_at: Time.new(2026, 1, 20, 10, 0, 0))
+    msg2 = build_message(sender_name: 'Bob', created_at: nil)
+    formatter = build_formatter
+    result = formatter.format([msg1, msg2])
+
+    assert_includes result, '## 2026-01-20'
+    assert_includes result, '## Unknown Date'
+  end
+
+  def test_format_message_nil_sender_name
+    msg = build_message(sender_name: nil)
+    formatter = build_formatter
+    result = formatter.format([msg])
+
+    assert_includes result, 'Unknown'
+  end
+
+  def test_format_attachment_non_hash
+    msg = build_message(attachments: ['simple-string-attachment'])
+    formatter = build_formatter
+    result = formatter.format([msg])
+
+    assert_includes result, "\u{1F4CE} simple-string-attachment"
+  end
+
+  def test_format_attachment_hash_without_keys
+    msg = build_message(attachments: [{ 'other' => 'data' }])
+    formatter = build_formatter
+    result = formatter.format([msg])
+
+    assert_includes result, "\u{1F4CE} file"
+  end
+
   def test_reaction_emoji_mapping
     mapping = Teems::Formatters::MarkdownFormatter::REACTION_EMOJI
     assert_equal "\u{1F44D}", mapping['like']

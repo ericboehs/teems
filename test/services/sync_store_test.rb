@@ -554,4 +554,66 @@ class SyncStoreTest < Minitest::Test
       assert_equal 'group', state.dig('chats', chat_id, 'chat_type')
     end
   end
+
+  def test_mark_unavailable_without_display_name
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      state = {}
+
+      store.mark_unavailable(state, 'chat1')
+
+      assert state.dig('chats', 'chat1', 'unavailable')
+    end
+  end
+
+  def test_mark_unavailable_without_chat_type
+    with_temp_config do
+      store = Teems::Services::SyncStore.new
+      state = {}
+
+      store.mark_unavailable(state, 'chat1', display_name: 'Test')
+
+      assert state.dig('chats', 'chat1', 'unavailable')
+      assert_nil state.dig('chats', 'chat1', 'chat_type')
+    end
+  end
+end
+
+class SyncDirNamingTest < Minitest::Test
+  include Teems::Services::SyncDirNaming
+
+  def test_sanitize_display_name_empty_after_cleanup
+    result = sanitize_display_name('...')
+
+    assert_nil result
+  end
+
+  def test_build_dir_name_generic_label_appends_id
+    result = build_dir_name('19:abc@thread.v2', 'Group Chat')
+
+    assert_includes result, 'Group Chat'
+    assert_includes result, '19_abc_thread.v2'
+  end
+
+  def test_build_dir_name_nil_display_name
+    result = build_dir_name('19:abc@thread.v2', nil)
+
+    assert_equal '19_abc_thread.v2', result
+  end
+
+  def test_build_dir_name_non_generic_label
+    result = build_dir_name('19:abc@thread.v2', 'My Project Chat')
+
+    assert_equal 'My Project Chat', result
+  end
+
+  def test_type_dir_unknown
+    assert_equal 'other', type_dir('unknown_type')
+  end
+
+  def test_type_dir_known
+    assert_equal 'groups', type_dir('group')
+    assert_equal 'meetings', type_dir('meeting')
+    assert_equal 'dms', type_dir('oneOnOne')
+  end
 end

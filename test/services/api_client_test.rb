@@ -76,6 +76,138 @@ class ApiClientTest < Minitest::Test
   end
 end
 
+class ApiClientHandleResponseTest < Minitest::Test
+  # Test subclass to expose private methods for testing
+  class ExposedApiClient < Teems::Services::ApiClient
+    public :handle_response, :apply_auth, :resolve_endpoint
+  end
+
+  def test_handle_response_401_raises_unauthorized
+    client = ExposedApiClient.new
+    response = build_http_response('401', 'Unauthorized', '')
+
+    error = assert_raises(Teems::ApiError) { client.handle_response(response) }
+
+    assert_equal 401, error.status_code
+    assert error.unauthorized?
+  end
+
+  def test_handle_response_403_raises_forbidden
+    client = ExposedApiClient.new
+    response = build_http_response('403', 'Forbidden', '')
+
+    error = assert_raises(Teems::ApiError) { client.handle_response(response) }
+
+    assert_equal 403, error.status_code
+    assert error.forbidden?
+  end
+
+  def test_handle_response_429_raises_rate_limited
+    client = ExposedApiClient.new
+    response = build_http_response('429', 'Too Many Requests', '', headers: { 'Retry-After' => '30' })
+
+    error = assert_raises(Teems::ApiError) { client.handle_response(response) }
+
+    assert_equal 429, error.status_code
+    assert error.rate_limited?
+    assert_match(/retry after 30/, error.message)
+  end
+
+  def test_handle_response_500_raises_with_status_code
+    client = ExposedApiClient.new
+    response = build_http_response('500', 'Internal Server Error', '')
+
+    error = assert_raises(Teems::ApiError) { client.handle_response(response) }
+
+    assert_equal 500, error.status_code
+    assert_match(/HTTP 500/, error.message)
+  end
+
+  def test_handle_response_200_parses_json
+    client = ExposedApiClient.new
+    response = build_http_response('200', 'OK', '{"key":"value"}')
+
+    result = client.handle_response(response)
+
+    assert_equal({ 'key' => 'value' }, result)
+  end
+
+  def test_apply_auth_graph_uses_bearer
+    client = ExposedApiClient.new
+    account = mock_account
+    request = Net::HTTP::Get.new('/')
+
+    client.apply_auth(request, account, :graph)
+
+    assert request['Authorization'].start_with?('Bearer ')
+    assert_equal 'application/json', request['Content-Type']
+  end
+
+  def test_apply_auth_msgservice_uses_skype
+    client = ExposedApiClient.new
+    account = mock_account
+    request = Net::HTTP::Get.new('/')
+
+    client.apply_auth(request, account, :msgservice)
+
+    assert request['Authentication'].start_with?('skypetoken=')
+  end
+
+  def test_apply_auth_teams_uses_bearer_skype_token
+    client = ExposedApiClient.new
+    account = mock_account
+    request = Net::HTTP::Get.new('/')
+
+    client.apply_auth(request, account, :teams)
+
+    assert request['Authorization'].start_with?('Bearer ')
+  end
+
+  def test_resolve_endpoint_raises_for_unknown
+    client = ExposedApiClient.new
+
+    assert_raises(ArgumentError) { client.resolve_endpoint(:unknown) }
+  end
+
+  # Real-ish mock HTTP responses using Net::HTTP class hierarchy
+  def build_http_response(code, message, body, headers: {})
+    response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, message)
+    response.instance_variable_set(:@body, body)
+    response.instance_variable_set(:@read, true)
+    headers.each { |k, v| response[k] = v }
+    response
+  end
+end
+
+class ApiClientCallbacksTest < Minitest::Test
+  def test_on_request_callback_receives_path_and_count
+    mock_client = Teems::TestHelpers::MockApiClient.new
+    mock_client.stub('joinedTeams', { 'value' => [] })
+    calls = []
+    mock_client.on_request = ->(path, count) { calls << [path, count] }
+    account = mock_account
+
+    Teems::Api::Channels.new(mock_client, account).list_teams
+
+    assert_equal 1, calls.length
+    assert_includes calls.first[0], 'joinedTeams'
+    assert_equal 1, calls.first[1]
+  end
+
+  def test_on_response_callback_receives_path_and_status
+    mock_client = Teems::TestHelpers::MockApiClient.new
+    mock_client.stub('joinedTeams', { 'value' => [] })
+    calls = []
+    mock_client.on_response = ->(path, code) { calls << [path, code] }
+    account = mock_account
+
+    Teems::Api::Channels.new(mock_client, account).list_teams
+
+    assert_equal 1, calls.length
+    assert_equal '200', calls.first[1]
+  end
+end
+
 class ApiClientResponseHandlingTest < Minitest::Test
   # Test subclass to expose private methods for testing
   class TestableApiClient < Teems::Services::ApiClient

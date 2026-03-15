@@ -543,6 +543,345 @@ class SyncCommandTest < Minitest::Test
     end
   end
 
+  def test_sync_unexpected_error_in_chat_reports_and_continues
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+        # Stub to raise a non-API error
+        runner.api_client.stub_error('messages', RuntimeError.new('unexpected disk error'))
+
+        cmd = Teems::Commands::Sync.new([], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/Unexpected error syncing/, result[:stderr])
+      assert_match(/Sync complete/, result[:stdout])
+    end
+  end
+
+  def test_since_time_default_180_days
+    with_temp_config do
+      runner = configured_runner
+      cmd = Teems::Commands::Sync.new([], runner: runner)
+
+      refute cmd.options[:since_days]
+    end
+  end
+
+  def test_since_time_custom
+    with_temp_config do
+      runner = configured_runner
+      cmd = Teems::Commands::Sync.new(['--since', '30'], runner: runner)
+
+      assert_equal 30, cmd.options[:since_days]
+    end
+  end
+
+  def test_verbose_api_logging
+    with_temp_config do
+      out = StringIO.new
+      err = StringIO.new
+      verbose_output = Teems::Formatters::Output.new(io: out, err: err, color: false, verbose: true)
+      runner = configured_runner(output: verbose_output)
+      runner.api_client.stub('conversations', { 'conversations' => [] })
+      cmd = Teems::Commands::Sync.new(['-v'], runner: runner)
+      cmd.execute
+
+      assert_match(/No chats found/, out.string)
+    end
+  end
+
+  def test_auth_flag_parses
+    with_temp_config do
+      runner = configured_runner
+      cmd = Teems::Commands::Sync.new(['--auth'], runner: runner)
+
+      assert cmd.options[:auth]
+    end
+  end
+
+  def test_dry_run_with_system_chats_skipped
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+                                 'conversations' => [
+                                   sample_ngmsg_chat,
+                                   { 'id' => '48:notifications', 'threadProperties' => { 'threadType' => 'chat' } }
+                                 ]
+                               })
+
+        cmd = Teems::Commands::Sync.new(['--dry-run'], runner: runner)
+        exit_code = cmd.execute
+
+        assert_equal 0, exit_code
+      end
+
+      assert_match(/Dry run/, result[:stdout])
+      assert_match(/system streams skipped/, result[:stdout])
+    end
+  end
+
+  def test_dry_run_shows_never_synced_status
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+
+        cmd = Teems::Commands::Sync.new(['--dry-run'], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/never synced/, result[:stdout])
+    end
+  end
+
+  def test_summary_shows_error_count
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+        runner.api_client.stub_error('messages', RuntimeError.new('unexpected'))
+
+        cmd = Teems::Commands::Sync.new([], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/Errors:/, result[:stderr])
+    end
+  end
+
+  def test_summary_shows_skipped_count
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+        # Messages return empty, skip_unchanged path
+        runner.api_client.stub('messages', { 'messages' => [], '_metadata' => {} })
+
+        cmd = Teems::Commands::Sync.new([], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/Sync complete/, result[:stdout])
+    end
+  end
+
+  def test_skip_unchanged_when_previously_synced
+    with_temp_config do
+      chat_id = '19:chat123@thread.v2'
+
+      # First sync: creates state with last_synced_at
+      capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+        runner.api_client.stub('messages', {
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
+
+        cmd = Teems::Commands::Sync.new(['--chat', chat_id], runner: runner)
+        cmd.execute
+      end
+
+      # Second sync: no new messages, should skip
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'messages' => [], '_metadata' => {} })
+
+        cmd = Teems::Commands::Sync.new(['--chat', chat_id], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/Sync complete/, result[:stdout])
+      assert_match(/skipped/, result[:stdout])
+    end
+  end
+
+  def test_dry_run_with_previously_synced_chat
+    with_temp_config do
+      chat_id = '19:chat123@thread.v2'
+
+      # First sync to create state
+      capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', {
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
+        cmd = Teems::Commands::Sync.new(['--chat', chat_id], runner: runner)
+        cmd.execute
+      end
+
+      # Dry run showing "last synced" status
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+        cmd = Teems::Commands::Sync.new(['--dry-run'], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/last synced/, result[:stdout])
+    end
+  end
+
+  def test_retry_404_then_non_404_error
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+        # First call: 404, second call: 500 (non-404 after retry)
+        call_count = 0
+        runner.api_client.define_singleton_method(:get) do |_endpoint, path, **_opts|
+          if path.include?('messages')
+            call_count += 1
+            raise Teems::ApiError.new('HTTP 404: Not Found', status_code: 404) if call_count == 1
+
+            raise Teems::ApiError.new('HTTP 500: Server Error', status_code: 500)
+          end
+          { 'conversations' => [{ 'id' => '19:chat123@thread.v2', 'threadProperties' => { 'threadType' => 'chat' } }] }
+        end
+
+        cmd = Teems::Commands::Sync.new([], runner: runner)
+        cmd.define_singleton_method(:sleep) { |_| nil }
+        cmd.execute
+      end
+
+      assert_match(/Failed to sync/, result[:stderr])
+      assert_match(/500/, result[:stderr])
+    end
+  end
+
+  def test_sync_error_without_backtrace
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+        # Raise error without backtrace
+        error = RuntimeError.new('no backtrace error')
+        runner.api_client.stub_error('messages', error)
+
+        cmd = Teems::Commands::Sync.new(['-v'], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/Unexpected error syncing/, result[:stderr])
+    end
+  end
+
+  def test_since_days_with_custom_value
+    with_temp_config do
+      capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', { 'conversations' => [] })
+        cmd = Teems::Commands::Sync.new(['--since', '7'], runner: runner)
+        exit_code = cmd.execute
+
+        assert_equal 0, exit_code
+        assert_equal 7, cmd.options[:since_days]
+      end
+    end
+  end
+
+  def test_verbose_sync_with_api_calls
+    with_temp_config do
+      err = StringIO.new
+      out = StringIO.new
+      verbose_output = Teems::Formatters::Output.new(io: out, err: err, color: false, verbose: true)
+      runner = configured_runner(output: verbose_output)
+      runner.api_client.stub('conversations', {
+                               'conversations' => [sample_ngmsg_chat]
+                             })
+      runner.api_client.stub('messages', {
+                               'messages' => [sample_ng_msg_message],
+                               '_metadata' => {}
+                             })
+      # Trigger API response callback
+      runner.api_client.on_response = lambda { |path, code|
+        verbose_output.debug("  API <- #{code} #{path[0..80]}") if verbose_output.verbose
+      }
+
+      cmd = Teems::Commands::Sync.new(['-v'], runner: runner)
+      cmd.execute
+
+      assert_match(/Sync complete/, out.string)
+    end
+  end
+
+  def test_unknown_option_shows_error
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        cmd = Teems::Commands::Sync.new(['--bogus'], runner: runner)
+        exit_code = cmd.execute
+
+        assert_equal 1, exit_code
+      end
+
+      assert_match(/Unknown option/, result[:stderr])
+    end
+  end
+
+  def test_since_time_uses_default_when_not_set
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+        runner.api_client.stub('messages', {
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
+
+        # Don't set --since, so default 180 days applies
+        cmd = Teems::Commands::Sync.new([], runner: runner)
+        cmd.execute
+
+        refute cmd.options[:since_days]
+      end
+
+      assert_match(/Sync complete/, result[:stdout])
+    end
+  end
+
+  def test_non_verbose_sync_api_logging
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('conversations', {
+                                 'conversations' => [sample_ngmsg_chat]
+                               })
+        runner.api_client.stub('messages', {
+                                 'messages' => [sample_ng_msg_message],
+                                 '_metadata' => {}
+                               })
+
+        cmd = Teems::Commands::Sync.new([], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/Sync complete/, result[:stdout])
+    end
+  end
+
   private
 
   def sample_ngmsg_chat

@@ -191,6 +191,69 @@ class MessageTest < Minitest::Test
   end
 
   # Application user detection (Graph API)
+  def test_system_message_returns_false_for_nil_type
+    data = sample_graph_message.dup
+    data.delete('messageType')
+    message = Teems::Models::Message.from_api(data)
+
+    refute message.system_message?
+  end
+
+  def test_reactions_with_nil_users
+    data = sample_ng_msg_message.merge(
+      'properties' => {
+        'emotions' => [
+          { 'key' => 'heart', 'users' => nil }
+        ]
+      }
+    )
+    message = Teems::Models::Message.from_api(data)
+
+    assert_equal 1, message.reactions.first[:count]
+  end
+
+  def test_graph_reactions_with_nil_user
+    data = sample_graph_message.merge(
+      'reactions' => [{ 'reactionType' => 'like', 'user' => nil }]
+    )
+    message = Teems::Models::Message.from_api(data)
+
+    assert_equal 1, message.reactions.first[:count]
+  end
+
+  def test_timestamp_alias
+    message = Teems::Models::Message.from_api(sample_graph_message)
+
+    assert_equal message.created_at, message.timestamp
+  end
+
+  def test_graph_reactions_with_user_array
+    data = sample_graph_message.merge(
+      'reactions' => [{ 'reactionType' => 'like', 'user' => %w[user1 user2 user3] }]
+    )
+    message = Teems::Models::Message.from_api(data)
+
+    assert_equal 3, message.reactions.first[:count]
+  end
+
+  def test_to_s_with_nil_created_at
+    data = sample_graph_message.dup
+    data.delete('createdDateTime')
+    message = Teems::Models::Message.from_api(data)
+
+    result = message.to_s
+    assert_includes result, 'John Doe'
+    assert_includes result, 'Hello world'
+    refute_includes result, 'nil'
+  end
+
+  def test_system_message_returns_true_for_message_type_Message
+    data = sample_graph_message.merge('messageType' => 'Message')
+    message = Teems::Models::Message.from_api(data)
+
+    refute message.system_message?
+  end
+
   def test_extracts_application_sender_name
     data = {
       'id' => 'msg123',

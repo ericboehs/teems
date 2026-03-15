@@ -94,4 +94,14 @@ class TeamsUrlParserTest < Minitest::Test
 
     assert Teems::Services::TeamsUrlParser.teams_url?(uri)
   end
+
+  def test_parse_url_with_query_but_no_context_key
+    url = 'https://teams.microsoft.com/l/message/19:abc@thread.v2/123?foo=bar'
+
+    result = Teems::Services::TeamsUrlParser.parse(url)
+
+    assert_equal '19:abc@thread.v2', result.conversation_id
+    assert_nil result.context_type
+    assert_nil result.team_id
+  end
 end

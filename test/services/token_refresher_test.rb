@@ -153,21 +153,118 @@ class TokenRefresherWithMockHttpTest < Minitest::Test
   end
 end
 
+class TokenRefresherBuildMethodsTest < Minitest::Test
+  class ExposedBuilder < Teems::Services::TokenRefresher
+    public :build_exchange_http, :build_exchange_request
+  end
+
+  def test_build_exchange_http_returns_http_client
+    with_temp_config do
+      store = mock_token_store
+      refresher = ExposedBuilder.new(token_store: store)
+
+      http = refresher.build_exchange_http
+
+      assert_instance_of Net::HTTP, http
+      assert http.use_ssl?
+      assert_equal 10, http.open_timeout
+      assert_equal 30, http.read_timeout
+    end
+  end
+
+  def test_build_exchange_request_returns_post_request
+    with_temp_config do
+      store = mock_token_store
+      refresher = ExposedBuilder.new(token_store: store)
+
+      request = refresher.build_exchange_request('test-spaces-token')
+
+      assert_instance_of Net::HTTP::Post, request
+      assert_equal 'Bearer test-spaces-token', request['Authorization']
+      assert_equal 'application/json', request['Content-Type']
+      assert_equal '{}', request.body
+    end
+  end
+end
+
 class TokenRefresherExchangeTokenTest < Minitest::Test
   # Test the actual exchange_token method logic without network calls
   class ExposedTokenRefresher < Teems::Services::TokenRefresher
-    public :exchange_token
+    public :exchange_token, :parse_exchange_response
   end
 
-  def test_exchange_token_handles_json_parse_error
+  def test_parse_exchange_response_success
     with_temp_config do
       store = mock_token_store
-      ExposedTokenRefresher.new(token_store: store, output: test_output)
+      refresher = ExposedTokenRefresher.new(token_store: store, output: test_output)
+      response = build_http_response('200', 'OK', '{"tokens":{"skypeToken":"new-token"}}')
 
-      # Mock HTTP to return invalid JSON - we can't easily do this without
-      # a full HTTP mock library, so we test the error handling constant
-      errors = Teems::Services::TokenRefresher::RECOVERABLE_ERRORS
-      assert_includes errors, JSON::ParserError
+      result = refresher.parse_exchange_response(response)
+
+      assert_equal 'new-token', result
     end
+  end
+
+  def test_parse_exchange_response_failure
+    with_temp_config do
+      store = mock_token_store
+      refresher = ExposedTokenRefresher.new(token_store: store, output: test_output)
+      response = build_http_response('500', 'Internal Server Error', '')
+
+      result = refresher.parse_exchange_response(response)
+
+      assert_nil result
+    end
+  end
+
+  def test_parse_exchange_response_missing_tokens_key
+    with_temp_config do
+      store = mock_token_store
+      refresher = ExposedTokenRefresher.new(token_store: store, output: test_output)
+      response = build_http_response('200', 'OK', '{"other":"data"}')
+
+      result = refresher.parse_exchange_response(response)
+
+      assert_nil result
+    end
+  end
+
+  def test_refresh_handles_json_parse_error
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'test-auth',
+                          'skype_token' => 'old-skype',
+                          'skype_spaces_token' => 'spaces-token'
+                        })
+      store = Teems::Services::TokenStore.new
+      refresher = TokenRefresherWithMockHttpTest::TestableTokenRefresher.new(token_store: store)
+      refresher.mock_error = JSON::ParserError.new('unexpected token')
+
+      refute refresher.refresh
+    end
+  end
+
+  def test_refresh_handles_timeout_error
+    with_temp_config do |dir|
+      write_tokens_file(dir, {
+                          'auth_token' => 'test-auth',
+                          'skype_token' => 'old-skype',
+                          'skype_spaces_token' => 'spaces-token'
+                        })
+      store = Teems::Services::TokenStore.new
+      refresher = TokenRefresherWithMockHttpTest::TestableTokenRefresher.new(token_store: store)
+      refresher.mock_error = Net::ReadTimeout.new
+
+      refute refresher.refresh
+    end
+  end
+
+  private
+
+  def build_http_response(code, message, body)
+    response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, message)
+    response.instance_variable_set(:@body, body)
+    response.instance_variable_set(:@read, true)
+    response
   end
 end

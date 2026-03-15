@@ -219,4 +219,41 @@ class ChatTest < Minitest::Test
     assert_nil chat.topic
     assert_nil chat.chat_type
   end
+
+  def test_space_predicate
+    ngmsg_data = {
+      'id' => '19:space@thread.v2',
+      'threadProperties' => { 'threadType' => 'space', 'topic' => 'My Space' }
+    }
+    chat = Teems::Models::Chat.from_api(ngmsg_data)
+
+    assert chat.space?
+    refute chat.group?
+  end
+
+  def test_chat_type_label_channel
+    ngmsg_data = {
+      'id' => '19:ch@thread.tacv2',
+      'threadProperties' => { 'threadType' => 'topic' }
+    }
+    chat = Teems::Models::Chat.from_api(ngmsg_data)
+
+    assert_equal 'Channel', chat.chat_type_label
+  end
+
+  def test_chat_type_label_space
+    ngmsg_data = {
+      'id' => '19:sp@thread.v2',
+      'threadProperties' => { 'threadType' => 'space' }
+    }
+    chat = Teems::Models::Chat.from_api(ngmsg_data)
+
+    assert_equal 'Space', chat.chat_type_label
+  end
+
+  def test_to_s_returns_display_name
+    chat = Teems::Models::Chat.from_api(sample_chat)
+
+    assert_equal 'Project Discussion', chat.to_s
+  end
 end

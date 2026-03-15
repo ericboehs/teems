@@ -190,3 +190,213 @@ class MessagesCommandUrlParsingTest < Minitest::Test
     end
   end
 end
+
+class MessagesCommandDisplayTest < Minitest::Test
+  def test_json_output
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'messages' => [sample_ng_msg_message] })
+        cmd = Teems::Commands::Messages.new(['--json', '19:abc@thread.v2'], runner: runner)
+        exit_code = cmd.execute
+
+        assert_equal 0, exit_code
+      end
+
+      json = JSON.parse(result[:stdout])
+      assert_instance_of Array, json
+      assert_equal 'Jane Smith', json.first['sender_name']
+    end
+  end
+
+  def test_displays_reactions
+    with_temp_config do
+      msg = sample_ng_msg_message
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'messages' => [msg] })
+        cmd = Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/like/, result[:stdout])
+    end
+  end
+
+  def test_displays_important_marker
+    with_temp_config do
+      msg = sample_graph_message.merge('importance' => 'urgent')
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'messages' => [msg] })
+        cmd = Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/!/, result[:stdout])
+    end
+  end
+
+  def test_no_messages_found
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'messages' => [] })
+        cmd = Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner)
+        exit_code = cmd.execute
+
+        assert_equal 0, exit_code
+      end
+
+      assert_match(/No messages found/, result[:stdout])
+    end
+  end
+
+  def test_response_key_posts
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'posts' => [sample_ng_msg_message] })
+        cmd = Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner)
+        exit_code = cmd.execute
+
+        assert_equal 0, exit_code
+      end
+
+      assert_match(/Jane Smith/, result[:stdout])
+    end
+  end
+
+  def test_response_key_value
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'value' => [sample_ng_msg_message] })
+        cmd = Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner)
+        exit_code = cmd.execute
+
+        assert_equal 0, exit_code
+      end
+
+      assert_match(/Jane Smith/, result[:stdout])
+    end
+  end
+
+  def test_fetch_channel_messages_with_team_id
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'messages' => [sample_ng_msg_message] })
+        cmd = Teems::Commands::Messages.new(['-t', 'team-123', '19:ch@thread.tacv2'], runner: runner)
+        exit_code = cmd.execute
+
+        assert_equal 0, exit_code
+      end
+
+      assert_match(/Jane Smith/, result[:stdout])
+    end
+  end
+
+  def test_api_error_returns_error_code
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub_error('messages', Teems::ApiError.new('Network error'))
+        cmd = Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner)
+        exit_code = cmd.execute
+
+        assert_equal 1, exit_code
+      end
+
+      assert_match(/Failed to fetch/, result[:stderr])
+    end
+  end
+
+  def test_channel_api_error_returns_error_code
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub_error('messages', Teems::ApiError.new('Network error'))
+        cmd = Teems::Commands::Messages.new(['-t', 'team-1', '19:ch@thread.tacv2'], runner: runner)
+        exit_code = cmd.execute
+
+        assert_equal 1, exit_code
+      end
+
+      assert_match(/Failed to fetch channel messages/, result[:stderr])
+    end
+  end
+
+  def test_filters_system_messages
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'messages' => [sample_system_message, sample_ng_msg_message] })
+        cmd = Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner)
+        cmd.execute
+      end
+
+      refute_match(/AddMember/, result[:stdout])
+      assert_match(/Jane Smith/, result[:stdout])
+    end
+  end
+
+  def test_unknown_option_shows_error
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        cmd = Teems::Commands::Messages.new(['--bogus', '19:abc@thread.v2'], runner: runner)
+        exit_code = cmd.execute
+
+        assert_equal 1, exit_code
+      end
+
+      assert_match(/Unknown option/, result[:stderr])
+    end
+  end
+
+  def test_message_without_reactions
+    with_temp_config do
+      msg = sample_graph_message
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'messages' => [msg] })
+        cmd = Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/John Doe/, result[:stdout])
+    end
+  end
+
+  def test_message_nil_created_at_display
+    with_temp_config do
+      msg = sample_graph_message.dup
+      msg.delete('createdDateTime')
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'messages' => [msg] })
+        cmd = Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner)
+        cmd.execute
+      end
+
+      assert_match(/John Doe/, result[:stdout])
+    end
+  end
+
+  def test_json_output_with_nil_created_at
+    with_temp_config do
+      msg = sample_graph_message.dup
+      msg.delete('createdDateTime')
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.api_client.stub('messages', { 'messages' => [msg] })
+        cmd = Teems::Commands::Messages.new(['--json', '19:abc@thread.v2'], runner: runner)
+        cmd.execute
+      end
+
+      json = JSON.parse(result[:stdout])
+      assert_nil json.first['created_at']
+    end
+  end
+end

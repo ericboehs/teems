@@ -518,4 +518,109 @@ class CalCommandTest < Minitest::Test
       assert_match(/--no-send/, result[:stdout])
     end
   end
+
+  def test_detect_timezone_with_tz_env_iana
+    with_temp_config do
+      original_tz = ENV.fetch('TZ', nil)
+      ENV['TZ'] = 'America/New_York'
+      begin
+        runner = configured_runner
+        cmd = Teems::Commands::Cal.new([], runner: runner)
+        tz = cmd.send(:detect_timezone)
+        assert_equal 'America/New_York', tz
+      ensure
+        ENV['TZ'] = original_tz
+      end
+    end
+  end
+
+  def test_detect_timezone_with_tz_env_abbreviation
+    with_temp_config do
+      original_tz = ENV.fetch('TZ', nil)
+      ENV['TZ'] = 'EST'
+      begin
+        runner = configured_runner
+        cmd = Teems::Commands::Cal.new([], runner: runner)
+        tz = cmd.send(:detect_timezone)
+        assert_equal 'America/New_York', tz
+      ensure
+        ENV['TZ'] = original_tz
+      end
+    end
+  end
+
+  def test_detect_timezone_with_tz_env_unknown
+    with_temp_config do
+      original_tz = ENV.fetch('TZ', nil)
+      ENV['TZ'] = 'CUSTOM'
+      begin
+        runner = configured_runner
+        cmd = Teems::Commands::Cal.new([], runner: runner)
+        tz = cmd.send(:detect_timezone)
+        assert_equal 'CUSTOM', tz
+      ensure
+        ENV['TZ'] = original_tz
+      end
+    end
+  end
+
+  def test_detect_timezone_no_tz_env
+    with_temp_config do
+      original_tz = ENV.fetch('TZ', nil)
+      ENV.delete('TZ')
+      begin
+        runner = configured_runner
+        cmd = Teems::Commands::Cal.new([], runner: runner)
+        tz = cmd.send(:detect_timezone)
+        # Should return a timezone string based on system locale
+        assert_kind_of String, tz
+      ensure
+        ENV['TZ'] = original_tz if original_tz
+      end
+    end
+  end
+
+  def test_date_range_for_week
+    with_temp_config do
+      runner = configured_runner
+      cmd = Teems::Commands::Cal.new(['--week'], runner: runner)
+      range = cmd.send(:compute_date_range)
+      assert_instance_of Array, range
+      assert_equal 2, range.length
+    end
+  end
+
+  def test_date_range_for_week_on_sunday
+    with_temp_config do
+      runner = configured_runner
+      cmd = Teems::Commands::Cal.new(['--week'], runner: runner)
+      # Stub Date.today to return a Sunday
+      sunday = Date.new(2026, 3, 15) # March 15, 2026 is a Sunday
+      Date.stub(:today, sunday) do
+        range = cmd.send(:compute_date_range)
+        assert_instance_of Array, range
+        # Monday should be March 9 (6 days back from Sunday)
+        assert_includes range.first, '2026-03-09'
+      end
+    end
+  end
+
+  def test_event_to_hash_nil_times
+    with_temp_config do
+      runner = configured_runner
+      cmd = Teems::Commands::Cal.new([], runner: runner)
+      event = Teems::Models::Event.new(
+        id: 'e1', subject: 'Test', start_time: nil, end_time: nil,
+        location: nil, is_all_day: false, organizer: nil, attendees: [],
+        body_preview: nil, online_meeting_url: nil, show_as: nil,
+        importance: nil, is_cancelled: false, response_status: nil,
+        sensitivity: nil
+      )
+
+      hash = cmd.send(:event_to_hash, event)
+
+      assert_nil hash[:start_time]
+      assert_nil hash[:end_time]
+    end
+  end
 end

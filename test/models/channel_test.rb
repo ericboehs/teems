@@ -74,4 +74,10 @@ class ChannelTest < Minitest::Test
     assert_nil channel.membership_type
     refute channel.private?
   end
+
+  def test_to_s
+    channel = Teems::Models::Channel.from_api(sample_channel)
+
+    assert_equal '#General', channel.to_s
+  end
 end

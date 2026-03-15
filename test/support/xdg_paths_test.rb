@@ -89,4 +89,41 @@ class XdgPathsTest < Minitest::Test
       assert File.directory?(data_dir)
     end
   end
+
+  def test_ensure_config_dir_raises_on_permission_error
+    with_temp_config do |dir|
+      # Create a file where the directory should be, preventing mkdir
+      blocker = "#{dir}/teems"
+      FileUtils.mkdir_p(File.dirname(blocker))
+      File.write(blocker, 'blocker')
+
+      paths = Teems::Support::XdgPaths.new
+
+      assert_raises(SystemCallError) { paths.ensure_config_dir }
+    end
+  end
+
+  def test_ensure_cache_dir_raises_on_permission_error
+    with_temp_config do |dir|
+      blocker = "#{dir}/cache/teems"
+      FileUtils.mkdir_p(File.dirname(blocker))
+      File.write(blocker, 'blocker')
+
+      paths = Teems::Support::XdgPaths.new
+
+      assert_raises(SystemCallError) { paths.ensure_cache_dir }
+    end
+  end
+
+  def test_ensure_data_dir_raises_on_permission_error
+    with_temp_config do |dir|
+      blocker = "#{dir}/data/teems"
+      FileUtils.mkdir_p(File.dirname(blocker))
+      File.write(blocker, 'blocker')
+
+      paths = Teems::Support::XdgPaths.new
+
+      assert_raises(SystemCallError) { paths.ensure_data_dir }
+    end
+  end
 end
