@@ -118,7 +118,8 @@ module Teems
 
       def day_start(date) = Time.new(date.year, date.month, date.day, 0, 0, 0)
       def day_end(date) = Time.new(date.year, date.month, date.day, 23, 59, 59)
-      def format_datetime(time) = time.strftime('%Y-%m-%dT%H:%M:%S')
+
+      def format_datetime(time) = time.strftime('%Y-%m-%dT%H:%M:%S%:z')
     end
 
     # Subcommand parsing for cal command
