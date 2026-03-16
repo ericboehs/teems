@@ -90,7 +90,7 @@ class ConfigurationTest < Minitest::Test
       write_invalid_config(dir)
       warnings = []
       config = Teems::Services::Configuration.new
-      config.on_warning = ->(msg) { warnings << msg }
+      config.on_warning = warnings.method(:push)
       config.to_h
       assert_equal 1, warnings.size
       assert_match(/corrupted/, warnings.first)

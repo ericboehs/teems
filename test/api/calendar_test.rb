@@ -56,10 +56,10 @@ module CalendarApiTests
       @calendar_api.list_events(
         start_dt: '2026-01-20T00:00:00', end_dt: '2026-01-20T23:59:59', timezone: 'America/Chicago'
       )
-      call = @api_client.calls.first
-      assert_includes call[:params]['$select'], 'subject'
-      assert_includes call[:params]['$select'], 'attendees'
-      assert_equal 'start/dateTime', call[:params]['$orderby']
+      params = @api_client.calls.first[:params]
+      assert_includes params['$select'], 'subject'
+      assert_includes params['$select'], 'attendees'
+      assert_equal 'start/dateTime', params['$orderby']
     end
 
     def test_list_events_passes_top_param

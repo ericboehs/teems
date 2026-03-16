@@ -345,13 +345,10 @@ module SyncStoreTests
     def test_corrupt_state_backs_up_file
       with_temp_config do
         store = Teems::Services::SyncStore.new
-        FileUtils.mkdir_p(store.sync_dir)
-        state_path = File.join(store.sync_dir, 'sync_state.json')
-        File.write(state_path, 'not json{{{')
+        state_path = write_corrupt_state_file(store)
         assert_equal({}, store.load_state)
         refute File.exist?(state_path), 'Corrupt file should be moved to backup'
-        backups = Dir.glob(File.join(store.sync_dir, 'sync_state.json.corrupt.*'))
-        assert_equal 1, backups.length, 'Should have one backup file'
+        assert_equal 1, corrupt_backups(store).length, 'Should have one backup file'
       end
     end
 
@@ -366,6 +363,20 @@ module SyncStoreTests
         backups = Dir.glob(File.join(dir, 'messages.json.corrupt.*'))
         assert_equal 1, backups.length, 'Should have one backup file'
       end
+    end
+
+    private
+
+    def write_corrupt_state_file(store)
+      sync_dir = store.sync_dir
+      FileUtils.mkdir_p(sync_dir)
+      state_path = File.join(sync_dir, 'sync_state.json')
+      File.write(state_path, 'not valid json{{{')
+      state_path
+    end
+
+    def corrupt_backups(store)
+      Dir.glob(File.join(store.sync_dir, 'sync_state.json.corrupt.*'))
     end
   end
 
@@ -500,13 +511,9 @@ module SyncStoreTests
     def test_backup_corrupt_state_file
       with_temp_config do
         store = Teems::Services::SyncStore.new
-        FileUtils.mkdir_p(store.sync_dir)
-        state_file = File.join(store.sync_dir, 'sync_state.json')
-        File.write(state_file, 'not valid json{{{')
+        write_corrupt_state(store)
 
-        result = store.load_state
-
-        assert_equal({}, result)
+        assert_equal({}, store.load_state)
         corrupt_files = Dir.glob(File.join(store.sync_dir, 'sync_state.json.corrupt.*'))
         assert_equal 1, corrupt_files.length
       end
@@ -515,7 +522,7 @@ module SyncStoreTests
     def test_backup_corrupt_file_handles_rename_error
       with_temp_config do
         store = Teems::Services::SyncStore.new
-        write_corrupt_state(store, readonly_dir: true)
+        write_corrupt_state_readonly(store)
         assert_equal({}, store.load_state)
       ensure
         File.chmod(0o755, store.sync_dir) if store
@@ -524,10 +531,15 @@ module SyncStoreTests
 
     private
 
-    def write_corrupt_state(store, readonly_dir: false)
-      FileUtils.mkdir_p(store.sync_dir)
-      File.write(File.join(store.sync_dir, 'sync_state.json'), 'bad json')
-      File.chmod(0o000, store.sync_dir) if readonly_dir
+    def write_corrupt_state(store)
+      sync_dir = store.sync_dir
+      FileUtils.mkdir_p(sync_dir)
+      File.write(File.join(sync_dir, 'sync_state.json'), 'bad json')
+    end
+
+    def write_corrupt_state_readonly(store)
+      write_corrupt_state(store)
+      File.chmod(0o000, store.sync_dir)
     end
   end
 end

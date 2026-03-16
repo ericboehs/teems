@@ -170,7 +170,7 @@ module ApiClientTests
       response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, message)
       response.instance_variable_set(:@body, body)
       response.instance_variable_set(:@read, true)
-      headers.each { |k, v| response[k] = v }
+      headers.each { |header_name, header_value| response[header_name] = header_value }
       response
     end
   end
@@ -282,11 +282,11 @@ module ApiClientTests
 
     class MockRateLimit
       def initialize(retry_after)
-        @retry_after = retry_after
+        @headers = { 'Retry-After' => retry_after }.freeze
       end
 
-      def [](key)
-        @retry_after if key == 'Retry-After'
+      def [](header_name)
+        @headers[header_name]
       end
     end
   end
@@ -415,32 +415,37 @@ module ApiClientTests
 
   class CloseTest < Minitest::Test
     def test_close_handles_io_error_gracefully
-      client = Teems::Services::ApiClient.new
-      cache = client.instance_variable_get(:@http_cache)
-
-      broken_http = Object.new
-      broken_http.define_singleton_method(:started?) { true }
-      broken_http.define_singleton_method(:finish) { raise IOError, 'stream closed' }
-      cache['broken:443'] = broken_http
+      client, cache = build_client_with_cache
+      cache['broken:443'] = build_fake_http { raise IOError, 'stream closed' }
 
       client.close
       assert_empty cache
     end
 
     def test_close_finishes_started_connections
-      client = Teems::Services::ApiClient.new
-      cache = client.instance_variable_get(:@http_cache)
-
+      client, cache = build_client_with_cache
       finished = false
-      fake_http = Object.new
-      fake_http.define_singleton_method(:started?) { true }
-      fake_http.define_singleton_method(:finish) { finished = true }
-      cache['fake:443'] = fake_http
+      cache['fake:443'] = build_fake_http { finished = true }
 
       client.close
 
       assert finished
       assert_empty cache
+    end
+
+    private
+
+    def build_client_with_cache
+      client = Teems::Services::ApiClient.new
+      cache = client.instance_variable_get(:@http_cache)
+      [client, cache]
+    end
+
+    def build_fake_http(&on_finish)
+      Object.new.tap do |http|
+        http.define_singleton_method(:started?) { true }
+        http.define_singleton_method(:finish, &on_finish)
+      end
     end
   end
 

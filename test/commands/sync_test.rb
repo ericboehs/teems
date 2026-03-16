@@ -39,67 +39,71 @@ module SyncCommandTests
 
     private
 
+    def build_sync_runner
+      out = StringIO.new
+      err = StringIO.new
+      output = Teems::Formatters::Output.new(io: out, err: err, color: false)
+      [configured_runner(output: output), out, err]
+    end
+
+    def sync_result(out, err)
+      { stdout: out.string, stderr: err.string }
+    end
+
+    def execute_with_no_sleep(args, runner:)
+      cmd = Teems::Commands::Sync.new(args, runner: runner)
+      cmd.define_singleton_method(:sleep) { |_| nil }
+      cmd.execute
+    end
+
     def run_sync(args = [], stubs: {})
-      capture_output do |output|
-        runner = configured_runner(output: output)
-        stubs.each { |path, response| runner.api_client.stub(path, response) }
-        Teems::Commands::Sync.new(args, runner: runner).execute
-      end
+      runner, out, err = build_sync_runner
+      stubs.each { |path, response| runner.api_client.stub(path, response) }
+      Teems::Commands::Sync.new(args, runner: runner).execute
+      sync_result(out, err)
     end
 
     def run_sync_with_chat_list(chats:, msg_stub: nil, error_stubs: {}, args: [])
-      capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub('conversations', { 'conversations' => chats })
-        runner.api_client.stub('messages', msg_stub) if msg_stub
-        error_stubs.each { |path, error| runner.api_client.stub_error(path, error) }
-        Teems::Commands::Sync.new(args, runner: runner).execute
-      end
+      runner, out, err = build_sync_runner
+      api = runner.api_client
+      api.stub('conversations', { 'conversations' => chats })
+      api.stub('messages', msg_stub) if msg_stub
+      error_stubs.each { |path, error| api.stub_error(path, error) }
+      Teems::Commands::Sync.new(args, runner: runner).execute
+      sync_result(out, err)
     end
 
     def run_sync_returning_exit_code(chats:, error_stubs: {})
-      exit_code = nil
-      result = capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub('conversations', { 'conversations' => chats })
-        error_stubs.each { |path, error| runner.api_client.stub_error(path, error) }
-        exit_code = Teems::Commands::Sync.new([], runner: runner).execute
-      end
-      [exit_code, result]
+      runner, out, err = build_sync_runner
+      runner.api_client.stub('conversations', { 'conversations' => chats })
+      error_stubs.each { |path, error| runner.api_client.stub_error(path, error) }
+      exit_code = Teems::Commands::Sync.new([], runner: runner).execute
+      [exit_code, sync_result(out, err)]
     end
 
     def capture_exit_code_with_chat_list(chats:, error_stubs: {})
-      exit_code = nil
-      capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub('conversations', { 'conversations' => chats })
-        error_stubs.each { |path, error| runner.api_client.stub_error(path, error) }
-        exit_code = Teems::Commands::Sync.new([], runner: runner).execute
-      end
-      exit_code
+      runner, _out, _err = build_sync_runner
+      runner.api_client.stub('conversations', { 'conversations' => chats })
+      error_stubs.each { |path, error| runner.api_client.stub_error(path, error) }
+      Teems::Commands::Sync.new([], runner: runner).execute
     end
 
     def run_sync_with_sleep_stub(chats:, error:)
-      capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub('conversations', { 'conversations' => chats })
-        runner.api_client.stub_error('messages', error)
-        cmd = Teems::Commands::Sync.new([], runner: runner)
-        cmd.define_singleton_method(:sleep) { |_| nil }
-        cmd.execute
-      end
+      runner, out, err = build_sync_runner
+      runner.api_client.stub('conversations', { 'conversations' => chats })
+      runner.api_client.stub_error('messages', error)
+      execute_with_no_sleep([], runner: runner)
+      sync_result(out, err)
     end
 
     def run_transient_404_sync(error:)
-      capture_output do |output|
-        runner = configured_runner(output: output)
-        runner.api_client.stub('conversations', { 'conversations' => [sample_ngmsg_chat] })
-        runner.api_client.stub_transient_error('messages', error, times: 1)
-        runner.api_client.stub('messages', { 'messages' => [sample_ng_msg_message], '_metadata' => {} })
-        cmd = Teems::Commands::Sync.new([], runner: runner)
-        cmd.define_singleton_method(:sleep) { |_| nil }
-        cmd.execute
-      end
+      runner, out, err = build_sync_runner
+      api = runner.api_client
+      api.stub('conversations', { 'conversations' => [sample_ngmsg_chat] })
+      api.stub_transient_error('messages', error, times: 1)
+      api.stub('messages', { 'messages' => [sample_ng_msg_message], '_metadata' => {} })
+      execute_with_no_sleep([], runner: runner)
+      sync_result(out, err)
     end
 
     def run_first_sync(chat_id)
@@ -172,13 +176,10 @@ module SyncCommandTests
     end
 
     def run_retry_not_found_then_server_error
-      capture_output do |output|
-        runner = configured_runner(output: output)
-        setup_retry_404_api_client(runner)
-        cmd = Teems::Commands::Sync.new([], runner: runner)
-        cmd.define_singleton_method(:sleep) { |_| nil }
-        cmd.execute
-      end
+      runner, out, err = build_sync_runner
+      setup_retry_404_api_client(runner)
+      execute_with_no_sleep([], runner: runner)
+      sync_result(out, err)
     end
 
     def build_verbose_runner
@@ -248,7 +249,7 @@ module SyncCommandTests
     def test_requires_auth
       with_temp_config do
         result = capture_output do |output|
-          store = mock_token_store(configured: false)
+          store = mock_unconfigured_store
           runner = Teems::Runner.new(output: output, token_store: store)
           Teems::Commands::Sync.new([], runner: runner).execute
         end
@@ -258,13 +259,13 @@ module SyncCommandTests
     end
 
     def test_shows_help
-      result = with_temp_config { run_sync(['--help']) }
+      stdout = with_temp_config { run_sync(['--help']) }[:stdout]
 
-      assert_match(/teems sync/, result[:stdout])
-      assert_match(/USAGE:/, result[:stdout])
-      assert_match(/--since/, result[:stdout])
-      assert_match(/--chat/, result[:stdout])
-      assert_match(/--dry-run/, result[:stdout])
+      assert_match(/teems sync/, stdout)
+      assert_match(/USAGE:/, stdout)
+      assert_match(/--since/, stdout)
+      assert_match(/--chat/, stdout)
+      assert_match(/--dry-run/, stdout)
     end
 
     def test_parses_since_option
@@ -549,7 +550,7 @@ module SyncCommandTests
         chat_id = '19:test@thread.v2'
         preseed_messages(chat_id, [old_message_fixture])
         run_sync(['--chat', chat_id], stubs: msg_stub)
-        ids = load_synced_messages(chat_id).map { |m| m['id'] }
+        ids = load_synced_messages(chat_id).map { |msg| msg['id'] }
 
         assert_includes ids, 'old-msg-1'
         assert_includes ids, '1768935087318'

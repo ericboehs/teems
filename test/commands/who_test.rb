@@ -46,9 +46,11 @@ module WhoCommandTests
     end
 
     def run_who_with_stub(args, stubs)
-      run_who(args) do |runner|
-        stubs.each { |path, response| runner.api_client.stub(path, response) }
-      end
+      run_who(args) { |runner| stub_api(runner, stubs) }
+    end
+
+    def stub_api(runner, stubs)
+      stubs.each { |path, response| runner.api_client.stub(path, response) }
     end
 
     def search_results(profiles)
@@ -81,7 +83,7 @@ module WhoCommandTests
 
     def test_requires_auth
       result = capture_output do |output|
-        store = mock_token_store(configured: false)
+        store = mock_unconfigured_store
         runner = Teems::Runner.new(output: output, token_store: store)
         assert_equal 1, Teems::Commands::Who.new([], runner: runner).execute
       end
@@ -115,11 +117,11 @@ module WhoCommandTests
     end
 
     def test_shows_office_and_phones
-      result = run_who_with_stub([], full_stubs)
+      stdout = run_who_with_stub([], full_stubs)[:stdout]
 
-      assert_match(/Building A, Room 302/, result[:stdout])
-      assert_match(/\+1 \(555\) 123-4567/, result[:stdout])
-      assert_match(/\+1 \(555\) 987-6543/, result[:stdout])
+      assert_match(/Building A, Room 302/, stdout)
+      assert_match(/\+1 \(555\) 123-4567/, stdout)
+      assert_match(/\+1 \(555\) 987-6543/, stdout)
     end
   end
 
@@ -167,9 +169,10 @@ module WhoCommandTests
 
     def test_hides_presence_on_api_error
       result = run_who([]) do |runner|
-        runner.api_client.stub('/v1.0/me', PROFILE_DATA)
-        runner.api_client.stub('calendar/getSchedule', SCHEDULE_RESPONSE)
-        runner.api_client.stub_error('presence', Teems::ApiError.new('Forbidden', status_code: 403))
+        api = runner.api_client
+        api.stub('/v1.0/me', PROFILE_DATA)
+        api.stub('calendar/getSchedule', SCHEDULE_RESPONSE)
+        api.stub_error('presence', Teems::ApiError.new('Forbidden', status_code: 403))
       end
 
       assert_equal 0, result[:exit_code]
@@ -190,12 +193,12 @@ module WhoCommandTests
 
     def test_hides_empty_fields
       data = { 'id' => 'user-1', 'displayName' => 'Jane', 'businessPhones' => [] }
-      result = run_who_with_stub([], { '/v1.0/me' => data, 'presence' => PRESENCE_AVAILABLE,
-                                       'calendar/getSchedule' => SCHEDULE_RESPONSE })
+      stdout = run_who_with_stub([], { '/v1.0/me' => data, 'presence' => PRESENCE_AVAILABLE,
+                                       'calendar/getSchedule' => SCHEDULE_RESPONSE })[:stdout]
 
-      assert_match(/Jane/, result[:stdout])
-      refute_match(/Email:/, result[:stdout])
-      refute_match(/Title:/, result[:stdout])
+      assert_match(/Jane/, stdout)
+      refute_match(/Email:/, stdout)
+      refute_match(/Title:/, stdout)
     end
   end
 
@@ -229,9 +232,10 @@ module WhoCommandTests
 
     def test_hides_schedule_on_api_error
       result = run_who([]) do |runner|
-        runner.api_client.stub('/v1.0/me', PROFILE_DATA)
-        runner.api_client.stub('presence', PRESENCE_AVAILABLE)
-        runner.api_client.stub_error('calendar/getSchedule', Teems::ApiError.new('Error'))
+        api = runner.api_client
+        api.stub('/v1.0/me', PROFILE_DATA)
+        api.stub('presence', PRESENCE_AVAILABLE)
+        api.stub_error('calendar/getSchedule', Teems::ApiError.new('Error'))
       end
 
       assert_equal 0, result[:exit_code]
@@ -361,9 +365,10 @@ module WhoCommandTests
 
     def test_json_without_presence
       result = run_who(['--json']) do |runner|
-        runner.api_client.stub('calendar/getSchedule', SCHEDULE_RESPONSE)
-        runner.api_client.stub('/v1.0/me', PROFILE_DATA)
-        runner.api_client.stub_error('presence', Teems::ApiError.new('Error', status_code: 500))
+        api = runner.api_client
+        api.stub('calendar/getSchedule', SCHEDULE_RESPONSE)
+        api.stub('/v1.0/me', PROFILE_DATA)
+        api.stub_error('presence', Teems::ApiError.new('Error', status_code: 500))
       end
       json = JSON.parse(result[:stdout])
 

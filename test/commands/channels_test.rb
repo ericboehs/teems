@@ -4,17 +4,17 @@ require 'test_helper'
 
 class ChannelsCommandTest < Minitest::Test
   def test_shows_help_with_help_flag
-    result = run_channels(['--help'])
+    stdout = run_channels(['--help'])[:stdout]
 
-    assert_match(/teems channels/, result[:stdout])
-    assert_match(/USAGE:/, result[:stdout])
-    assert_match(/--json/, result[:stdout])
+    assert_match(/teems channels/, stdout)
+    assert_match(/USAGE:/, stdout)
+    assert_match(/--json/, stdout)
   end
 
   def test_requires_auth
     with_temp_config do
       result = capture_output do |output|
-        store = mock_token_store(configured: false)
+        store = mock_unconfigured_store
         runner = Teems::Runner.new(output: output, token_store: store)
         assert_equal 1, Teems::Commands::Channels.new([], runner: runner).execute
       end

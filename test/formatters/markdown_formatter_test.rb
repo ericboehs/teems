@@ -55,11 +55,11 @@ module MarkdownFormatterTests
     end
 
     def test_format_groups_by_date
-      msg1 = build_message(sender_name: 'Alice', content: 'Morning',
-                           created_at: Time.new(2026, 1, 19, 9, 0, 0))
-      msg2 = build_message(sender_name: 'Bob', content: 'Afternoon',
-                           created_at: Time.new(2026, 1, 20, 14, 0, 0))
-      result = build_formatter.format([msg1, msg2])
+      morning_msg = build_message(sender_name: 'Alice', content: 'Morning',
+                                  created_at: Time.new(2026, 1, 19, 9, 0, 0))
+      afternoon_msg = build_message(sender_name: 'Bob', content: 'Afternoon',
+                                    created_at: Time.new(2026, 1, 20, 14, 0, 0))
+      result = build_formatter.format([morning_msg, afternoon_msg])
       assert_includes result, '## 2026-01-19'
       assert_includes result, '## 2026-01-20'
     end
@@ -95,9 +95,9 @@ module MarkdownFormatterTests
     end
 
     def test_format_message_nil_created_at_after_real_date
-      msg1 = build_message(sender_name: 'Alice', created_at: Time.new(2026, 1, 20, 10, 0, 0))
-      msg2 = build_message(sender_name: 'Bob', created_at: nil)
-      result = build_formatter.format([msg1, msg2])
+      dated_msg = build_message(sender_name: 'Alice', created_at: Time.new(2026, 1, 20, 10, 0, 0))
+      undated_msg = build_message(sender_name: 'Bob', created_at: nil)
+      result = build_formatter.format([dated_msg, undated_msg])
       assert_includes result, '## 2026-01-20'
       assert_includes result, '## Unknown Date'
     end

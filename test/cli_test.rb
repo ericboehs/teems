@@ -140,10 +140,13 @@ module CLITests
 
   class ErrorHandlingTest < Minitest::Test
     class MockErrorCLI < Teems::CLI
+      ERROR_TRIGGERS = { 'trigger-error' => StandardError }.freeze
+
       private
 
       def dispatch_command(command_name, args)
-        raise StandardError, 'Test error' if command_name == 'trigger-error'
+        error_class = ERROR_TRIGGERS[command_name]
+        raise error_class, 'Test error' if error_class
 
         super
       end
@@ -266,8 +269,7 @@ module CLITests
         mock_api = Teems::TestHelpers::MockApiClient.new
         mock_api.stub('joinedTeams', { 'value' => [] })
         store = Teems::TestHelpers::MockTokenStore.new(
-          account: Teems::Models::Account.new(name: 'default', auth_token: 'test', skype_token: 'test'),
-          configured: true
+          account: Teems::Models::Account.new(name: 'default', auth_token: 'test', skype_token: 'test')
         )
         runner = Teems::Runner.new(output: out, token_store: store, api_client: mock_api)
         setup_verbose_logging(runner, out) if out.verbose?

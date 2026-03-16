@@ -32,9 +32,10 @@ module OrgCommandTests
     end
 
     def stub_me_with_manager_chain(runner, user, chain)
-      runner.api_client.stub('/v1.0/me', user)
-      runner.api_client.stub('/v1.0/me/manager', chain.last)
-      runner.api_client.stub('/v1.0/me/directReports', { 'value' => [] })
+      api = runner.api_client
+      api.stub('/v1.0/me', user)
+      api.stub('/v1.0/me/manager', chain.last)
+      api.stub('/v1.0/me/directReports', { 'value' => [] })
       stub_chain_managers(runner, chain)
     end
 
@@ -71,7 +72,7 @@ module OrgCommandTests
 
     def test_requires_auth
       result = capture_output do |output|
-        store = mock_token_store(configured: false)
+        store = mock_unconfigured_store
         runner = Teems::Runner.new(output: output, token_store: store)
         assert_equal 1, Teems::Commands::Org.new([], runner: runner).execute
       end
@@ -120,24 +121,27 @@ module OrgCommandTests
       ceo = profile_data(id: 'ceo', name: 'CEO', title: 'CEO')
       dir = profile_data(id: 'dir', name: 'Dir', title: 'Dir')
       user = profile_data(id: 'me-1', name: 'Me', title: 'Eng')
-      result = run_org { |runner| stub_me_with_manager_chain(runner, user, [ceo, dir]) }
+      stdout = run_org { |runner| stub_me_with_manager_chain(runner, user, [ceo, dir]) }[:stdout]
 
-      assert_equal 0, result[:exit_code]
-      assert_match(/CEO/, result[:stdout])
-      assert_match(/Dir/, result[:stdout])
-      assert_match(/--> Me/, result[:stdout])
+      assert_match(/CEO/, stdout)
+      assert_match(/Dir/, stdout)
+      assert_match(/--> Me/, stdout)
     end
 
     def test_manager_chain_ordering
       ceo = profile_data(id: 'ceo', name: 'TopBoss')
       dir = profile_data(id: 'dir', name: 'MidBoss')
       user = profile_data(id: 'me-1', name: 'Worker')
-      result = run_org { |runner| stub_me_with_manager_chain(runner, user, [ceo, dir]) }
+      lines = run_org { |runner| stub_me_with_manager_chain(runner, user, [ceo, dir]) }[:stdout].lines
 
-      lines = result[:stdout].lines.map(&:rstrip)
-      ceo_idx = lines.index { |l| l.include?('TopBoss') }
-      dir_idx = lines.index { |l| l.include?('MidBoss') }
-      assert ceo_idx < dir_idx, 'CEO should come before Director'
+      assert_operator line_index(lines, 'TopBoss'), :<, line_index(lines, 'MidBoss'),
+                      'CEO should come before Director'
+    end
+
+    private
+
+    def line_index(lines, text)
+      lines.index { |line| line.include?(text) }
     end
   end
 

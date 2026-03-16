@@ -61,16 +61,16 @@ module ChatsCommandTests
     include Helpers
 
     def test_shows_help_with_help_flag
-      result = run_chats(['--help'])
-      assert_match(/teems chats/, result[:stdout])
-      assert_match(/USAGE:/, result[:stdout])
-      assert_match(/--json/, result[:stdout])
+      stdout = run_chats(['--help'])[:stdout]
+      assert_match(/teems chats/, stdout)
+      assert_match(/USAGE:/, stdout)
+      assert_match(/--json/, stdout)
     end
 
     def test_requires_auth
       with_temp_config do
         result = capture_output do |output|
-          store = mock_token_store(configured: false)
+          store = mock_unconfigured_store
           runner = Teems::Runner.new(output: output, token_store: store)
           assert_equal 1, Teems::Commands::Chats.new([], runner: runner).execute
         end

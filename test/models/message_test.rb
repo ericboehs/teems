@@ -129,9 +129,10 @@ module MessageTests
 
     def test_from_api_with_ng_msg_parses_reactions
       message = Teems::Models::Message.from_api(sample_ng_msg_message)
-      assert_equal 1, message.reactions.size
-      assert_equal 'like', message.reactions[0][:type]
-      assert_equal 1, message.reactions[0][:count]
+      reactions = message.reactions
+      assert_equal 1, reactions.size
+      assert_equal 'like', reactions[0][:type]
+      assert_equal 1, reactions[0][:count]
     end
 
     def test_from_api_with_ng_msg_uses_display_name_fallback

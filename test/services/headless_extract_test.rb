@@ -43,7 +43,7 @@ module HeadlessExtractTests
 
   # Shared helper for URL-safe base64 encoding (no external gem)
   module JwtHelper
-    def urlsafe_b64(str)
+    def urlsafe_encode(str)
       [str].pack('m0').tr('+/', '-_').delete('=')
     end
   end
@@ -74,7 +74,7 @@ module HeadlessExtractTests
       now = Time.now
       stub_file_exist(obj, { source => true, binary => true })
       stub_file_mtime(obj, { binary => now - 10, source => now })
-      stub_open3_compile(obj, success: true)
+      stub_open3_compile(obj)
 
       assert_equal binary, obj.ensure_helper_binary
     end
@@ -84,7 +84,7 @@ module HeadlessExtractTests
       source = obj.helper_source_path
       binary = obj.helper_binary_path
       stub_file_exist(obj, { source => true })
-      stub_open3_compile(obj, success: true)
+      stub_open3_compile(obj)
 
       assert_equal binary, obj.ensure_helper_binary
     end
@@ -106,10 +106,10 @@ module HeadlessExtractTests
       obj.file_mtime_map = mtime_map
     end
 
-    def stub_open3_compile(obj, success:)
+    def stub_open3_compile(obj)
       obj.define_singleton_method(:compile_helper) do |_s, binary|
         log('Compiling headless token helper...')
-        success ? binary : log_and_nil('Failed to compile helper')
+        binary
       end
     end
   end
@@ -117,7 +117,7 @@ module HeadlessExtractTests
   class HelperBinaryCompileTest < Minitest::Test
     def test_compile_helper_returns_nil_on_failure
       obj = TestableHeadless.new
-      stub_capture2(obj, status_success: false)
+      stub_compile_status(obj, status_success: false)
 
       assert_nil obj.compile_helper('src.swift', 'bin')
       assert_includes obj.log_messages, 'Failed to compile helper'
@@ -125,14 +125,14 @@ module HeadlessExtractTests
 
     def test_compile_helper_returns_binary_on_success
       obj = TestableHeadless.new
-      stub_capture2(obj, status_success: true)
+      stub_compile_status(obj, status_success: true)
 
       assert_equal 'bin', obj.compile_helper('src.swift', 'bin')
     end
 
     def test_compile_helper_returns_nil_on_enoent
       obj = TestableHeadless.new
-      stub_capture2_enoent(obj)
+      stub_compile_status_enoent(obj)
 
       assert_nil obj.compile_helper('src.swift', 'bin')
       assert_includes obj.log_messages, 'swiftc not found'
@@ -140,7 +140,7 @@ module HeadlessExtractTests
 
     private
 
-    def stub_capture2(obj, status_success:)
+    def stub_compile_status(obj, status_success:)
       mock_status = Object.new
       mock_status.define_singleton_method(:success?) { status_success }
       obj.define_singleton_method(:compile_helper) do |_source, binary|
@@ -150,7 +150,7 @@ module HeadlessExtractTests
       end
     end
 
-    def stub_capture2_enoent(obj)
+    def stub_compile_status_enoent(obj)
       obj.define_singleton_method(:compile_helper) do |_source, _binary|
         log('Compiling headless token helper...')
         raise Errno::ENOENT
@@ -321,7 +321,7 @@ module HeadlessExtractTests
     end
 
     def mock_exitstatus(code)
-      Object.new.tap { |s| s.define_singleton_method(:exitstatus) { code } }
+      Object.new.tap { |status| status.define_singleton_method(:exitstatus) { code } }
     end
   end
 
@@ -350,7 +350,7 @@ module HeadlessExtractTests
     include JwtHelper
 
     def test_extract_upn_from_jwt
-      payload = urlsafe_b64('{"upn":"alice@contoso.com"}')
+      payload = urlsafe_encode('{"upn":"alice@contoso.com"}')
       jwt = "eyJhbGciOiJSUzI1NiJ9.#{payload}.signature"
 
       assert_equal 'alice@contoso.com', TestableHeadless.new.extract_upn(jwt)
@@ -367,12 +367,7 @@ module HeadlessExtractTests
 
   class HeadlessExtractParseTest < Minitest::Test
     def test_parse_headless_result_returns_tokens
-      obj = TestableHeadless.new
-      obj.define_singleton_method(:exchange_skype_via_http) { |_t| 'parsed-skype' }
-
-      json = '{"auth_token":"a","skype_spaces_token":"s","refresh_token":"r",' \
-             '"client_id":"c","tenant_id":"t"}'
-      result = obj.parse_headless_result(json)
+      result = parse_sample_result
 
       assert_equal 'a', result[:auth_token]
       assert_equal 'parsed-skype', result[:skype_token]
@@ -389,7 +384,18 @@ module HeadlessExtractTests
       obj = TestableHeadless.new
 
       assert_nil obj.parse_headless_result('not valid json {')
-      assert(obj.log_messages.any? { |m| m.include?('Failed to parse headless result') })
+      assert(obj.log_messages.any? { |msg| msg.include?('Failed to parse headless result') })
+    end
+
+    private
+
+    def parse_sample_result
+      obj = TestableHeadless.new
+      obj.define_singleton_method(:exchange_skype_via_http) { |_t| 'parsed-skype' }
+
+      json = '{"auth_token":"a","skype_spaces_token":"s","refresh_token":"r",' \
+             '"client_id":"c","tenant_id":"t"}'
+      obj.parse_headless_result(json)
     end
   end
 
@@ -416,7 +422,7 @@ module HeadlessExtractTests
 
     def test_stored_login_hint_reads_tokens_file
       with_temp_config do |dir|
-        payload = urlsafe_b64('{"upn":"bob@corp.com"}')
+        payload = urlsafe_encode('{"upn":"bob@corp.com"}')
         jwt = "header.#{payload}.sig"
         write_tokens_file(dir, { 'auth_token' => jwt, 'tenant_id' => 'tid-99' })
 

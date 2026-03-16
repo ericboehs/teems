@@ -279,27 +279,37 @@ module EventTests
     def test_summary_lines_with_all_fields
       data = sample_event_data.merge('onlineMeeting' => { 'joinUrl' => 'https://teams.example.com/join' })
       lines = Teems::Models::Event.from_api(data).create_summary_lines
-      assert(lines.any? { |l| l.include?('09:00') })
-      assert(lines.any? { |l| l.include?('Location:') })
-      assert(lines.any? { |l| l.include?('Teams link:') })
+      assert_line_includes(lines, '09:00')
+      assert_line_includes(lines, 'Location:')
+      assert_line_includes(lines, 'Teams link:')
     end
 
     def test_summary_lines_empty_location_omitted
       data = sample_event_data.merge('location' => { 'displayName' => '' })
       lines = Teems::Models::Event.from_api(data).create_summary_lines
-      refute(lines.any? { |l| l.include?('Location:') })
+      refute_line_includes(lines, 'Location:')
     end
 
     def test_summary_lines_nil_location_omitted
       data = sample_event_data.merge('location' => { 'displayName' => nil })
       lines = Teems::Models::Event.from_api(data).create_summary_lines
-      refute(lines.any? { |l| l.include?('Location:') })
+      refute_line_includes(lines, 'Location:')
     end
 
     def test_summary_lines_no_meeting_url
       data = sample_event_data.merge('onlineMeeting' => nil)
       lines = Teems::Models::Event.from_api(data).create_summary_lines
-      refute(lines.any? { |l| l.include?('Teams link:') })
+      refute_line_includes(lines, 'Teams link:')
+    end
+
+    private
+
+    def assert_line_includes(lines, text)
+      assert(lines.any? { |line| line.include?(text) }, "Expected a line containing '#{text}'")
+    end
+
+    def refute_line_includes(lines, text)
+      refute(lines.any? { |line| line.include?(text) }, "Did not expect a line containing '#{text}'")
     end
   end
 end

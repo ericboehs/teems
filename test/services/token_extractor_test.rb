@@ -65,29 +65,42 @@ module TokenExtractorTests
 
     # v2 success tokens
     def add_v2_tokens(extractor)
-      extractor.applescript_results << 'started'
-      extractor.applescript_results << '{"auth_token":"v2-auth","skype_spaces_token":"v2-skype-spaces"}'
+      results = extractor.applescript_results
+      results << 'started'
+      results << '{"auth_token":"v2-auth","skype_spaces_token":"v2-skype-spaces"}'
       # extract_v1_refresh_data runs EXTRACT_TOKENS_JS to grab refresh token (always V1)
-      extractor.applescript_results << '{"auth_token":null,"skype_spaces_token":null,' \
-                                       '"refresh_token":null,"client_id":null,"tenant_id":null}'
-      extractor.applescript_results << '{"skype_token":"v2-skype","region":"us","chat_service":"https://chat.com"}'
-      extractor.applescript_results << nil
+      results << '{"auth_token":null,"skype_spaces_token":null,' \
+                 '"refresh_token":null,"client_id":null,"tenant_id":null}'
+      results << '{"skype_token":"v2-skype","region":"us","chat_service":"https://chat.com"}'
+      results << nil
+    end
+
+    # v2 timeout: started but never completes decryption
+    def add_v2_timeout(extractor)
+      results = extractor.applescript_results
+      results << 'started'
+      results.push(*Array.new(10, ''), *Array.new(24), nil)
     end
 
     # v2 failure: bad first-token response, then exhaust polling
     def add_v2_failure(extractor, first_result:)
-      extractor.applescript_results << 'started'
-      extractor.applescript_results << first_result
-      24.times { extractor.applescript_results << nil }
-      extractor.applescript_results << nil
+      results = extractor.applescript_results
+      results << 'started'
+      results << first_result
+      24.times { results << nil }
+      results << nil
     end
 
     # v1 success tokens
-    def add_v1_tokens(extractor, auth: 'v1-auth', spaces: 'v1-spaces',
-                      skype: 'v1-skype', chat: 'https://chat.com')
-      extractor.applescript_results << %({"auth_token":"#{auth}","skype_spaces_token":"#{spaces}"})
-      extractor.applescript_results << %({"skype_token":"#{skype}","region":"us","chat_service":"#{chat}"})
-      extractor.applescript_results << nil
+    def add_v1_tokens(extractor, tokens: {})
+      auth = tokens.fetch(:auth, 'v1-auth')
+      spaces = tokens.fetch(:spaces, 'v1-spaces')
+      results = extractor.applescript_results
+      results << %({"auth_token":"#{auth}","skype_spaces_token":"#{spaces}"})
+      skype = tokens.fetch(:skype, 'v1-skype')
+      chat = tokens.fetch(:chat, 'https://chat.com')
+      results << %({"skype_token":"#{skype}","region":"us","chat_service":"#{chat}"})
+      results << nil
     end
 
     # returns [extractor, err_io] with verbose output attached
@@ -118,9 +131,7 @@ module TokenExtractorTests
     def test_extract_opens_teams_and_extracts_tokens
       extractor = build_extractor
       add_preamble(extractor)
-      extractor.applescript_results << '{"auth_token":"test-auth","skype_spaces_token":"test-skype-spaces"}'
-      extractor.applescript_results << '{"skype_token":"test-skype","region":"us","chat_service":"https://chat.com"}'
-      extractor.applescript_results << nil
+      add_v1_tokens(extractor, tokens: { auth: 'test-auth', spaces: 'test-skype-spaces', skype: 'test-skype' })
       result = extractor.extract
       assert_equal 'test-auth', result[:auth_token]
       assert_equal 'test-skype', result[:skype_token]
@@ -130,8 +141,9 @@ module TokenExtractorTests
     def test_extract_returns_nil_when_tokens_not_found
       extractor = build_extractor
       add_preamble(extractor)
-      60.times { extractor.applescript_results << nil }
-      extractor.applescript_results << nil
+      results = extractor.applescript_results
+      60.times { results << nil }
+      results << nil
 
       assert_nil extractor.extract
     end
@@ -149,9 +161,10 @@ module TokenExtractorTests
     def test_extract_tokens_v2_returns_nil_on_no_key
       extractor = build_extractor
       add_v2_preamble(extractor)
-      extractor.applescript_results << 'no_key'
-      24.times { extractor.applescript_results << nil }
-      extractor.applescript_results << nil
+      results = extractor.applescript_results
+      results << 'no_key'
+      24.times { results << nil }
+      results << nil
 
       assert_nil extractor.extract
     end
@@ -176,10 +189,7 @@ module TokenExtractorTests
     def test_extract_tokens_v2_handles_timeout
       extractor = build_extractor
       add_v2_preamble(extractor)
-      extractor.applescript_results << 'started'
-      10.times { extractor.applescript_results << '' }
-      24.times { extractor.applescript_results << nil }
-      extractor.applescript_results << nil
+      add_v2_timeout(extractor)
 
       assert_nil extractor.extract
     end
@@ -207,8 +217,9 @@ module TokenExtractorTests
     def test_exchange_returns_nil_when_no_skype_spaces_token
       extractor = build_extractor
       add_preamble(extractor)
-      extractor.applescript_results << '{"auth_token":"test-auth","skype_spaces_token":null}'
-      extractor.applescript_results << nil
+      results = extractor.applescript_results
+      results << '{"auth_token":"test-auth","skype_spaces_token":null}'
+      results << nil
       result = extractor.extract
       assert_equal 'test-auth', result[:auth_token]
       assert_nil result[:skype_token]
@@ -217,9 +228,10 @@ module TokenExtractorTests
     def test_exchange_handles_empty_result
       extractor = build_extractor
       add_preamble(extractor)
-      extractor.applescript_results << '{"auth_token":"test-auth","skype_spaces_token":"test-spaces"}'
-      extractor.applescript_results << ''
-      extractor.applescript_results << nil
+      results = extractor.applescript_results
+      results << '{"auth_token":"test-auth","skype_spaces_token":"test-spaces"}'
+      results << ''
+      results << nil
       result = extractor.extract
       assert_equal 'test-auth', result[:auth_token]
       assert_nil result[:skype_token]
@@ -228,9 +240,10 @@ module TokenExtractorTests
     def test_exchange_handles_error_response
       extractor = build_extractor
       add_preamble(extractor)
-      extractor.applescript_results << '{"auth_token":"test-auth","skype_spaces_token":"test-spaces"}'
-      extractor.applescript_results << '{"error":"Exchange failed"}'
-      extractor.applescript_results << nil
+      results = extractor.applescript_results
+      results << '{"auth_token":"test-auth","skype_spaces_token":"test-spaces"}'
+      results << '{"error":"Exchange failed"}'
+      results << nil
       result = extractor.extract
       assert_nil result[:skype_token]
     end
@@ -238,9 +251,10 @@ module TokenExtractorTests
     def test_exchange_handles_json_parse_error
       extractor = build_extractor
       add_preamble(extractor)
-      extractor.applescript_results << '{"auth_token":"test-auth","skype_spaces_token":"test-spaces"}'
-      extractor.applescript_results << 'not-json'
-      extractor.applescript_results << nil
+      results = extractor.applescript_results
+      results << '{"auth_token":"test-auth","skype_spaces_token":"test-spaces"}'
+      results << 'not-json'
+      results << nil
       result = extractor.extract
       assert_nil result[:skype_token]
     end
@@ -262,7 +276,7 @@ module TokenExtractorTests
       extractor = build_extractor
       add_preamble(extractor)
       extractor.applescript_results << 'bad json'
-      add_v1_tokens(extractor, chat: 'https://c.com')
+      add_v1_tokens(extractor, tokens: { chat: 'https://c.com' })
       result = extractor.extract
       assert_equal 'v1-auth', result[:auth_token]
     end
@@ -270,13 +284,16 @@ module TokenExtractorTests
     def test_v1_returns_nil_on_no_auth_token
       extractor = build_extractor
       add_preamble(extractor)
-      extractor.applescript_results << '{"auth_token":null}'
-      35.times { extractor.applescript_results << nil }
-      extractor.applescript_results << 'no_key'
-      30.times { extractor.applescript_results << nil }
-      extractor.applescript_results << nil
+      add_exhausted_v1_v2_polling(extractor)
 
       assert_nil extractor.extract
+    end
+
+    private
+
+    def add_exhausted_v1_v2_polling(extractor)
+      results = extractor.applescript_results
+      results.push('{"auth_token":null}', *Array.new(35), 'no_key', *Array.new(30), nil)
     end
   end
 
@@ -286,10 +303,11 @@ module TokenExtractorTests
     def test_page_ready_requires_teams_url
       extractor = build_extractor
       add_open_safari(extractor)
-      extractor.applescript_results << 'https://login.microsoftonline.com/|complete'
+      results = extractor.applescript_results
+      results << 'https://login.microsoftonline.com/|complete'
       add_ready_sequence(extractor)
-      extractor.applescript_results << '{"auth_token":"ready-auth","skype_spaces_token":null}'
-      extractor.applescript_results << nil
+      results << '{"auth_token":"ready-auth","skype_spaces_token":null}'
+      results << nil
       result = extractor.extract
       assert_equal 'ready-auth', result[:auth_token]
     end
@@ -297,10 +315,11 @@ module TokenExtractorTests
     def test_page_ready_requires_complete_state
       extractor = build_extractor
       add_open_safari(extractor)
-      extractor.applescript_results << 'https://teams.microsoft.com/v2/|loading'
+      results = extractor.applescript_results
+      results << 'https://teams.microsoft.com/v2/|loading'
       add_ready_sequence(extractor)
-      extractor.applescript_results << '{"auth_token":"ready-auth","skype_spaces_token":null}'
-      extractor.applescript_results << nil
+      results << '{"auth_token":"ready-auth","skype_spaces_token":null}'
+      results << nil
       result = extractor.extract
       assert_equal 'ready-auth', result[:auth_token]
     end
@@ -308,10 +327,11 @@ module TokenExtractorTests
     def test_page_ready_returns_false_for_nil
       extractor = build_extractor
       add_open_safari(extractor)
-      extractor.applescript_results << nil
+      results = extractor.applescript_results
+      results << nil
       add_ready_sequence(extractor)
-      extractor.applescript_results << '{"auth_token":"test","skype_spaces_token":null}'
-      extractor.applescript_results << nil
+      results << '{"auth_token":"test","skype_spaces_token":null}'
+      results << nil
       assert extractor.extract
     end
   end
@@ -390,14 +410,20 @@ module TokenExtractorTests
     def test_v2_with_unparseable_v1_refresh_data
       extractor = build_extractor
       add_v2_preamble(extractor)
-      extractor.applescript_results << 'started'
-      extractor.applescript_results << '{"auth_token":"v2-auth","skype_spaces_token":"v2-spaces"}'
-      # extract_v1_refresh_data gets bad JSON
-      extractor.applescript_results << 'not valid json'
-      extractor.applescript_results << '{"skype_token":"v2-skype","region":"us","chat_service":"https://c.com"}'
-      extractor.applescript_results << nil
+      add_v2_tokens_with_bad_refresh(extractor)
       result = extractor.extract
       assert_equal 'v2-auth', result[:auth_token]
+    end
+
+    private
+
+    def add_v2_tokens_with_bad_refresh(extractor)
+      results = extractor.applescript_results
+      results << 'started'
+      results << '{"auth_token":"v2-auth","skype_spaces_token":"v2-spaces"}'
+      results << 'not valid json'
+      results << '{"skype_token":"v2-skype","region":"us","chat_service":"https://c.com"}'
+      results << nil
     end
   end
 end
