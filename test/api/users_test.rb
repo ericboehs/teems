@@ -244,4 +244,95 @@ module UsersApiTests
       assert_equal 'InACall', result['activity']
     end
   end
+
+  class TeamsPresenceTest < Minitest::Test
+    include Helpers
+
+    def test_teams_presence_posts_to_presence_endpoint
+      response = [{ 'presence' => { 'availability' => 'Available' } }]
+      @api_client.stub('getpresence', response)
+      @users_api.teams_presence('8:orgid:user-uuid-123')
+      call = @api_client.calls.first
+
+      assert_equal :post, call[:method]
+      assert_includes call[:path], '/v1/presence/getpresence/'
+    end
+
+    def test_teams_presence_sends_mri_in_body
+      @api_client.stub('getpresence', [])
+      @users_api.teams_presence('8:orgid:user-uuid-123')
+
+      assert_equal [{ mri: '8:orgid:user-uuid-123' }], @api_client.calls.first[:body]
+    end
+
+    def test_teams_presence_returns_response
+      response = [{ 'presence' => { 'availability' => 'Busy' } }]
+      @api_client.stub('getpresence', response)
+      result = @users_api.teams_presence('8:orgid:user-uuid-123')
+
+      assert_equal 'Busy', result.first.dig('presence', 'availability')
+    end
+  end
+
+  class ScheduleTest < Minitest::Test
+    include Helpers
+
+    def test_schedule_posts_to_get_schedule
+      sched = { 'value' => [{ 'availabilityView' => '0000' }] }
+      @api_client.stub('getSchedule', sched)
+      @users_api.schedule('john@example.com', start_time: '2026-03-16T09:00:00',
+                                              end_time: '2026-03-16T17:00:00', timezone: 'UTC')
+      call = @api_client.calls.first
+
+      assert_equal :post, call[:method]
+      assert_includes call[:path], '/v1.0/me/calendar/getSchedule'
+    end
+
+    def test_schedule_sends_correct_body
+      sched = { 'value' => [{ 'availabilityView' => '0000' }] }
+      @api_client.stub('getSchedule', sched)
+      @users_api.schedule('john@example.com', start_time: '2026-03-16T09:00:00',
+                                              end_time: '2026-03-16T17:00:00', timezone: 'America/Chicago')
+      body = @api_client.calls.first[:body]
+
+      assert_equal ['john@example.com'], body[:schedules]
+      assert_equal 'America/Chicago', body[:startTime][:timeZone]
+      assert_equal 15, body[:availabilityViewInterval]
+    end
+
+    def test_schedule_returns_first_value
+      sched = { 'value' => [{ 'availabilityView' => '00112233' }] }
+      @api_client.stub('getSchedule', sched)
+      result = @users_api.schedule('j@ex.com', start_time: 'a', end_time: 'b', timezone: 'UTC')
+
+      assert_equal '00112233', result['availabilityView']
+    end
+
+    def test_schedule_returns_nil_for_empty_value
+      @api_client.stub('getSchedule', { 'value' => [] })
+      result = @users_api.schedule('j@ex.com', start_time: 'a', end_time: 'b', timezone: 'UTC')
+
+      assert_nil result
+    end
+  end
+
+  class SearchSanitizationTest < Minitest::Test
+    include Helpers
+
+    def test_search_strips_quotes_from_query
+      @api_client.stub('/v1.0/users', { 'value' => [] })
+      @users_api.search('john"doe')
+      search_param = @api_client.calls.first[:params]['$search']
+
+      refute_includes search_param, 'john"doe'
+      assert_includes search_param, 'johndoe'
+    end
+
+    def test_search_strips_backslashes
+      @api_client.stub('/v1.0/users', { 'value' => [] })
+      @users_api.search('john\\doe')
+
+      assert_includes @api_client.calls.first[:params]['$search'], 'johndoe'
+    end
+  end
 end
