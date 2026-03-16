@@ -118,21 +118,17 @@ module OrgCommandTests
     include Helpers
 
     def test_shows_manager_chain
-      ceo = profile_data(id: 'ceo', name: 'CEO', title: 'CEO')
-      dir = profile_data(id: 'dir', name: 'Dir', title: 'Dir')
-      user = profile_data(id: 'me-1', name: 'Me', title: 'Eng')
-      stdout = run_org { |runner| stub_me_with_manager_chain(runner, user, [ceo, dir]) }[:stdout]
+      result = run_chain_org(names: %w[CEO Dir Me], titles: %w[CEO Dir Eng])
+      stdout = result[:stdout]
 
+      assert_equal 0, result[:exit_code]
       assert_match(/CEO/, stdout)
       assert_match(/Dir/, stdout)
       assert_match(/--> Me/, stdout)
     end
 
     def test_manager_chain_ordering
-      ceo = profile_data(id: 'ceo', name: 'TopBoss')
-      dir = profile_data(id: 'dir', name: 'MidBoss')
-      user = profile_data(id: 'me-1', name: 'Worker')
-      lines = run_org { |runner| stub_me_with_manager_chain(runner, user, [ceo, dir]) }[:stdout].lines
+      lines = run_chain_org(names: %w[TopBoss MidBoss Worker])[:stdout].lines
 
       assert_operator line_index(lines, 'TopBoss'), :<, line_index(lines, 'MidBoss'),
                       'CEO should come before Director'
@@ -140,8 +136,17 @@ module OrgCommandTests
 
     private
 
+    def run_chain_org(names:, titles: [])
+      ceo = profile_data(id: 'ceo', name: names[0], title: titles[0])
+      dir = profile_data(id: 'dir', name: names[1], title: titles[1])
+      user = profile_data(id: 'me-1', name: names[2], title: titles[2])
+      run_org { |runner| stub_me_with_manager_chain(runner, user, [ceo, dir]) }
+    end
+
     def line_index(lines, text)
-      lines.index { |line| line.include?(text) }
+      idx = lines.index { |line| line.include?(text) }
+      assert idx, "Expected to find '#{text}' in output"
+      idx
     end
   end
 
