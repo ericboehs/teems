@@ -239,6 +239,13 @@ module Teems
         result
       end
 
+      def delete(_endpoint, path, account:)
+        @calls << { method: :delete, path: path, account: account }
+        @call_count += 1
+        check_errors(path)
+        nil
+      end
+
       def close
         # no-op for tests
       end

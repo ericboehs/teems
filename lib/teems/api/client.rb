@@ -18,6 +18,10 @@ module Teems
       def post(endpoint, path, body: nil)
         @api.post(endpoint, path, account: @account, body: body)
       end
+
+      def delete(endpoint, path)
+        @api.delete(endpoint, path, account: @account)
+      end
     end
   end
 end

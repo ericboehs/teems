@@ -58,6 +58,27 @@ module CalCommandTests
       end
     end
 
+    def run_create(args, stub_response: nil)
+      full_args = ['create'] + args
+      with_temp_config do
+        return capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.api_client.stub('/v1.0/me/events', stub_response || sample_event_data)
+          Teems::Commands::Cal.new(full_args, runner: runner).execute
+        end
+      end
+    end
+
+    def run_create_runner(args, stub_response: nil)
+      full_args = ['create'] + args
+      with_temp_config do
+        runner = configured_runner
+        runner.api_client.stub('/v1.0/me/events', stub_response || sample_event_data)
+        Teems::Commands::Cal.new(full_args, runner: runner).execute
+        return runner
+      end
+    end
+
     def with_tz(zone)
       original_tz = ENV.fetch('TZ', nil)
       zone ? ENV['TZ'] = zone : ENV.delete('TZ')
@@ -345,6 +366,287 @@ module CalCommandTests
     end
   end
 
+  class CreateValidationTest < Minitest::Test
+    include SharedHelpers
+
+    def test_create_without_title
+      result = run_create([])
+      assert_match(/Event title required/, result[:stderr])
+    end
+
+    def test_create_without_start_time
+      result = run_create(['Meeting'])
+      assert_match(/Start time required/, result[:stderr])
+    end
+
+    def test_create_with_invalid_start
+      result = run_create(['Meeting', '--start', 'garbage'])
+      assert_match(/Invalid start time/, result[:stderr])
+    end
+
+    def test_create_with_invalid_end
+      result = run_create(['Meeting', '--start', '2026-03-20 09:00', '--end', 'garbage'])
+      assert_match(/Invalid end time/, result[:stderr])
+    end
+
+    def test_create_all_day_with_invalid_date
+      result = run_create(['Day Off', '--all-day', '--date', 'not-a-date'])
+      assert_match(/Invalid date/, result[:stderr])
+    end
+
+    def test_create_with_zero_duration
+      result = run_create(['Meeting', '--start', '2026-03-20 09:00', '--duration', '0'])
+      assert_match(/Duration must be a positive number/, result[:stderr])
+    end
+
+    def test_create_api_error
+      with_temp_config do
+        result = capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.api_client.stub_error('/v1.0/me/events', Teems::ApiError.new('Forbidden', status_code: 403))
+          Teems::Commands::Cal.new(['create', 'Meeting', '--start', '2026-03-20 14:00'], runner: runner).execute
+        end
+        assert_match(/Failed to create event/, result[:stderr])
+      end
+    end
+
+    def test_create_help_included
+      result = run_cal(['--help'])
+      assert_match(/create "Title"/, result[:stdout])
+      assert_match(/--start/, result[:stdout])
+      assert_match(/--duration/, result[:stdout])
+      assert_match(/--all-day/, result[:stdout])
+      assert_match(/--teams/, result[:stdout])
+      assert_match(/--attendees/, result[:stdout])
+    end
+  end
+
+  class CreateApiCallTest < Minitest::Test
+    include SharedHelpers
+
+    def test_create_posts_to_events_endpoint
+      runner = run_create_runner(['Standup', '--start', '2026-03-20 14:00'])
+      call = runner.api_client.calls.first
+      assert_equal :post, call[:method]
+      assert_includes call[:path], '/v1.0/me/events'
+      assert_equal 'Standup', call[:body][:subject]
+    end
+
+    def test_create_sends_correct_times
+      runner = run_create_runner(['Standup', '--start', '2026-03-20 14:00'])
+      body = runner.api_client.calls.first[:body]
+      assert_equal '2026-03-20T14:00:00', body[:start][:dateTime]
+      assert_equal '2026-03-20T14:30:00', body[:end][:dateTime]
+    end
+
+    def test_create_default_duration_30_minutes
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00'])
+      body = runner.api_client.calls.first[:body]
+      assert_equal '2026-03-20T09:30:00', body[:end][:dateTime]
+    end
+
+    def test_create_with_duration
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00', '--duration', '60'])
+      assert_equal '2026-03-20T10:00:00', runner.api_client.calls.first[:body][:end][:dateTime]
+    end
+
+    def test_create_with_explicit_end
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00', '--end', '2026-03-20 11:00'])
+      assert_equal '2026-03-20T11:00:00', runner.api_client.calls.first[:body][:end][:dateTime]
+    end
+
+    def test_create_with_today_shorthand
+      runner = run_create_runner(['Sync', '--start', 'today 15:00'])
+      today = Date.today.strftime('%Y-%m-%d')
+      assert_equal "#{today}T15:00:00", runner.api_client.calls.first[:body][:start][:dateTime]
+    end
+
+    def test_create_with_tomorrow_shorthand
+      runner = run_create_runner(['Sync', '--start', 'tomorrow 10:00'])
+      tomorrow = (Date.today + 1).strftime('%Y-%m-%d')
+      assert_equal "#{tomorrow}T10:00:00", runner.api_client.calls.first[:body][:start][:dateTime]
+    end
+
+    def test_create_with_time_only_assumes_today
+      runner = run_create_runner(['Sync', '--start', '16:30'])
+      today = Date.today.strftime('%Y-%m-%d')
+      assert_equal "#{today}T16:30:00", runner.api_client.calls.first[:body][:start][:dateTime]
+    end
+
+    def test_create_all_day_event
+      runner = run_create_runner(['Day Off', '--all-day', '--date', '2026-03-20'])
+      body = runner.api_client.calls.first[:body]
+      assert_equal true, body[:isAllDay]
+      assert_equal '2026-03-20T00:00:00', body[:start][:dateTime]
+      assert_equal '2026-03-21T00:00:00', body[:end][:dateTime]
+    end
+
+    def test_create_all_day_defaults_to_today
+      runner = run_create_runner(['Day Off', '--all-day'])
+      today = Date.today.strftime('%Y-%m-%d')
+      assert_equal "#{today}T00:00:00", runner.api_client.calls.first[:body][:start][:dateTime]
+    end
+
+    def test_create_includes_timezone
+      with_temp_config do
+        with_tz('America/Chicago') do
+          runner = configured_runner
+          runner.api_client.stub('/v1.0/me/events', sample_event_data)
+          Teems::Commands::Cal.new(['create', 'Test', '--start', '2026-03-20 09:00'], runner: runner).execute
+          body = runner.api_client.calls.first[:body]
+          assert_equal 'America/Chicago', body[:start][:timeZone]
+        end
+      end
+    end
+  end
+
+  class CreateOptionsTest < Minitest::Test
+    include SharedHelpers
+
+    def test_create_with_location
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00', '--location', 'Room B'])
+      assert_equal({ displayName: 'Room B' }, runner.api_client.calls.first[:body][:location])
+    end
+
+    def test_create_with_body
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00', '--body', 'Agenda here'])
+      assert_equal({ contentType: 'text', content: 'Agenda here' }, runner.api_client.calls.first[:body][:body])
+    end
+
+    def test_create_with_attendees
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00',
+                                  '--attendees', 'alice@example.com,bob@example.com'])
+      attendees = runner.api_client.calls.first[:body][:attendees]
+      assert_equal 2, attendees.length
+      assert_equal 'alice@example.com', attendees[0][:emailAddress][:address]
+    end
+
+    def test_create_attendees_marked_as_required
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00',
+                                  '--attendees', 'alice@example.com'])
+      assert_equal 'required', runner.api_client.calls.first[:body][:attendees][0][:type]
+    end
+
+    def test_create_with_teams_meeting
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00', '--teams'])
+      body = runner.api_client.calls.first[:body]
+      assert_equal true, body[:isOnlineMeeting]
+      assert_equal 'teamsForBusiness', body[:onlineMeetingProvider]
+    end
+
+    def test_create_without_teams_omits_online_meeting
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00'])
+      refute runner.api_client.calls.first[:body].key?(:isOnlineMeeting)
+    end
+
+    def test_create_without_optional_fields_omits_them
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00'])
+      body = runner.api_client.calls.first[:body]
+      refute body.key?(:location)
+      refute body.key?(:body)
+      refute body.key?(:attendees)
+    end
+  end
+
+  class CreateDisplayTest < Minitest::Test
+    include SharedHelpers
+
+    def test_create_basic_event
+      result = run_create(['Standup', '--start', '2026-03-20 14:00'])
+      assert_match(/Created: "Weekly Standup"/, result[:stdout])
+    end
+
+    def test_create_displays_time_range
+      event_data = sample_event_data.merge(
+        'start' => { 'dateTime' => '2026-03-20T14:00:00.0000000', 'timeZone' => 'America/Chicago' },
+        'end' => { 'dateTime' => '2026-03-20T14:30:00.0000000', 'timeZone' => 'America/Chicago' }
+      )
+      result = run_create(['Meeting', '--start', '2026-03-20 14:00'], stub_response: event_data)
+      assert_match(/2026-03-20 14:00-14:30/, result[:stdout])
+    end
+
+    def test_create_displays_teams_link
+      event_data = sample_event_data.merge(
+        'onlineMeeting' => { 'joinUrl' => 'https://teams.microsoft.com/l/meetup-join/test123' }
+      )
+      result = run_create(['Meeting', '--start', '2026-03-20 14:00', '--teams'], stub_response: event_data)
+      assert_match(%r{Teams link: https://teams\.microsoft\.com}, result[:stdout])
+    end
+
+    def test_create_displays_location
+      event_data = sample_event_data.merge('location' => { 'displayName' => 'Room A' })
+      result = run_create(['Meeting', '--start', '2026-03-20 14:00', '--location', 'Room A'],
+                          stub_response: event_data)
+      assert_match(/Location: Room A/, result[:stdout])
+    end
+
+    def test_create_all_day_displays_all_day
+      event_data = sample_event_data.merge(
+        'isAllDay' => true,
+        'start' => { 'dateTime' => '2026-03-20T00:00:00.0000000', 'timeZone' => 'America/Chicago' },
+        'end' => { 'dateTime' => '2026-03-20T00:00:00.0000000', 'timeZone' => 'America/Chicago' }
+      )
+      result = run_create(['Day Off', '--all-day', '--date', '2026-03-20'], stub_response: event_data)
+      assert_match(/all day/, result[:stdout])
+    end
+  end
+
+  class DeleteTest < Minitest::Test
+    include SharedHelpers
+
+    def run_delete(num, event_id, stub_event: nil)
+      with_temp_config do
+        return capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.cache_store.save_calendar_ids({ num => event_id })
+          runner.api_client.stub('events', stub_event || sample_event_data)
+          Teems::Commands::Cal.new(['delete', num], runner: runner).execute
+        end
+      end
+    end
+
+    def test_delete_without_number
+      result = run_cal(['delete'])
+      assert_match(/Event number required/, result[:stderr])
+    end
+
+    def test_delete_with_uncached_number
+      result = run_cal(%w[delete 99])
+      assert_match(/not found/, result[:stderr])
+    end
+
+    def test_delete_displays_confirmation
+      result = run_delete('1', 'event-123')
+      assert_match(/Deleted: "Weekly Standup"/, result[:stdout])
+    end
+
+    def test_delete_displays_time
+      event_data = sample_event_data.merge(
+        'start' => { 'dateTime' => '2026-03-20T14:00:00.0000000', 'timeZone' => 'America/Chicago' },
+        'end' => { 'dateTime' => '2026-03-20T14:30:00.0000000', 'timeZone' => 'America/Chicago' }
+      )
+      result = run_delete('1', 'event-123', stub_event: event_data)
+      assert_match(/2026-03-20 14:00-14:30/, result[:stdout])
+    end
+
+    def test_delete_api_error
+      with_temp_config do
+        result = capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.cache_store.save_calendar_ids({ '1' => 'event-123' })
+          runner.api_client.stub_error('events', Teems::ApiError.new('Not found', status_code: 404))
+          Teems::Commands::Cal.new(%w[delete 1], runner: runner).execute
+        end
+        assert_match(/Failed to delete event/, result[:stderr])
+      end
+    end
+
+    def test_delete_help_included
+      result = run_cal(['--help'])
+      assert_match(/delete <N>/, result[:stdout])
+    end
+  end
+
   class TimezoneAndDateRangeTest < Minitest::Test
     include SharedHelpers
 
@@ -400,6 +702,17 @@ module CalCommandTests
           range = cmd.send(:compute_date_range)
           assert_instance_of Array, range
           assert_includes range.first, '2026-03-09'
+        end
+      end
+    end
+
+    def test_format_datetime_includes_timezone_offset
+      with_temp_config do
+        with_tz('America/Chicago') do
+          cmd = Teems::Commands::Cal.new([], runner: configured_runner)
+          range = cmd.send(:compute_date_range)
+          assert_match(/[+-]\d{2}:\d{2}\z/, range.first, 'Expected timezone offset in startDateTime')
+          assert_match(/[+-]\d{2}:\d{2}\z/, range.last, 'Expected timezone offset in endDateTime')
         end
       end
     end

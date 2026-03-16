@@ -174,4 +174,46 @@ module CalendarApiTests
       assert_includes @api_client.calls.first[:path], URI.encode_www_form_component('AAMkAGVm+special/chars=')
     end
   end
+
+  class CreateEventTest < Minitest::Test
+    include Helpers
+
+    def test_create_event_posts_to_correct_endpoint
+      @api_client.stub('/v1.0/me/events', sample_event_data)
+      @calendar_api.create_event({ subject: 'Test' })
+      call = @api_client.calls.first
+      assert_equal :post, call[:method]
+      assert_equal '/v1.0/me/events', call[:path]
+    end
+
+    def test_create_event_passes_body_through
+      @api_client.stub('/v1.0/me/events', sample_event_data)
+      body = { subject: 'Standup', start: { dateTime: '2026-03-20T09:00:00' } }
+      @calendar_api.create_event(body)
+      assert_equal body, @api_client.calls.first[:body]
+    end
+
+    def test_create_event_returns_event_model
+      @api_client.stub('/v1.0/me/events', sample_event_data)
+      event = @calendar_api.create_event({ subject: 'Meeting' })
+      assert_instance_of Teems::Models::Event, event
+    end
+  end
+
+  class DeleteEventTest < Minitest::Test
+    include Helpers
+
+    def test_delete_event_calls_correct_endpoint
+      @calendar_api.delete_event(event_id: 'event-123')
+      call = @api_client.calls.first
+      assert_equal :delete, call[:method]
+      assert_includes call[:path], '/v1.0/me/events/event-123'
+    end
+
+    def test_delete_event_encodes_event_id
+      @calendar_api.delete_event(event_id: 'AAMkAGVm+special/chars=')
+      assert_includes @api_client.calls.first[:path],
+                      URI.encode_www_form_component('AAMkAGVm+special/chars=')
+    end
+  end
 end

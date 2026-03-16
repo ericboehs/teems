@@ -178,7 +178,7 @@ module Teems
 
         { auth_token: parsed['auth_token'], skype_token: exchange_skype_via_http(spaces_token),
           skype_spaces_token: spaces_token, chatsvc_token: nil,
-          refresh_token: nil, client_id: parsed['client_id'], tenant_id: parsed['tenant_id'] }
+          refresh_token: parsed['refresh_token'], client_id: parsed['client_id'], tenant_id: parsed['tenant_id'] }
       end
     end
   end

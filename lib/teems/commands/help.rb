@@ -68,6 +68,8 @@ module Teems
             teems cal --week               Show this week's events
             teems cal show 3               View details for event #3
             teems cal accept 3             Accept event #3
+            teems cal create "Standup" --start "tomorrow 09:00"
+            teems cal delete 3             Delete event #3
             teems channels                 List all channels
             teems chats                    List recent chats
             teems messages <channel-id>    Read messages from a channel
