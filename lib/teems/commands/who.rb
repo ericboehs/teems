@@ -54,7 +54,7 @@ module Teems
         slot_index = slot_for_now(ctx.work_start)
         return unless slot_index >= 0 && slot_index < view.length
 
-        pointer = "#{' ' * slot_index}\u25B2now"
+        pointer = "#{' ' * slot_index}^now"
         local_time = Time.now.strftime('%-I:%M %p')
         puts "              #{pointer} #{local_time} #{ctx.tz_abbrev}"
       end
