@@ -10,6 +10,7 @@ import Security
 
 let TEAMS_APP_ID = "5e3ce6c0-2b1f-4285-8d4b-75ee78787346"
 let SKYPE_RESOURCE = "https://api.spaces.skype.com"
+let GRAPH_RESOURCE = "https://graph.microsoft.com"
 let REDIRECT_URI = "https://teams.microsoft.com/go"
 
 class TokenExtractor: NSObject, WKNavigationDelegate {
@@ -22,6 +23,7 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
     // Collected tokens
     private var teamsToken: String?
     private var skypeToken: String?
+    private var graphToken: String?
     private var tenantId: String?
     private var loginHint: String?
 
@@ -66,6 +68,16 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
         }
         let url = buildAuthorizeURL(responseType: "token", tenant: tid, resource: SKYPE_RESOURCE)
         log("Requesting Skype access_token...")
+        webView.load(URLRequest(url: url))
+    }
+
+    private func authorizeGraph() {
+        guard let tid = tenantId else {
+            fail("No tenant ID for Graph authorization")
+            return
+        }
+        let url = buildAuthorizeURL(responseType: "token", tenant: tid, resource: GRAPH_RESOURCE)
+        log("Requesting Graph access_token...")
         webView.load(URLRequest(url: url))
     }
 
@@ -187,6 +199,10 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
         if audience == SKYPE_RESOURCE {
             log("Got Skype spaces token")
             skypeToken = token
+            authorizeGraph()
+        } else if audience == GRAPH_RESOURCE {
+            log("Got Graph access token")
+            graphToken = token
             emitResult()
         } else {
             log("Unexpected token audience: \(audience)")
@@ -215,7 +231,7 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
         var result: [String: String] = [
             "client_id": TEAMS_APP_ID,
         ]
-        if let t = teamsToken { result["auth_token"] = t }
+        if let g = graphToken { result["auth_token"] = g }
         if let s = skypeToken { result["skype_spaces_token"] = s }
         if let tid = tenantId { result["tenant_id"] = tid }
 
