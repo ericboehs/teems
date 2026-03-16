@@ -3,6 +3,7 @@
 require 'open3'
 require_relative 'token_extractor_scripts'
 require_relative 'token_exchange_scripts'
+require_relative 'headless_extract'
 
 module Teems
   module Services
@@ -269,6 +270,7 @@ module Teems
       include TokenV2Decryptor
       include TokenExchanger
       include TokenPolling
+      include HeadlessExtract
 
       TEAMS_URL = 'https://teams.microsoft.com'
 
@@ -277,6 +279,13 @@ module Teems
       end
 
       def extract
+        tokens = try_headless_extract
+        return tokens if tokens&.dig(:auth_token) && tokens[:skype_token]
+
+        safari_extract
+      end
+
+      def safari_extract
         return log_and_return('Safari is not available') unless safari_available?
 
         log('Opening Teams in Safari...')

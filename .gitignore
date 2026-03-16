@@ -38,3 +38,4 @@
 # Temporary files
 /tmp/
 *.log
+support/token_helper

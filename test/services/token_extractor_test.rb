@@ -15,6 +15,10 @@ module TokenExtractorTests
 
     private
 
+    def try_headless_extract
+      nil # Skip headless in tests, always use Safari path
+    end
+
     def run_applescript(_script)
       @applescript_call_count += 1
       @applescript_results.shift
