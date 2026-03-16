@@ -252,4 +252,54 @@ module EventTests
       assert_nil event.body_preview
     end
   end
+
+  class DateDisplayTest < Minitest::Test
+    def test_date_display_all_day
+      event = Teems::Models::Event.from_api(sample_event_data.merge('isAllDay' => true))
+      assert_match(/\d{4}-\d{2}-\d{2} \(all day\)/, event.date_display)
+    end
+
+    def test_date_display_timed_event
+      event = Teems::Models::Event.from_api(sample_event_data)
+      assert_match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}-\d{2}:\d{2}/, event.date_display)
+    end
+
+    def test_date_display_nil_times
+      event = Teems::Models::Event.new(
+        id: 'e1', subject: 'Test', start_time: nil, end_time: nil,
+        location: nil, is_all_day: false, organizer: nil, attendees: [],
+        body_preview: nil, online_meeting_url: nil, show_as: nil,
+        importance: nil, is_cancelled: false, response_status: nil, sensitivity: nil
+      )
+      assert_nil event.date_display
+    end
+  end
+
+  class CreateSummaryLinesTest < Minitest::Test
+    def test_summary_lines_with_all_fields
+      data = sample_event_data.merge('onlineMeeting' => { 'joinUrl' => 'https://teams.example.com/join' })
+      lines = Teems::Models::Event.from_api(data).create_summary_lines
+      assert(lines.any? { |l| l.include?('09:00') })
+      assert(lines.any? { |l| l.include?('Location:') })
+      assert(lines.any? { |l| l.include?('Teams link:') })
+    end
+
+    def test_summary_lines_empty_location_omitted
+      data = sample_event_data.merge('location' => { 'displayName' => '' })
+      lines = Teems::Models::Event.from_api(data).create_summary_lines
+      refute(lines.any? { |l| l.include?('Location:') })
+    end
+
+    def test_summary_lines_nil_location_omitted
+      data = sample_event_data.merge('location' => { 'displayName' => nil })
+      lines = Teems::Models::Event.from_api(data).create_summary_lines
+      refute(lines.any? { |l| l.include?('Location:') })
+    end
+
+    def test_summary_lines_no_meeting_url
+      data = sample_event_data.merge('onlineMeeting' => nil)
+      lines = Teems::Models::Event.from_api(data).create_summary_lines
+      refute(lines.any? { |l| l.include?('Teams link:') })
+    end
+  end
 end

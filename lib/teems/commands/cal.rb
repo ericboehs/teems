@@ -305,7 +305,7 @@ module Teems
           [Date.today + 1, raw.delete_prefix('tomorrow ')]
         elsif raw.match?(/\A(?:today\s+)?\d{1,2}:\d{2}\z/)
           [Date.today, raw.delete_prefix('today ')]
-        elsif raw.include?(' ')
+        elsif raw.match?(/\A\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\z/)
           raw.split(/\s+/, 2)
         end
       end

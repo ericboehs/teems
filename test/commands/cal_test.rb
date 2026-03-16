@@ -585,6 +585,62 @@ module CalCommandTests
     end
   end
 
+  class DeleteTest < Minitest::Test
+    include SharedHelpers
+
+    def run_delete(num, event_id, stub_event: nil)
+      with_temp_config do
+        return capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.cache_store.save_calendar_ids({ num => event_id })
+          runner.api_client.stub('events', stub_event || sample_event_data)
+          Teems::Commands::Cal.new(['delete', num], runner: runner).execute
+        end
+      end
+    end
+
+    def test_delete_without_number
+      result = run_cal(['delete'])
+      assert_match(/Event number required/, result[:stderr])
+    end
+
+    def test_delete_with_uncached_number
+      result = run_cal(%w[delete 99])
+      assert_match(/not found/, result[:stderr])
+    end
+
+    def test_delete_displays_confirmation
+      result = run_delete('1', 'event-123')
+      assert_match(/Deleted: "Weekly Standup"/, result[:stdout])
+    end
+
+    def test_delete_displays_time
+      event_data = sample_event_data.merge(
+        'start' => { 'dateTime' => '2026-03-20T14:00:00.0000000', 'timeZone' => 'America/Chicago' },
+        'end' => { 'dateTime' => '2026-03-20T14:30:00.0000000', 'timeZone' => 'America/Chicago' }
+      )
+      result = run_delete('1', 'event-123', stub_event: event_data)
+      assert_match(/2026-03-20 14:00-14:30/, result[:stdout])
+    end
+
+    def test_delete_api_error
+      with_temp_config do
+        result = capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.cache_store.save_calendar_ids({ '1' => 'event-123' })
+          runner.api_client.stub_error('events', Teems::ApiError.new('Not found', status_code: 404))
+          Teems::Commands::Cal.new(%w[delete 1], runner: runner).execute
+        end
+        assert_match(/Failed to delete event/, result[:stderr])
+      end
+    end
+
+    def test_delete_help_included
+      result = run_cal(['--help'])
+      assert_match(/delete <N>/, result[:stdout])
+    end
+  end
+
   class TimezoneAndDateRangeTest < Minitest::Test
     include SharedHelpers
 
@@ -640,6 +696,17 @@ module CalCommandTests
           range = cmd.send(:compute_date_range)
           assert_instance_of Array, range
           assert_includes range.first, '2026-03-09'
+        end
+      end
+    end
+
+    def test_format_datetime_includes_timezone_offset
+      with_temp_config do
+        with_tz('America/Chicago') do
+          cmd = Teems::Commands::Cal.new([], runner: configured_runner)
+          range = cmd.send(:compute_date_range)
+          assert_match(/[+-]\d{2}:\d{2}\z/, range.first, 'Expected timezone offset in startDateTime')
+          assert_match(/[+-]\d{2}:\d{2}\z/, range.last, 'Expected timezone offset in endDateTime')
         end
       end
     end

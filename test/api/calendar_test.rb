@@ -199,4 +199,21 @@ module CalendarApiTests
       assert_instance_of Teems::Models::Event, event
     end
   end
+
+  class DeleteEventTest < Minitest::Test
+    include Helpers
+
+    def test_delete_event_calls_correct_endpoint
+      @calendar_api.delete_event(event_id: 'event-123')
+      call = @api_client.calls.first
+      assert_equal :delete, call[:method]
+      assert_includes call[:path], '/v1.0/me/events/event-123'
+    end
+
+    def test_delete_event_encodes_event_id
+      @calendar_api.delete_event(event_id: 'AAMkAGVm+special/chars=')
+      assert_includes @api_client.calls.first[:path],
+                      URI.encode_www_form_component('AAMkAGVm+special/chars=')
+    end
+  end
 end
