@@ -40,15 +40,6 @@ module Teems
       def search_display
         [best_name, job_title, email]
       end
-
-      def to_h
-        {
-          id: id, display_name: display_name, email: email,
-          user_principal_name: user_principal_name, job_title: job_title,
-          department: department, office_location: office_location,
-          business_phones: business_phones, mobile_phone: mobile_phone
-        }
-      end
     end
   end
 end

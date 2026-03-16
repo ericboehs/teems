@@ -22,7 +22,8 @@ module Teems
         with_token_refresh do
           runner.users_api.schedule(email, start_time: start_time, end_time: end_time, timezone: timezone)
         end
-      rescue ApiError
+      rescue ApiError => e
+        debug("Could not fetch schedule for #{email}: #{e.message}")
         nil
       end
 
@@ -159,6 +160,7 @@ module Teems
         expiry = Time.parse(expiry_str).localtime
         "until #{expiry.strftime('%b %-d')}"
       rescue ArgumentError
+        debug("Could not parse presence expiry: #{expiry_str.inspect}")
         nil
       end
     end
@@ -197,7 +199,7 @@ module Teems
       end
 
       def render_schedule_info(email)
-        schedule = fetch_schedule_for(email, detect_local_timezone)
+        schedule = fetch_schedule_for(email, detect_timezone)
         return unless schedule
 
         ctx = build_schedule_context(schedule)
@@ -207,8 +209,7 @@ module Teems
 
       def build_schedule_context(schedule)
         work_start, = parse_work_hours(schedule)
-        tz_abbrev = Time.now.strftime('%Z').gsub(/[DS](?=T$)/, '')
-        WhoSchedule::ScheduleContext.new(work_start: work_start, tz_abbrev: tz_abbrev)
+        WhoSchedule::ScheduleContext.new(work_start: work_start, tz_abbrev: short_tz_label)
       end
 
       def render_search_result(name, title, email, index)
@@ -224,7 +225,7 @@ module Teems
       end
 
       def search_results_json(results)
-        results.map { |profile| json_profile(*profile.json_attrs) }
+        results.map(&:to_h)
       end
 
       def present?(value)
@@ -234,11 +235,10 @@ module Teems
 
     # Look up a user's profile
     class Who < Base
+      include Support::Timezone
       include WhoSchedule
       include WhoPresence
       include WhoDisplay
-
-      TIMEZONE_MAP = Commands::CalDateRange::TIMEZONE_MAP
 
       def initialize(args, runner:)
         @options = {}
@@ -329,18 +329,14 @@ module Teems
         mri = "8:orgid:#{user_id}"
         result = with_token_refresh { runner.users_api.teams_presence(mri) }
         result&.first
-      rescue ApiError
+      rescue ApiError => e
+        debug("Could not fetch presence for #{user_id}: #{e.message}")
         nil
-      end
-
-      def detect_local_timezone
-        zone_abbrev = Time.now.strftime('%Z')
-        TIMEZONE_MAP[zone_abbrev] || 'UTC'
       end
 
       def json_profile(attrs, user_id)
         presence_data = fetch_presence_data(user_id)
-        schedule = fetch_schedule_for(attrs[:email], detect_local_timezone)
+        schedule = fetch_schedule_for(attrs[:email], detect_timezone)
         build_json_profile(attrs, presence_data, schedule)
       end
 

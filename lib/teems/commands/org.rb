@@ -45,13 +45,19 @@ module Teems
 
       def fetch_my_reports(_user_id)
         with_token_refresh { runner.users_api.direct_reports_me }
-      rescue ApiError
+      rescue ApiError => e
+        debug("Could not fetch direct reports: #{e.message}")
+        raise unless e.not_found? || e.forbidden?
+
         []
       end
 
       def fetch_user_reports(user_id)
         with_token_refresh { runner.users_api.direct_reports(user_id) }
-      rescue ApiError
+      rescue ApiError => e
+        debug("Could not fetch direct reports for #{user_id}: #{e.message}")
+        raise unless e.not_found? || e.forbidden?
+
         []
       end
 
@@ -110,8 +116,15 @@ module Teems
       include OrgRenderer
 
       ORG_OPTIONS = {
-        '--depth' => ->(opts, args) { opts[:depth] = args.shift.to_i }
+        '--depth' => ->(opts, args) { opts[:depth] = parse_depth(args.shift) }
       }.freeze
+
+      def self.parse_depth(value)
+        return 1 unless value
+
+        result = value.to_i
+        result >= 0 ? result : 1
+      end
 
       def initialize(args, runner:)
         @options = {}

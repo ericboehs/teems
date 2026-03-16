@@ -104,5 +104,6 @@ module Teems
     autoload :XdgPaths, 'teems/support/xdg_paths'
     autoload :HelpFormatter, 'teems/support/help_formatter'
     autoload :ErrorLogger, 'teems/support/error_logger'
+    autoload :Timezone, 'teems/support/timezone'
   end
 end

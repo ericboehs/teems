@@ -21,7 +21,8 @@ module Teems
       end
 
       def search(query)
-        params = { '$search' => "\"displayName:#{query}\" OR \"mail:#{query}\"",
+        sanitized = query.gsub(/["\\]/, '')
+        params = { '$search' => "\"displayName:#{sanitized}\" OR \"mail:#{sanitized}\"",
                    '$select' => USER_SELECT, '$count' => 'true', '$top' => 10 }
         headers = { 'ConsistencyLevel' => 'eventual' }
         response = get(:graph, '/v1.0/users', params: params, headers: headers)
