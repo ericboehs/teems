@@ -18,9 +18,6 @@ detectors:
     exclude:
       - Teems::Services::SyncStore#last_synced_time
       - Teems::Services::SyncStore#chat_unavailable?
-  ControlParameter:
-    exclude:
-      - Teems::Commands::CalTimeParsing#parse_time_input
   DuplicateMethodCall:
     max_calls: 2
   TooManyStatements:
@@ -31,15 +28,12 @@ detectors:
     max_instance_variables: 5
   LongParameterList:
     max_params: 4
-    exclude:
-      - Teems::Api::Calendar#create_event
   RepeatedConditional:
     max_ifs: 3
   DataClump:
     max_copies: 4
     exclude:
       - Teems::Services::SyncStore
-      - Teems::Services::ApiClient
   FeatureEnvy:
     exclude:
       - Teems::Services::ConnectionPool#configure_http
@@ -55,9 +49,3 @@ detectors:
       - Teems::Services::TokenRefresher#parse_exchange_response
       - Teems::Formatters::MarkdownFormatter#format_message_reactions
       - Teems::Formatters::CalendarFormatter#build_list_item_line
-      - Teems::Commands::CalCreateActions#display_create_result
-      - Teems::Commands::CalCreateActions#display_create_time
-      - Teems::Api::Calendar#apply_event_options
-      - Teems::Commands::CalTimeParsing#parse_tomorrow_time
-      - Teems::Commands::CalTimeParsing#parse_today_time
-      - Teems::Commands::CalTimeParsing#parse_datetime

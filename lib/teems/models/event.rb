@@ -93,29 +93,28 @@ module Teems
         "#{start_time.strftime('%H:%M')}-#{end_time.strftime('%H:%M')}"
       end
 
-      def required_attendees
-        attendees.select { |att| att[:type] == 'required' }
+      def date_display
+        if all_day?
+          "#{start_time&.strftime('%Y-%m-%d')} (all day)"
+        elsif start_time && end_time
+          "#{start_time.strftime('%Y-%m-%d %H:%M')}-#{end_time.strftime('%H:%M')}"
+        end
       end
 
-      def optional_attendees
-        attendees.select { |att| att[:type] == 'optional' }
+      def create_summary_lines
+        lines = []
+        lines << date_display if date_display
+        lines << "Location: #{location}" if location && !location.empty?
+        lines << "Teams link: #{online_meeting_url}" if online_meeting_url
+        lines
       end
 
-      def accepted_attendees
-        attendees.select { |att| att[:response] == 'accepted' }
-      end
-
-      def declined_attendees
-        attendees.select { |att| att[:response] == 'declined' }
-      end
-
-      def tentative_attendees
-        attendees.select { |att| att[:response] == 'tentativelyAccepted' }
-      end
-
-      def pending_attendees
-        attendees.select { |att| PENDING_RESPONSES.include?(att[:response]) }
-      end
+      def required_attendees = attendees.select { |att| att[:type] == 'required' }
+      def optional_attendees = attendees.select { |att| att[:type] == 'optional' }
+      def accepted_attendees = attendees.select { |att| att[:response] == 'accepted' }
+      def declined_attendees = attendees.select { |att| att[:response] == 'declined' }
+      def tentative_attendees = attendees.select { |att| att[:response] == 'tentativelyAccepted' }
+      def pending_attendees = attendees.select { |att| PENDING_RESPONSES.include?(att[:response]) }
     end
   end
 end

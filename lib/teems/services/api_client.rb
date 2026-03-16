@@ -74,14 +74,15 @@ module Teems
 
       def get(endpoint_key, path, account:, **options)
         uri = resolve_uri(endpoint_key, path, options.fetch(:params, {}))
-        execute_request(path, endpoint_key) do |http|
-          http.request(build_get_request(uri, account, endpoint_key, options.fetch(:headers, {})))
-        end
+        req = Net::HTTP::Get.new(uri)
+        apply_auth(req, account, endpoint_key)
+        apply_headers(req, options.fetch(:headers, {}))
+        run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
       end
 
       def post(endpoint_key, path, account:, body: nil)
         uri = URI("#{resolve_endpoint(endpoint_key)}#{path}")
-        execute_request(path, endpoint_key) do |http|
+        run_request(path, get_http_for_endpoint(endpoint_key)) do |http|
           req = Net::HTTP::Post.new(uri)
           apply_auth(req, account, endpoint_key)
           req.body = JSON.generate(body) if body
@@ -91,7 +92,7 @@ module Teems
 
       def delete(endpoint_key, path, account:)
         uri = URI("#{resolve_endpoint(endpoint_key)}#{path}")
-        execute_request(path, endpoint_key) do |http|
+        run_request(path, get_http_for_endpoint(endpoint_key)) do |http|
           req = Net::HTTP::Delete.new(uri)
           apply_auth(req, account, endpoint_key)
           http.request(req)
@@ -100,11 +101,8 @@ module Teems
 
       private
 
-      def build_get_request(uri, account, endpoint_key, headers)
-        Net::HTTP::Get.new(uri).tap do |req|
-          apply_auth(req, account, endpoint_key)
-          headers.each { |key, value| req[key] = value }
-        end
+      def apply_headers(request, headers)
+        headers.each { |key, value| request[key] = value }
       end
 
       def resolve_uri(endpoint_key, path, params)
@@ -121,10 +119,10 @@ module Teems
         request[header] = value
       end
 
-      def execute_request(path, endpoint_key)
+      def run_request(path, http)
         @call_count += 1
         @on_request&.call(path, @call_count)
-        response = yield(get_http_for_endpoint(endpoint_key))
+        response = yield(http)
         @on_response&.call(path, response.code)
         handle_response(response)
       rescue *NETWORK_ERRORS => e

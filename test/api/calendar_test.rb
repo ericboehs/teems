@@ -180,107 +180,23 @@ module CalendarApiTests
 
     def test_create_event_posts_to_correct_endpoint
       @api_client.stub('/v1.0/me/events', sample_event_data)
-      @calendar_api.create_event(
-        subject: 'Test Meeting', start_dt: '2026-03-20T14:00:00',
-        end_dt: '2026-03-20T14:30:00', timezone: 'America/Chicago'
-      )
+      @calendar_api.create_event({ subject: 'Test' })
       call = @api_client.calls.first
       assert_equal :post, call[:method]
       assert_equal '/v1.0/me/events', call[:path]
     end
 
-    def test_create_event_sends_subject_and_times
+    def test_create_event_passes_body_through
       @api_client.stub('/v1.0/me/events', sample_event_data)
-      @calendar_api.create_event(
-        subject: 'Standup', start_dt: '2026-03-20T09:00:00',
-        end_dt: '2026-03-20T09:15:00', timezone: 'America/Chicago'
-      )
-      body = @api_client.calls.first[:body]
-      assert_equal 'Standup', body[:subject]
-      assert_equal({ dateTime: '2026-03-20T09:00:00', timeZone: 'America/Chicago' }, body[:start])
-      assert_equal({ dateTime: '2026-03-20T09:15:00', timeZone: 'America/Chicago' }, body[:end])
-    end
-
-    def test_create_event_with_location
-      @api_client.stub('/v1.0/me/events', sample_event_data)
-      @calendar_api.create_event(
-        subject: 'Meeting', start_dt: '2026-03-20T14:00:00',
-        end_dt: '2026-03-20T15:00:00', timezone: 'UTC', location: 'Room A'
-      )
-      assert_equal({ displayName: 'Room A' }, @api_client.calls.first[:body][:location])
-    end
-
-    def test_create_event_with_body_text
-      @api_client.stub('/v1.0/me/events', sample_event_data)
-      @calendar_api.create_event(
-        subject: 'Meeting', start_dt: '2026-03-20T14:00:00',
-        end_dt: '2026-03-20T15:00:00', timezone: 'UTC', body_text: 'Agenda items'
-      )
-      assert_equal({ contentType: 'text', content: 'Agenda items' }, @api_client.calls.first[:body][:body])
-    end
-
-    def test_create_event_with_attendees
-      @api_client.stub('/v1.0/me/events', sample_event_data)
-      @calendar_api.create_event(
-        subject: 'Meeting', start_dt: '2026-03-20T14:00:00',
-        end_dt: '2026-03-20T15:00:00', timezone: 'UTC',
-        attendees: %w[alice@example.com bob@example.com]
-      )
-      attendees = @api_client.calls.first[:body][:attendees]
-      assert_equal 2, attendees.length
-      assert_equal 'alice@example.com', attendees[0][:emailAddress][:address]
-      assert_equal 'required', attendees[0][:type]
-    end
-
-    def test_create_event_with_online_meeting
-      @api_client.stub('/v1.0/me/events', sample_event_data)
-      @calendar_api.create_event(
-        subject: 'Meeting', start_dt: '2026-03-20T14:00:00',
-        end_dt: '2026-03-20T15:00:00', timezone: 'UTC', online_meeting: true
-      )
-      body = @api_client.calls.first[:body]
-      assert_equal true, body[:isOnlineMeeting]
-      assert_equal 'teamsForBusiness', body[:onlineMeetingProvider]
-    end
-
-    def test_create_event_without_online_meeting
-      @api_client.stub('/v1.0/me/events', sample_event_data)
-      @calendar_api.create_event(
-        subject: 'Meeting', start_dt: '2026-03-20T14:00:00',
-        end_dt: '2026-03-20T15:00:00', timezone: 'UTC'
-      )
-      body = @api_client.calls.first[:body]
-      refute body.key?(:isOnlineMeeting)
-    end
-
-    def test_create_event_all_day
-      @api_client.stub('/v1.0/me/events', sample_event_data)
-      @calendar_api.create_event(
-        subject: 'Day Off', start_dt: '2026-03-20T00:00:00',
-        end_dt: '2026-03-20T00:00:00', timezone: 'UTC', all_day: true
-      )
-      assert_equal true, @api_client.calls.first[:body][:isAllDay]
+      body = { subject: 'Standup', start: { dateTime: '2026-03-20T09:00:00' } }
+      @calendar_api.create_event(body)
+      assert_equal body, @api_client.calls.first[:body]
     end
 
     def test_create_event_returns_event_model
       @api_client.stub('/v1.0/me/events', sample_event_data)
-      event = @calendar_api.create_event(
-        subject: 'Meeting', start_dt: '2026-03-20T14:00:00',
-        end_dt: '2026-03-20T15:00:00', timezone: 'UTC'
-      )
+      event = @calendar_api.create_event({ subject: 'Meeting' })
       assert_instance_of Teems::Models::Event, event
-    end
-
-    def test_create_event_omits_optional_fields_when_nil
-      @api_client.stub('/v1.0/me/events', sample_event_data)
-      @calendar_api.create_event(
-        subject: 'Meeting', start_dt: '2026-03-20T14:00:00',
-        end_dt: '2026-03-20T15:00:00', timezone: 'UTC'
-      )
-      body = @api_client.calls.first[:body]
-      refute body.key?(:location)
-      refute body.key?(:body)
-      refute body.key?(:attendees)
     end
   end
 end

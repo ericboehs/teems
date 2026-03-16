@@ -262,6 +262,10 @@ module Teems
         event_id = lookup_event_id
         return 1 unless event_id
 
+        send_delete(event_id)
+      end
+
+      def send_delete(event_id)
         with_token_refresh { runner.calendar_api.delete_event(event_id: event_id) }
         success("Event ##{@event_number} deleted")
         0
@@ -279,29 +283,21 @@ module Teems
     module CalTimeParsing
       private
 
-      def parse_time_input(input)
-        parse_tomorrow_time(input) || parse_today_time(input) || parse_datetime(input)
+      def parse_time_input(raw)
+        date, time_str = split_time_input(raw)
+        return unless time_str
+
+        date.is_a?(String) ? parse_absolute_time(date, time_str) : parse_relative_time(date, time_str)
       end
 
-      def parse_tomorrow_time(input)
-        return unless input.match?(/\Atomorrow\s+\d{1,2}:\d{2}\z/)
-
-        time_str = input.sub('tomorrow ', '')
-        parse_relative_time(Date.today + 1, time_str)
-      end
-
-      def parse_today_time(input)
-        return unless input.match?(/\A(?:today\s+)?\d{1,2}:\d{2}\z/)
-
-        time_str = input.sub('today ', '')
-        parse_relative_time(Date.today, time_str)
-      end
-
-      def parse_datetime(input)
-        return unless input.match?(/\A\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\z/)
-
-        date_str, time_str = input.split(/\s+/, 2)
-        parse_absolute_time(date_str, time_str)
+      def split_time_input(raw)
+        if raw.start_with?('tomorrow ')
+          [Date.today + 1, raw.delete_prefix('tomorrow ')]
+        elsif raw.match?(/\A(?:today\s+)?\d{1,2}:\d{2}\z/)
+          [Date.today, raw.delete_prefix('today ')]
+        elsif raw.include?(' ')
+          raw.split(/\s+/, 2)
+        end
       end
 
       def parse_relative_time(date, time_str)
@@ -385,40 +381,41 @@ module Teems
 
       def send_create_request(start_dt, end_dt)
         event = with_token_refresh do
-          runner.calendar_api.create_event(
-            subject: @create_subject, start_dt: start_dt,
-            end_dt: end_dt, timezone: detect_timezone,
-            **create_options
-          )
+          runner.calendar_api.create_event(build_create_event(start_dt, end_dt))
         end
         display_create_result(event)
         0
       end
 
-      def create_options
-        opts = { all_day: @options[:all_day] }
-        opts[:location] = @options[:location] if @options[:location]
-        opts[:body_text] = @options[:body] if @options[:body]
-        opts[:attendees] = @options[:attendees] if @options[:attendees]
-        opts[:online_meeting] = true if @options[:teams]
-        opts
+      def build_create_event(start_dt, end_dt)
+        tz = detect_timezone
+        body = { subject: @create_subject,
+                 start: { dateTime: start_dt, timeZone: tz },
+                 end: { dateTime: end_dt, timeZone: tz },
+                 isAllDay: @options[:all_day] || false }
+        add_optional_event_fields(body)
+      end
+
+      def add_optional_event_fields(body)
+        body[:location] = { displayName: @options[:location] } if @options[:location]
+        body[:body] = { contentType: 'text', content: @options[:body] } if @options[:body]
+        body[:attendees] = @options[:attendees].map { |e| attendee_entry(e) } if @options[:attendees]
+        add_teams_meeting(body) if @options[:teams]
+        body
+      end
+
+      def add_teams_meeting(body)
+        body[:isOnlineMeeting] = true
+        body[:onlineMeetingProvider] = 'teamsForBusiness'
+      end
+
+      def attendee_entry(email)
+        { emailAddress: { address: email }, type: 'required' }
       end
 
       def display_create_result(event)
         success("Created: \"#{event.subject}\"")
-        display_create_time(event)
-        loc = event.location
-        puts "  Location: #{loc}" if loc && !loc.empty?
-        puts "  Teams link: #{event.online_meeting_url}" if event.online_meeting_url
-      end
-
-      def display_create_time(event)
-        start = event.start_time
-        if event.all_day?
-          puts "  #{start&.strftime('%Y-%m-%d')} (all day)"
-        elsif start && event.end_time
-          puts "  #{start.strftime('%Y-%m-%d %H:%M')}-#{event.end_time.strftime('%H:%M')}"
-        end
+        event.create_summary_lines.each { |line| puts "  #{line}" }
       end
     end
 

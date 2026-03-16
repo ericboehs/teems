@@ -34,12 +34,8 @@ module Teems
       end
 
       # Create a new calendar event
-      def create_event(subject:, start_dt:, end_dt:, timezone:, **opts)
-        core = { subject: subject,
-                 start: { dateTime: start_dt, timeZone: timezone },
-                 end: { dateTime: end_dt, timeZone: timezone },
-                 isAllDay: opts[:all_day] || false }
-        response = post(:graph, '/v1.0/me/events', body: apply_event_options(core, opts))
+      def create_event(body)
+        response = post(:graph, '/v1.0/me/events', body: body)
         Models::Event.from_api(response)
       end
 
@@ -60,25 +56,6 @@ module Teems
       end
 
       private
-
-      def apply_event_options(body, opts)
-        body[:location] = { displayName: opts[:location] } if opts[:location]
-        body[:body] = { contentType: 'text', content: opts[:body_text] } if opts[:body_text]
-        body[:attendees] = build_attendees(opts[:attendees]) if opts[:attendees]
-        add_online_meeting(body) if opts[:online_meeting]
-        body
-      end
-
-      def add_online_meeting(body)
-        body[:isOnlineMeeting] = true
-        body[:onlineMeetingProvider] = 'teamsForBusiness'
-      end
-
-      def build_attendees(emails)
-        emails.map do |email|
-          { emailAddress: { address: email }, type: 'required' }
-        end
-      end
 
       def calendar_view_params(start_dt, end_dt, top)
         { 'startDateTime' => start_dt, 'endDateTime' => end_dt,
