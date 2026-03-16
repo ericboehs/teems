@@ -36,15 +36,19 @@ module Teems
       end
 
       def build_commands_section
-        <<~COMMANDS
-          #{output.bold('COMMANDS:')}
-            #{output.cyan('auth')}         Authenticate with Teams
-            #{output.cyan('cal')}          List calendar events and view details
-            #{output.cyan('channels')}     List joined teams and channels
-            #{output.cyan('chats')}        List recent chats
-            #{output.cyan('messages')}     Read messages from a channel or chat
-            #{output.cyan('sync')}         Sync chat history locally
-        COMMANDS
+        lines = command_descriptions.map { |name, desc| "    #{output.cyan(name.ljust(12))} #{desc}" }
+        "#{output.bold('COMMANDS:')}\n#{lines.join("\n")}\n\n"
+      end
+
+      def command_descriptions
+        [['auth', 'Authenticate with Teams'],
+         ['cal', 'List calendar events and view details'],
+         ['channels', 'List joined teams and channels'],
+         ['chats', 'List recent chats'],
+         ['messages', 'Read messages from a channel or chat'],
+         ['sync', 'Sync chat history locally'],
+         ['who', "Look up a user's profile"],
+         ['org', 'Show org chart for a user']]
       end
 
       def build_options_section
@@ -73,6 +77,10 @@ module Teems
             teems channels                 List all channels
             teems chats                    List recent chats
             teems messages <channel-id>    Read messages from a channel
+            teems who                      Show your profile
+            teems who john                 Search for a user
+            teems org                      Show your org chart
+            teems org john --depth 1       Org chart for "john"
         EXAMPLES
       end
 

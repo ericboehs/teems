@@ -47,6 +47,10 @@ module Teems
       Api::Calendar.new(@api_client, account)
     end
 
+    def users_api
+      Api::Users.new(@api_client, account)
+    end
+
     # Clear any cached API instances after token refresh
     def clear_api_cache
       # API instances are not cached, but account is fetched fresh each time

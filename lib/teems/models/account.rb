@@ -3,14 +3,15 @@
 module Teems
   module Models
     # Represents a Teams account with authentication tokens
-    Account = Data.define(:name, :auth_token, :skype_token, :chatsvc_token) do
-      def initialize(name:, auth_token:, skype_token:, chatsvc_token: nil)
+    Account = Data.define(:name, :auth_token, :skype_token, :chatsvc_token, :presence_token) do
+      def initialize(name:, auth_token:, skype_token:, chatsvc_token: nil, presence_token: nil)
         validate_tokens!(auth_token, skype_token)
         super(
           name: name.to_s.freeze,
           auth_token: auth_token.to_s.freeze,
           skype_token: skype_token.to_s.freeze,
-          chatsvc_token: chatsvc_token&.to_s&.freeze
+          chatsvc_token: chatsvc_token&.to_s&.freeze,
+          presence_token: presence_token&.to_s&.freeze
         )
       end
 

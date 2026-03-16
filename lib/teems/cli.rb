@@ -12,6 +12,8 @@ module Teems
       'chats' => Commands::Chats,
       'messages' => Commands::Messages,
       'sync' => Commands::Sync,
+      'who' => Commands::Who,
+      'org' => Commands::Org,
       'help' => Commands::Help
     }.freeze
 
