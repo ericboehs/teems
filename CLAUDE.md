@@ -64,6 +64,7 @@ lib/teems/support/        # Utilities: XdgPaths, HelpFormatter, ErrorLogger
 - Reek configured in `.reek.yml` (excludes test dir, has specific detector thresholds)
 - Ruby 3.1+ endless methods used for simple accessors (e.g., `def verbose? = @mode == :verbose`)
 - Post-edit hook runs RuboCop + Reek automatically on changed `.rb` files
+- **Fix lint warnings immediately** — when RuboCop or Reek issues appear after an edit, fix them before moving on to the next edit. Do not ignore or batch-fix later
 
 ## Git Commits
 
