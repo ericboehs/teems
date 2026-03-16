@@ -24,6 +24,8 @@ module WhoCommandTests
     }]
   }.freeze
 
+  NOON_TODAY = Time.new(2026, 3, 16, 12, 0, 0).freeze
+
   module Helpers
     private
 
@@ -35,6 +37,12 @@ module WhoCommandTests
         exit_code = Teems::Commands::Who.new(args, runner: runner).execute
       end
       result.merge(exit_code: exit_code)
+    end
+
+    def run_who_at_noon(args, stubs)
+      Time.stub(:now, NOON_TODAY) do
+        run_who_with_stub(args, stubs)
+      end
     end
 
     def run_who_with_stub(args, stubs)
@@ -195,7 +203,7 @@ module WhoCommandTests
     include Helpers
 
     def test_shows_calendar_line
-      result = run_who_with_stub([], full_stubs)
+      result = run_who_at_noon([], full_stubs)
 
       assert_match(/Calendar/, result[:stdout])
     end
@@ -214,7 +222,7 @@ module WhoCommandTests
     end
 
     def test_shows_now_marker
-      result = run_who_with_stub([], full_stubs)
+      result = run_who_at_noon([], full_stubs)
 
       assert_match(/\^ now/, result[:stdout])
     end
@@ -316,7 +324,7 @@ module WhoCommandTests
                               'timeZone' => { 'name' => 'Central Standard Time' } }
         }]
       }
-      result = run_who_with_stub([], full_stubs.merge('calendar/getSchedule' => busy_sched))
+      result = run_who_at_noon([], full_stubs.merge('calendar/getSchedule' => busy_sched))
 
       assert_match(/Calendar\s+Busy$/, result[:stdout])
     end
