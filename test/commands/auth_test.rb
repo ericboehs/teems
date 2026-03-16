@@ -331,4 +331,40 @@ module AuthCommandTests
       end
     end
   end
+
+  class FilePermissionTest < Minitest::Test
+    def test_import_unreadable_file_shows_error
+      with_temp_config do |dir|
+        token_file = File.join(dir, 'unreadable.json')
+        File.write(token_file, '{"auth_token":"test"}')
+        File.chmod(0o000, token_file)
+        result = run_set_tokens(token_file)
+
+        assert_match(/Cannot read file/, result[:stderr])
+      ensure
+        File.chmod(0o644, token_file)
+      end
+    end
+
+    def test_import_directory_shows_error
+      with_temp_config do |dir|
+        dir_path = File.join(dir, 'a_directory')
+        FileUtils.mkdir_p(dir_path)
+        result = run_set_tokens(dir_path)
+
+        assert_match(/Path is a directory/, result[:stderr])
+      end
+    end
+
+    private
+
+    def run_set_tokens(path)
+      capture_output do |output|
+        store = mock_token_store
+        runner = Teems::Runner.new(output: output, token_store: store,
+                                   api_client: Teems::TestHelpers::MockApiClient.new)
+        Teems::Commands::Auth.new(['set-tokens', path], runner: runner).execute
+      end
+    end
+  end
 end

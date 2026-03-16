@@ -23,6 +23,13 @@ module SyncEngineTests
       engine_class.new(runner: runner, sync_store: sync_store, state: {}, output: output)
     end
 
+    def build_nil_output_engine(method_name)
+      engine_class = Class.new(Teems::Services::SyncEngine) { public(method_name) }
+      runner = configured_runner
+      sync_store = Teems::Services::SyncStore.new
+      engine_class.new(runner: runner, sync_store: sync_store, state: {}, output: nil)
+    end
+
     def build_verbose_engine(err:)
       output = verbose_output(err)
       runner = configured_runner(output: output)
@@ -238,6 +245,13 @@ module SyncEngineTests
     def test_debug_not_called_when_not_verbose
       with_temp_config do
         assert_equal false, build_public_engine(:debug).debug('test message')
+      end
+    end
+
+    def test_debug_with_nil_output
+      with_temp_config do
+        engine = build_nil_output_engine(:debug)
+        assert_nil engine.debug('test message')
       end
     end
 

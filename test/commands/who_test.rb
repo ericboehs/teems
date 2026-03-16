@@ -24,6 +24,8 @@ module WhoCommandTests
     }]
   }.freeze
 
+  NOON_TODAY = Time.new(2026, 3, 16, 12, 0, 0).freeze
+
   module Helpers
     private
 
@@ -35,6 +37,12 @@ module WhoCommandTests
         exit_code = Teems::Commands::Who.new(args, runner: runner).execute
       end
       result.merge(exit_code: exit_code)
+    end
+
+    def run_who_at_noon(args, stubs)
+      Time.stub(:now, NOON_TODAY) do
+        run_who_with_stub(args, stubs)
+      end
     end
 
     def run_who_with_stub(args, stubs)
@@ -195,7 +203,7 @@ module WhoCommandTests
     include Helpers
 
     def test_shows_calendar_line
-      result = run_who_with_stub([], full_stubs)
+      result = run_who_at_noon([], full_stubs)
 
       assert_match(/Calendar/, result[:stdout])
     end
@@ -214,7 +222,7 @@ module WhoCommandTests
     end
 
     def test_shows_now_marker
-      result = run_who_with_stub([], full_stubs)
+      result = run_who_at_noon([], full_stubs)
 
       assert_match(/\^ now/, result[:stdout])
     end
@@ -316,7 +324,7 @@ module WhoCommandTests
                               'timeZone' => { 'name' => 'Central Standard Time' } }
         }]
       }
-      result = run_who_with_stub([], full_stubs.merge('calendar/getSchedule' => busy_sched))
+      result = run_who_at_noon([], full_stubs.merge('calendar/getSchedule' => busy_sched))
 
       assert_match(/Calendar\s+Busy$/, result[:stdout])
     end
@@ -411,6 +419,48 @@ module WhoCommandTests
       end
 
       assert_equal 1, result[:exit_code]
+    end
+  end
+
+  class MoreEdgeCasesTest < Minitest::Test
+    include Helpers
+
+    def test_oof_with_expiry_shows_oof_line
+      presence = [{ 'presence' => {
+        'availability' => 'Away',
+        'calendarData' => { 'isOutOfOffice' => true },
+        'forcedAvailability' => { 'expiry' => '2026-03-20T23:00:00Z' }
+      } }]
+      result = run_who_with_stub([], full_stubs.merge('presence' => presence))
+
+      assert_match(/OOF\s+Out of office \(until Mar 20\)/, result[:stdout])
+    end
+
+    def test_single_search_result_shows_enriched_profile
+      stubs = { '/v1.0/users' => search_results([PROFILE_DATA]),
+                'presence' => PRESENCE_AVAILABLE,
+                'calendar/getSchedule' => SCHEDULE_RESPONSE }
+      result = run_who_with_stub(['john'], stubs)
+
+      assert_match(/Status\s+Available/, result[:stdout])
+    end
+
+    def test_json_search_single_result_includes_enrichment
+      stubs = { '/v1.0/users' => search_results([PROFILE_DATA]),
+                'presence' => PRESENCE_AVAILABLE,
+                'calendar/getSchedule' => SCHEDULE_RESPONSE }
+      result = run_who_with_stub(['--json', 'john'], stubs)
+      json = JSON.parse(result[:stdout])
+
+      assert_equal 'Available', json['presence']
+    end
+
+    def test_presence_without_calendar_data_skips_oof
+      presence = [{ 'presence' => { 'availability' => 'Busy' } }]
+      result = run_who_with_stub([], full_stubs.merge('presence' => presence))
+
+      assert_match(/Status\s+Busy/, result[:stdout])
+      refute_match(/OOF/, result[:stdout])
     end
   end
 end

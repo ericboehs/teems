@@ -334,4 +334,336 @@ module ApiClientTests
       assert_nil error.status_code
     end
   end
+
+  class ConnectionPoolTest < Minitest::Test
+    class ExposedPool < Teems::Services::ApiClient
+      public :get_http_for_endpoint, :start_http, :configure_http, :configure_ssl
+    end
+
+    def test_configure_http_sets_timeouts
+      client = ExposedPool.new
+      http = Net::HTTP.new('example.com', 443)
+
+      client.configure_http(http, false)
+
+      assert_equal 10, http.open_timeout
+      assert_equal 30, http.read_timeout
+      assert_equal 30, http.keep_alive_timeout
+    end
+
+    def test_configure_http_enables_ssl_when_requested
+      client = ExposedPool.new
+      http = Net::HTTP.new('example.com', 443)
+
+      client.configure_http(http, true)
+
+      assert http.use_ssl?
+      assert_equal OpenSSL::SSL::VERIFY_PEER, http.verify_mode
+    end
+
+    def test_configure_http_skips_ssl_when_not_requested
+      client = ExposedPool.new
+      http = Net::HTTP.new('example.com', 80)
+
+      client.configure_http(http, false)
+
+      refute http.use_ssl?
+    end
+
+    def test_configure_ssl_sets_verify_peer
+      client = ExposedPool.new
+      http = Net::HTTP.new('example.com', 443)
+
+      client.configure_ssl(http)
+
+      assert_equal OpenSSL::SSL::VERIFY_PEER, http.verify_mode
+      assert_instance_of OpenSSL::X509::Store, http.cert_store
+    end
+
+    def test_get_http_for_endpoint_returns_http
+      client = ExposedPool.new
+      http = client.get_http_for_endpoint(:graph)
+
+      assert_instance_of Net::HTTP, http
+      assert http.started?
+    ensure
+      client.close
+    end
+
+    def test_start_http_creates_started_http
+      client = ExposedPool.new
+      uri = URI('https://graph.microsoft.com')
+      http = client.start_http(uri)
+
+      assert_instance_of Net::HTTP, http
+      assert http.started?
+      assert http.use_ssl?
+    ensure
+      http&.finish if http&.started?
+    end
+
+    def test_get_http_caches_connection
+      client = ExposedPool.new
+      first = client.get_http_for_endpoint(:graph)
+      second = client.get_http_for_endpoint(:graph)
+
+      assert_same first, second
+    ensure
+      client.close
+    end
+  end
+
+  class CloseTest < Minitest::Test
+    def test_close_handles_io_error_gracefully
+      client = Teems::Services::ApiClient.new
+      cache = client.instance_variable_get(:@http_cache)
+
+      broken_http = Object.new
+      broken_http.define_singleton_method(:started?) { true }
+      broken_http.define_singleton_method(:finish) { raise IOError, 'stream closed' }
+      cache['broken:443'] = broken_http
+
+      client.close
+      assert_empty cache
+    end
+
+    def test_close_finishes_started_connections
+      client = Teems::Services::ApiClient.new
+      cache = client.instance_variable_get(:@http_cache)
+
+      finished = false
+      fake_http = Object.new
+      fake_http.define_singleton_method(:started?) { true }
+      fake_http.define_singleton_method(:finish) { finished = true }
+      cache['fake:443'] = fake_http
+
+      client.close
+
+      assert finished
+      assert_empty cache
+    end
+  end
+
+  class DeleteMethodTest < Minitest::Test
+    def test_delete_raises_for_unknown_endpoint
+      client = Teems::Services::ApiClient.new
+      account = mock_account
+
+      error = assert_raises(ArgumentError) do
+        client.delete(:unknown, '/path', account: account)
+      end
+
+      assert_match(/Unknown endpoint/, error.message)
+    end
+
+    def test_delete_sends_delete_request
+      client = StubbedApiClient.new
+      account = mock_account
+
+      client.delete(:graph, '/v1.0/me/chats/123', account: account)
+
+      assert_equal 1, client.call_count
+      assert_instance_of Net::HTTP::Delete, client.last_request
+    end
+  end
+
+  class PresenceAuthTest < Minitest::Test
+    class ExposedAuth < Teems::Services::ApiClient
+      public :apply_auth
+    end
+
+    def test_apply_auth_presence_uses_bearer_presence_token
+      client = ExposedAuth.new
+      account = Teems::Models::Account.new(
+        name: 'test', auth_token: 'auth123', skype_token: 'skype456', presence_token: 'presence789'
+      )
+      request = Net::HTTP::Get.new('/')
+
+      client.apply_auth(request, account, :presence)
+
+      assert_equal 'Bearer presence789', request['Authorization']
+    end
+  end
+
+  class ResolveUriTest < Minitest::Test
+    class ExposedUri < Teems::Services::ApiClient
+      public :resolve_uri
+    end
+
+    def test_resolve_uri_prepends_endpoint_for_relative_path
+      client = ExposedUri.new
+      uri = client.resolve_uri(:graph, '/v1.0/me', {})
+
+      assert_equal 'https://graph.microsoft.com/v1.0/me', uri.to_s
+    end
+
+    def test_resolve_uri_uses_absolute_url_when_given
+      client = ExposedUri.new
+      uri = client.resolve_uri(:graph, 'https://custom.example.com/api', {})
+
+      assert_equal 'https://custom.example.com/api', uri.to_s
+    end
+
+    def test_resolve_uri_adds_query_params
+      client = ExposedUri.new
+      uri = client.resolve_uri(:graph, '/v1.0/me', { '$top' => '10', '$skip' => '0' })
+
+      assert_includes uri.to_s, '%24top=10'
+      assert_includes uri.to_s, '%24skip=0'
+    end
+
+    def test_resolve_uri_skips_params_when_empty
+      client = ExposedUri.new
+      uri = client.resolve_uri(:graph, '/v1.0/me', {})
+
+      assert_nil uri.query
+    end
+  end
+
+  class RunRequestTest < Minitest::Test
+    def test_run_request_increments_call_count
+      client = StubbedApiClient.new
+      account = mock_account
+
+      client.get(:graph, '/v1.0/me', account: account)
+
+      assert_equal 1, client.call_count
+    end
+
+    def test_run_request_calls_on_request_callback
+      client = StubbedApiClient.new
+      account = mock_account
+      received = []
+      client.on_request = ->(path, count) { received << [path, count] }
+
+      client.get(:graph, '/v1.0/me', account: account)
+
+      assert_equal 1, received.length
+      assert_equal '/v1.0/me', received.first[0]
+      assert_equal 1, received.first[1]
+    end
+
+    def test_run_request_calls_on_response_callback
+      client = StubbedApiClient.new
+      account = mock_account
+      received = []
+      client.on_response = ->(path, code) { received << [path, code] }
+
+      client.get(:graph, '/v1.0/me', account: account)
+
+      assert_equal 1, received.length
+      assert_equal '/v1.0/me', received.first[0]
+      assert_equal '200', received.first[1]
+    end
+
+    def test_run_request_wraps_network_error_as_api_error
+      client = NetworkErrorApiClient.new
+      account = mock_account
+
+      error = assert_raises(Teems::ApiError) do
+        client.get(:graph, '/v1.0/me', account: account)
+      end
+
+      assert_match(/Network error/, error.message)
+    end
+  end
+
+  class ApplyHeadersTest < Minitest::Test
+    class ExposedHeaders < Teems::Services::ApiClient
+      public :apply_headers
+    end
+
+    def test_apply_headers_sets_custom_headers_on_request
+      client = ExposedHeaders.new
+      request = Net::HTTP::Get.new('/')
+
+      client.apply_headers(request, { 'X-Custom' => 'value', 'Accept' => 'text/plain' })
+
+      assert_equal 'value', request['X-Custom']
+      assert_equal 'text/plain', request['Accept']
+    end
+  end
+
+  class PostMethodTest < Minitest::Test
+    def test_post_sends_json_body
+      client = StubbedApiClient.new
+      account = mock_account
+
+      client.post(:graph, '/v1.0/me/sendMail', account: account, body: { key: 'value' })
+
+      assert_equal 1, client.call_count
+      assert_instance_of Net::HTTP::Post, client.last_request
+      assert_equal '{"key":"value"}', client.last_request.body
+    end
+
+    def test_post_sends_without_body_when_nil
+      client = StubbedApiClient.new
+      account = mock_account
+
+      client.post(:graph, '/v1.0/me/sendMail', account: account)
+
+      assert_nil client.last_request.body
+    end
+  end
+
+  class GetMethodTest < Minitest::Test
+    def test_get_sends_request_with_headers
+      client = StubbedApiClient.new
+      account = mock_account
+
+      client.get(:graph, '/v1.0/me', account: account, headers: { 'X-Test' => 'yes' })
+
+      assert_equal 'yes', client.last_request['X-Test']
+    end
+
+    def test_get_sends_request_with_params
+      client = StubbedApiClient.new
+      account = mock_account
+
+      client.get(:graph, '/v1.0/me', account: account, params: { '$top' => '5' })
+
+      assert_includes client.last_request.path, '%24top=5'
+    end
+  end
+
+  # Shared test helper: ApiClient subclass that stubs HTTP to capture requests
+  class StubbedApiClient < Teems::Services::ApiClient
+    attr_reader :last_request
+
+    private
+
+    def get_http_for_endpoint(_endpoint_key)
+      @get_http_for_endpoint ||= FakeHttp.new(self)
+    end
+
+    # Minimal fake HTTP that records requests and returns a 200 JSON response
+    class FakeHttp
+      def initialize(client)
+        @client = client
+      end
+
+      def request(req)
+        @client.instance_variable_set(:@last_request, req)
+        response = Net::HTTPResponse::CODE_TO_OBJ['200'].new('1.1', '200', 'OK')
+        response.instance_variable_set(:@body, '{}')
+        response.instance_variable_set(:@read, true)
+        response
+      end
+    end
+  end
+
+  # ApiClient subclass that raises SocketError on any request
+  class NetworkErrorApiClient < Teems::Services::ApiClient
+    private
+
+    def get_http_for_endpoint(_endpoint_key)
+      FakeErrorHttp.new
+    end
+
+    class FakeErrorHttp
+      def request(_req)
+        raise SocketError, 'getaddrinfo: Name or service not known'
+      end
+    end
+  end
 end

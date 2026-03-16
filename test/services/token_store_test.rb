@@ -337,4 +337,50 @@ module TokenStoreTests
 
     def read_tokens(dir) = JSON.parse(File.read("#{dir}/teems/tokens.json"))
   end
+
+  class ErrorHandlingTest < Minitest::Test
+    def test_save_returns_false_on_io_error
+      with_temp_config do |dir|
+        config_dir = "#{dir}/teems"
+        FileUtils.mkdir_p(config_dir)
+        File.chmod(0o000, config_dir)
+        result = Teems::Services::TokenStore.new.save(name: 'default', auth_token: 'auth', skype_token: 'skype')
+        assert_equal false, result
+      ensure
+        File.chmod(0o755, config_dir)
+      end
+    end
+
+    def test_update_skype_token_returns_false_on_io_error
+      with_temp_config do |dir|
+        write_tokens_file(dir, { 'auth_token' => 'auth', 'skype_token' => 'old' })
+        tokens_file = "#{dir}/teems/tokens.json"
+        File.chmod(0o444, tokens_file)
+        result = Teems::Services::TokenStore.new.update_skype_token('new-skype')
+        assert_equal false, result
+      ensure
+        File.chmod(0o644, tokens_file)
+      end
+    end
+
+    def test_update_all_tokens_returns_false_on_io_error
+      with_temp_config do |dir|
+        write_tokens_file(dir, { 'auth_token' => 'auth', 'skype_token' => 'old' })
+        tokens_file = "#{dir}/teems/tokens.json"
+        File.chmod(0o444, tokens_file)
+        result = Teems::Services::TokenStore.new.update_all_tokens(auth_token: 'new', skype_token: 'new')
+        assert_equal false, result
+      ensure
+        File.chmod(0o644, tokens_file)
+      end
+    end
+
+    def test_token_age_returns_nil_on_bad_timestamp
+      with_temp_config do |dir|
+        write_tokens_file(dir, { 'auth_token' => 'auth', 'skype_token' => 'skype',
+                                 'saved_at' => 'not-a-timestamp' })
+        assert_nil Teems::Services::TokenStore.new.token_age
+      end
+    end
+  end
 end

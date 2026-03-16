@@ -342,4 +342,62 @@ module TokenExtractorTests
       assert_match(/Safari is not available/, err.string)
     end
   end
+
+  class AppleScriptErrorTest < Minitest::Test
+    class ExposedAutomation < Teems::Services::TokenExtractor
+      public :applescript_failure, :log_applescript_error, :applescript_error_message
+
+      private
+
+      def try_headless_extract = nil
+      def safari_available? = true
+      def sleep(_seconds) = nil
+    end
+
+    def test_applescript_failure_returns_nil
+      extractor = ExposedAutomation.new
+      status = Minitest::Mock.new
+      status.expect(:exitstatus, 1)
+      assert_nil extractor.applescript_failure(status)
+      status.verify
+    end
+
+    def test_log_applescript_error_returns_nil
+      extractor = ExposedAutomation.new
+      error = IOError.new('stream closed')
+      assert_nil extractor.log_applescript_error(error)
+    end
+
+    def test_applescript_error_message_for_enoent
+      extractor = ExposedAutomation.new
+      error = Errno::ENOENT.new('osascript')
+      result = extractor.applescript_error_message(error)
+      assert_includes result, 'osascript not found'
+    end
+
+    def test_applescript_error_message_for_io_error
+      extractor = ExposedAutomation.new
+      error = IOError.new('stream closed')
+      result = extractor.applescript_error_message(error)
+      assert_includes result, 'AppleScript I/O error'
+      assert_includes result, 'stream closed'
+    end
+  end
+
+  class V1RefreshDataTest < Minitest::Test
+    include Helpers
+
+    def test_v2_with_unparseable_v1_refresh_data
+      extractor = build_extractor
+      add_v2_preamble(extractor)
+      extractor.applescript_results << 'started'
+      extractor.applescript_results << '{"auth_token":"v2-auth","skype_spaces_token":"v2-spaces"}'
+      # extract_v1_refresh_data gets bad JSON
+      extractor.applescript_results << 'not valid json'
+      extractor.applescript_results << '{"skype_token":"v2-skype","region":"us","chat_service":"https://c.com"}'
+      extractor.applescript_results << nil
+      result = extractor.extract
+      assert_equal 'v2-auth', result[:auth_token]
+    end
+  end
 end

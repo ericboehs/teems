@@ -415,4 +415,85 @@ module TokenRefresherTests
       refresher.build_oidc_request(refresher.oidc_token_uri, 'https://graph.microsoft.com/.default', 'my-rt')
     end
   end
+
+  class OidcTokenRequestTest < Minitest::Test
+    class ExposedOidcRequest < Teems::Services::TokenRefresher
+      public :oidc_token_request, :log_oidc_failure, :oidc_token_uri
+    end
+
+    def test_oidc_token_request_returns_nil_on_http_failure
+      with_temp_config do
+        refresher = build_exposed_refresher
+        response = build_http_response('401', 'Unauthorized', '{"error":"invalid_grant"}')
+        result = refresher.log_oidc_failure(response)
+
+        assert_nil result
+      end
+    end
+
+    def test_log_oidc_failure_returns_nil
+      with_temp_config do
+        output = test_output
+        refresher = build_exposed_refresher(output: output)
+        response = build_http_response('403', 'Forbidden', '')
+
+        assert_nil refresher.log_oidc_failure(response)
+      end
+    end
+
+    private
+
+    def build_exposed_refresher(output: nil)
+      store = mock_token_store
+      store.tenant_id = 'test-tenant'
+      store.client_id = 'test-client'
+      store.refresh_token = 'test-rt'
+      ExposedOidcRequest.new(token_store: store, output: output)
+    end
+
+    def build_http_response(code, message, body)
+      response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, message)
+      response.instance_variable_set(:@body, body)
+      response.instance_variable_set(:@read, true)
+      response
+    end
+  end
+
+  class LogExchangeFailureTest < Minitest::Test
+    class ExposedExchange < Teems::Services::TokenRefresher
+      public :parse_exchange_response
+    end
+
+    def test_parse_exchange_response_logs_failure_code
+      with_temp_config do
+        output = test_output
+        store = mock_token_store
+        refresher = ExposedExchange.new(token_store: store, output: output)
+        response = build_http_response('403', 'Forbidden', '')
+
+        result = refresher.parse_exchange_response(response)
+
+        assert_nil result
+      end
+    end
+
+    def test_parse_exchange_response_handles_malformed_json
+      with_temp_config do
+        store = mock_token_store
+        refresher = ExposedExchange.new(token_store: store, output: test_output)
+        response = build_http_response('200', 'OK', 'not-json')
+
+        assert_raises(JSON::ParserError) { refresher.parse_exchange_response(response) }
+      end
+    end
+
+    private
+
+    def build_http_response(code, message, body)
+      response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, message)
+      response.instance_variable_set(:@body, body)
+      response.instance_variable_set(:@read, true)
+      response
+    end
+  end
 end

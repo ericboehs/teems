@@ -324,4 +324,57 @@ module CLITests
       { stdout: out.string, stderr: err.string, exit_code: exit_code }
     end
   end
+
+  class EnsureCloseTest < Minitest::Test
+    class MockCloseCLI < Teems::CLI
+      attr_reader :mock_api
+
+      def initialize(argv, output:)
+        super
+        @mock_api = Teems::TestHelpers::MockApiClient.new
+        @mock_api.instance_variable_set(:@closed, false)
+        @mock_api.define_singleton_method(:close) { @closed = true }
+        @mock_api.define_singleton_method(:closed?) { @closed }
+      end
+
+      private
+
+      def build_runner(args)
+        out = verbose_mode?(args) ? verbose_output : @output
+        store = Teems::TestHelpers::MockTokenStore.new(configured: false)
+        Teems::Runner.new(output: out, token_store: store, api_client: @mock_api)
+      end
+    end
+
+    def test_ensure_closes_api_client_after_command
+      with_temp_config do
+        out = StringIO.new
+        err = StringIO.new
+        output = Teems::Formatters::Output.new(io: out, err: err, color: false)
+        cli = MockCloseCLI.new(%w[auth status], output: output)
+        exit_code = cli.run
+
+        assert_includes [0, 1], exit_code
+        assert cli.mock_api.closed?, 'Expected API client to be closed after CLI.run'
+      end
+    end
+  end
+
+  class DispatchKnownErrorTest < Minitest::Test
+    include Helpers
+
+    def test_dispatch_catches_config_error_from_command
+      with_temp_config do
+        result = capture_cli_output(['channels'])
+        assert_equal 1, result[:exit_code]
+      end
+    end
+
+    def test_quiet_mode_with_q_flag
+      with_temp_config do
+        result = capture_cli_output(['auth', 'status', '-q'])
+        assert_equal 0, result[:exit_code]
+      end
+    end
+  end
 end

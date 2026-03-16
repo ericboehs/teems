@@ -4,7 +4,7 @@ require 'simplecov'
 SimpleCov.start do
   add_filter '/test/'
   enable_coverage :branch
-  minimum_coverage line: 94, branch: 90
+  minimum_coverage line: 95, branch: 95
 end
 
 require 'minitest/autorun'
