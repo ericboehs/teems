@@ -78,6 +78,7 @@ module Teems
   # CLI commands implementing user-facing functionality
   module Commands
     autoload :Base, 'teems/commands/base'
+    autoload :Activity, 'teems/commands/activity'
     autoload :Auth, 'teems/commands/auth'
     autoload :Cal, 'teems/commands/cal'
     autoload :Channels, 'teems/commands/channels'

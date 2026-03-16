@@ -65,7 +65,8 @@ module SyncEngineTests
     def sample_engine_chat
       Teems::Models::Chat.new(
         id: '19:test@thread.v2', topic: 'Test', chat_type: 'group',
-        created_at: Time.now, last_updated: Time.now
+        created_at: Time.now, last_updated: Time.now,
+        unread: false, favorite: false, pinned: false
       )
     end
 

@@ -3,7 +3,7 @@
 module Teems
   module Models
     # Represents a chat (1:1, group, or meeting chat)
-    Chat = Data.define(:id, :topic, :chat_type, :created_at, :last_updated) do
+    Chat = Data.define(:id, :topic, :chat_type, :created_at, :last_updated, :unread, :favorite, :pinned) do
       def self.from_api(data)
         # Handle both Graph API format and ng.msg format
         if data['threadProperties']
@@ -19,7 +19,8 @@ module Teems
           topic: data['topic'],
           chat_type: data['chatType'],
           created_at: parse_time(data['createdDateTime']),
-          last_updated: parse_time(data['lastUpdatedDateTime'])
+          last_updated: parse_time(data['lastUpdatedDateTime']),
+          unread: false, favorite: false, pinned: false
         )
       end
 
@@ -28,11 +29,22 @@ module Teems
         props = data['properties'] || {}
         new(
           id: data['id'],
-          topic: thread_props['topic'],
+          topic: thread_props['topic'] || thread_props['spaceThreadTopic'],
           chat_type: normalize_chat_type(thread_props['threadType']),
           created_at: parse_time(thread_props['createdat']),
-          last_updated: parse_time(props['lastimreceivedtime'])
+          last_updated: parse_time(props['lastimreceivedtime']),
+          **ngmsg_status(props, data['lastMessage'])
         )
+      end
+
+      def self.ngmsg_status(props, last_message)
+        horizon = props['consumptionhorizon']
+        last_msg_id = last_message&.dig('id')
+        {
+          unread: horizon && last_msg_id ? horizon.split(';').first.to_i < last_msg_id.to_i : false,
+          favorite: props['favorite'] == 'true',
+          pinned: props['ispinned'] == 'true'
+        }
       end
 
       # Normalize ng.msg threadType to a consistent chat type.
@@ -70,6 +82,10 @@ module Teems
         else chat_type
         end
       end
+
+      def unread? = unread
+      def favorite? = favorite
+      def pinned? = pinned
 
       def one_on_one?
         chat_type == 'oneOnOne'

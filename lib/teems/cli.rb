@@ -6,6 +6,7 @@ module Teems
     ERROR_LABELS = { AuthError => 'Auth error', ApiError => 'API error' }.freeze
 
     COMMANDS = {
+      'activity' => Commands::Activity,
       'auth' => Commands::Auth,
       'cal' => Commands::Cal,
       'channels' => Commands::Channels,

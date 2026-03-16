@@ -49,11 +49,46 @@ module ChatsCommandTests
       result.merge(exit_code: exit_code)
     end
 
-    def ngmsg_chat_data
-      { 'id' => '19:chat123@thread.v2',
-        'threadProperties' => { 'topic' => 'Test Group', 'threadType' => 'chat',
-                                'createdat' => '2026-01-15T10:00:00Z' },
-        'properties' => { 'lastimreceivedtime' => '2026-01-20T12:00:00Z' } }
+    def ngmsg_chat_data(overrides = {})
+      base = { 'id' => '19:chat123@thread.v2',
+               'threadProperties' => { 'topic' => 'Test Group', 'threadType' => 'chat',
+                                       'createdat' => '2026-01-15T10:00:00Z' },
+               'properties' => { 'lastimreceivedtime' => '2026-01-20T12:00:00Z' } }
+      base.merge(overrides)
+    end
+
+    def unread_chat_data
+      ngmsg_chat_data(
+        'id' => '19:unread@thread.v2',
+        'threadProperties' => { 'topic' => 'Unread Chat', 'threadType' => 'chat' },
+        'properties' => { 'consumptionhorizon' => '1000;1000;user1' },
+        'lastMessage' => { 'id' => '2000' }
+      )
+    end
+
+    def read_chat_data
+      ngmsg_chat_data(
+        'id' => '19:read@thread.v2',
+        'threadProperties' => { 'topic' => 'Read Chat', 'threadType' => 'chat' },
+        'properties' => { 'consumptionhorizon' => '2000;2000;user1' },
+        'lastMessage' => { 'id' => '2000' }
+      )
+    end
+
+    def favorite_chat_data
+      ngmsg_chat_data(
+        'id' => '19:fav@thread.v2',
+        'threadProperties' => { 'topic' => 'Fav Chat', 'threadType' => 'chat' },
+        'properties' => { 'favorite' => 'true' }
+      )
+    end
+
+    def pinned_chat_data
+      ngmsg_chat_data(
+        'id' => '19:pin@thread.v2',
+        'threadProperties' => { 'topic' => 'Pinned Chat', 'threadType' => 'chat' },
+        'properties' => { 'ispinned' => 'true' }
+      )
     end
   end
 
@@ -162,6 +197,120 @@ module ChatsCommandTests
       result = run_chats_with_stub(['--json'], 'conversations', { 'value' => [data] })
       json = JSON.parse(result[:stdout])
       assert_nil json.first['last_updated']
+    end
+
+    def test_unread_chat_shows_asterisk
+      with_temp_config do
+        result = run_chats_with_data('conversations' => [unread_chat_data])
+        assert_match(/\* .*Unread Chat/, result[:stdout])
+      end
+    end
+
+    def test_read_chat_has_no_asterisk
+      with_temp_config do
+        result = run_chats_with_data('conversations' => [read_chat_data])
+        refute_match(/\* .*Read Chat/, result[:stdout])
+        assert_match(/Read Chat/, result[:stdout])
+      end
+    end
+  end
+
+  class FilterTest < Minitest::Test
+    include Helpers
+
+    def test_unread_filter_shows_only_unread
+      with_temp_config do
+        result = run_chats_with_filter(['--unread'], [unread_chat_data, read_chat_data])
+        assert_match(/Unread Chat/, result[:stdout])
+        refute_match(/Read Chat/, result[:stdout])
+      end
+    end
+
+    def test_unread_filter_shows_no_chats_when_all_read
+      with_temp_config do
+        result = run_chats_with_filter(['--unread'], [read_chat_data])
+        assert_match(/No chats found/, result[:stdout])
+      end
+    end
+
+    def test_favorites_filter_shows_only_favorites
+      with_temp_config do
+        result = run_chats_with_filter(['--favorites'], [favorite_chat_data, ngmsg_chat_data])
+        assert_match(/Fav Chat/, result[:stdout])
+        refute_match(/Test Group/, result[:stdout])
+      end
+    end
+
+    def test_pinned_filter_shows_only_pinned
+      with_temp_config do
+        result = run_chats_with_filter(['--pinned'], [pinned_chat_data, ngmsg_chat_data])
+        assert_match(/Pinned Chat/, result[:stdout])
+        refute_match(/Test Group/, result[:stdout])
+      end
+    end
+
+    def test_json_includes_unread_favorite_pinned
+      with_temp_config do
+        result = run_chats_with_filter(['--json'], [unread_chat_data, favorite_chat_data])
+        json = JSON.parse(result[:stdout])
+        unread_item = json.find { |c| c['id'] == '19:unread@thread.v2' }
+        fav_item = json.find { |c| c['id'] == '19:fav@thread.v2' }
+        assert unread_item['unread']
+        assert fav_item['favorite']
+      end
+    end
+
+    def test_help_shows_filter_options
+      result = run_chats(['--help'])
+      assert_match(/--unread/, result[:stdout])
+      assert_match(/--favorites/, result[:stdout])
+      assert_match(/--pinned/, result[:stdout])
+    end
+
+    def test_filters_out_48_notifications_stream
+      with_temp_config do
+        notifications = { 'id' => '48:notifications', 'threadProperties' => { 'threadType' => 'chat' } }
+        result = run_chats_with_filter([], [notifications, ngmsg_chat_data])
+        refute_match(/48:notifications/, result[:stdout])
+        assert_match(/Test Group/, result[:stdout])
+      end
+    end
+
+    def test_channel_shows_team_prefix
+      with_temp_config do
+        space = { 'id' => '19:space1@thread.tacv2',
+                  'threadProperties' => { 'threadType' => 'space', 'spaceThreadTopic' => 'My Team' } }
+        channel = { 'id' => '19:chan1@thread.tacv2',
+                    'threadProperties' => { 'threadType' => 'topic', 'topic' => 'General',
+                                            'spaceId' => '19:space1@thread.tacv2' },
+                    'properties' => {} }
+        result = run_chats_with_filter([], [space, channel])
+        assert_match(/My Team -> General/, result[:stdout])
+      end
+    end
+
+    def test_space_shows_team_name
+      with_temp_config do
+        space = { 'id' => '19:space1@thread.tacv2',
+                  'threadProperties' => { 'threadType' => 'space', 'spaceThreadTopic' => 'My Team' } }
+        result = run_chats_with_filter([], [space])
+        assert_match(/My Team/, result[:stdout])
+        refute_match(/\bSpace\b/, result[:stdout])
+      end
+    end
+
+    private
+
+    def run_chats_with_filter(args, conversations)
+      exit_code = nil
+      result = with_temp_config do
+        capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('conversations', { 'conversations' => conversations })
+          exit_code = Teems::Commands::Chats.new(args, runner: runner).execute
+        end
+      end
+      result.merge(exit_code: exit_code)
     end
   end
 end
