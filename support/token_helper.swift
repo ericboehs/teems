@@ -84,18 +84,28 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
         let verifier = generateCodeVerifier()
         codeVerifier = verifier
         let challenge = generateCodeChallenge(verifier)
-        var url = buildAuthorizeURL(responseType: "code", tenant: tid, resource: GRAPH_RESOURCE)
-        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        let baseURL = buildAuthorizeURL(responseType: "code", tenant: tid, resource: GRAPH_RESOURCE)
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            fail("Failed to build Graph authorization URL")
+            return
+        }
         components.queryItems?.append(URLQueryItem(name: "code_challenge", value: challenge))
         components.queryItems?.append(URLQueryItem(name: "code_challenge_method", value: "S256"))
-        url = components.url!
+        guard let url = components.url else {
+            fail("Failed to construct Graph authorization URL with PKCE")
+            return
+        }
         log("Requesting Graph authorization code...")
         webView.load(URLRequest(url: url))
     }
 
     private func generateCodeVerifier() -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard status == errSecSuccess else {
+            fail("Failed to generate secure random bytes (status: \(status))")
+            return ""
+        }
         return Data(bytes).base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
@@ -206,6 +216,8 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
             handleAccessToken(accessToken)
         } else if let code = queryParams["code"] {
             exchangeCodeForTokens(code)
+        } else {
+            log("Unrecognized redirect — no token, code, or error")
         }
     }
 
@@ -242,6 +254,10 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
 
     // MARK: - Authorization code exchange
 
+    private func urlEncode(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? value
+    }
+
     private func exchangeCodeForTokens(_ code: String) {
         guard let tid = tenantId else { fail("No tenant ID for code exchange"); return }
 
@@ -253,13 +269,13 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
 
         var bodyParts = [
             "grant_type=authorization_code",
-            "client_id=\(TEAMS_APP_ID)",
-            "code=\(code)",
-            "redirect_uri=\(REDIRECT_URI)",
-            "resource=\(GRAPH_RESOURCE)"
+            "client_id=\(urlEncode(TEAMS_APP_ID))",
+            "code=\(urlEncode(code))",
+            "redirect_uri=\(urlEncode(REDIRECT_URI))",
+            "resource=\(urlEncode(GRAPH_RESOURCE))"
         ]
         if let verifier = codeVerifier {
-            bodyParts.append("code_verifier=\(verifier)")
+            bodyParts.append("code_verifier=\(urlEncode(verifier))")
         }
         let body = bodyParts.joined(separator: "&")
         request.httpBody = body.data(using: .utf8)
@@ -316,7 +332,12 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
         var result: [String: String] = [
             "client_id": TEAMS_APP_ID,
         ]
-        if let g = graphToken { result["auth_token"] = g }
+        if let g = graphToken {
+            result["auth_token"] = g
+        } else if let t = teamsToken {
+            log("Warning: Graph token unavailable, falling back to Teams id_token")
+            result["auth_token"] = t
+        }
         if let s = skypeToken { result["skype_spaces_token"] = s }
         if let tid = tenantId { result["tenant_id"] = tid }
         if let rt = refreshToken { result["refresh_token"] = rt }

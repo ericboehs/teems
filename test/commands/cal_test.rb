@@ -394,6 +394,11 @@ module CalCommandTests
       assert_match(/Invalid date/, result[:stderr])
     end
 
+    def test_create_with_zero_duration
+      result = run_create(['Meeting', '--start', '2026-03-20 09:00', '--duration', '0'])
+      assert_match(/Duration must be a positive number/, result[:stderr])
+    end
+
     def test_create_api_error
       with_temp_config do
         result = capture_output do |output|
@@ -473,6 +478,7 @@ module CalCommandTests
       body = runner.api_client.calls.first[:body]
       assert_equal true, body[:isAllDay]
       assert_equal '2026-03-20T00:00:00', body[:start][:dateTime]
+      assert_equal '2026-03-21T00:00:00', body[:end][:dateTime]
     end
 
     def test_create_all_day_defaults_to_today

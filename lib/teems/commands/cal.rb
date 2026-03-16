@@ -351,8 +351,7 @@ module Teems
       def resolve_all_day_times
         date = @options[:date] || Date.today.to_s
         parsed = Date.parse(date)
-        formatted = parsed.strftime('%Y-%m-%dT00:00:00')
-        [formatted, formatted]
+        [parsed.strftime('%Y-%m-%dT00:00:00'), (parsed + 1).strftime('%Y-%m-%dT00:00:00')]
       rescue Date::Error
         error("Invalid date: #{date}") || 1
       end
@@ -381,7 +380,10 @@ module Teems
 
           parsed
         else
-          start_time + ((@options[:duration] || 30) * 60)
+          duration = @options[:duration] || 30
+          return error('Duration must be a positive number of minutes') || 1 unless duration.positive?
+
+          start_time + (duration * 60)
         end
       end
 
@@ -468,7 +470,7 @@ module Teems
         '--all-day' => ->(opts, _args) { opts[:all_day] = true },
         '--location' => ->(opts, args) { opts[:location] = args.shift },
         '--body' => ->(opts, args) { opts[:body] = args.shift },
-        '--attendees' => ->(opts, args) { opts[:attendees] = args.shift.split(',').map(&:strip) },
+        '--attendees' => ->(opts, args) { opts[:attendees] = args.shift&.split(',')&.map(&:strip) || [] },
         '--teams' => ->(opts, _args) { opts[:teams] = true }
       }.freeze
 
