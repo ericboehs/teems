@@ -72,11 +72,6 @@ module Teems
         @output = output
       end
 
-      # Compact agenda view with numbered events
-      def format_event_list(events, verbose: false)
-        verbose ? format_event_list_verbose(events) : format_event_list_compact(events)
-      end
-
       # Compact agenda listing
       def format_event_list_compact(events)
         events.each_with_index.map { |event, index| format_list_item(event, index + 1) }.join("\n")
@@ -106,15 +101,9 @@ module Teems
 
       def build_list_item_line(event, number)
         time = event.all_day? ? 'ALL DAY   ' : event.time_range_display.ljust(11)
-        "  #{@output.cyan("[#{number}]")} #{time} #{list_item_subject(event)}#{list_item_location(event)}"
+        subject = event.cancelled? ? gray_text("#{event.subject} (cancelled)") : event.subject
+        "  #{@output.cyan("[#{number}]")} #{time} #{subject}#{list_item_location(event)}"
       end
-
-      def list_item_subject(event)
-        subject = event.subject
-        event.cancelled? ? canceled_text(subject) : subject
-      end
-
-      def canceled_text(subject) = gray_text("#{subject} (cancelled)")
 
       def gray_text(text) = @output.gray(text)
 
@@ -168,10 +157,10 @@ module Teems
       def detail_show_as(event) = event.show_as && "  Show as:   #{event.show_as}"
 
       def detail_body_section(event)
-        body = event.body_preview
-        return [] if body.to_s.strip.empty?
+        preview = event.body_preview.to_s.strip
+        return [] if preview.empty?
 
-        description_lines(body.strip)
+        description_lines(preview)
       end
 
       def description_lines(text) = [bold_text('Description:'), "  #{text}", '']

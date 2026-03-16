@@ -47,11 +47,10 @@ module Teems
       end
 
       def build_oidc_result(graph, skype)
-        skype_access = skype['access_token']
-        skype_token = exchange_token(skype_access)
+        skype_token = exchange_token(skype['access_token'])
         return nil unless skype_token
 
-        { auth_token: graph['access_token'], skype_spaces_token: skype_access,
+        { auth_token: graph['access_token'], skype_spaces_token: skype['access_token'],
           skype_token: skype_token, refresh_token: skype['refresh_token'] }
       end
 
@@ -65,14 +64,18 @@ module Teems
       end
 
       def build_oidc_request(uri, scope, token)
-        Net::HTTP::Post.new(uri).tap do |req|
-          req['Content-Type'] = 'application/x-www-form-urlencoded'
-          req['Origin'] = 'https://teams.microsoft.com'
-          req.body = URI.encode_www_form(
-            'client_id' => @token_store.client_id, 'grant_type' => 'refresh_token',
-            'refresh_token' => token, 'scope' => scope
-          )
-        end
+        request = Net::HTTP::Post.new(uri)
+        request['Content-Type'] = 'application/x-www-form-urlencoded'
+        request['Origin'] = 'https://teams.microsoft.com'
+        request.body = oidc_request_body(scope, token)
+        request
+      end
+
+      def oidc_request_body(scope, token)
+        URI.encode_www_form(
+          'client_id' => @token_store.client_id, 'grant_type' => 'refresh_token',
+          'refresh_token' => token, 'scope' => scope
+        )
       end
 
       def log_oidc_failure(response)
@@ -148,17 +151,17 @@ module Teems
       end
 
       def build_exchange_request(token)
-        Net::HTTP::Post.new(authsvc_uri).tap do |req|
-          req['Authorization'] = "Bearer #{token}"
-          req['Content-Type'] = 'application/json'
-          req.body = '{}'
-        end
+        request = Net::HTTP::Post.new(authsvc_uri)
+        request['Authorization'] = "Bearer #{token}"
+        request['Content-Type'] = 'application/json'
+        request.body = '{}'
+        request
       end
 
-      def parse_exchange_response(response)
-        return log_exchange_failure(response) unless response.is_a?(Net::HTTPSuccess)
+      def parse_exchange_response(http_response)
+        return log_exchange_failure(http_response) unless http_response.is_a?(Net::HTTPSuccess)
 
-        JSON.parse(response.body).dig('tokens', 'skypeToken')
+        JSON.parse(http_response.body).dig('tokens', 'skypeToken')
       end
 
       def log_exchange_failure(response)

@@ -141,7 +141,8 @@ module Teems
       def display_reactions(message)
         return unless message.reactions.any?
 
-        puts "  #{output.gray(message.reactions.map { |r| "#{r[:type]}(#{r[:count]})" }.join(' '))}"
+        reaction_text = message.reactions.map { |reaction| "#{reaction[:type]}(#{reaction[:count]})" }.join(' ')
+        puts "  #{output.gray(reaction_text)}"
       end
 
       def message_to_hash(message)

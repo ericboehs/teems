@@ -72,12 +72,12 @@ module Teems
       def gray(text) = wrap(:gray, text)
       def bold(text) = wrap(:bold, text)
 
-      def with_verbose(value)
-        self.class.new(io: @io, err: @err, color: @color, mode: value ? :verbose : :normal)
+      def with_verbose(mode = :verbose)
+        self.class.new(io: @io, err: @err, color: @color, mode: mode)
       end
 
-      def with_quiet(value)
-        self.class.new(io: @io, err: @err, color: @color, mode: value ? :quiet : :normal)
+      def with_quiet(mode = :quiet)
+        self.class.new(io: @io, err: @err, color: @color, mode: mode)
       end
 
       private

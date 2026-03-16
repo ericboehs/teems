@@ -52,7 +52,9 @@ module Teems
         data = load_tokens
         return false if data.empty?
 
-        apply_all_tokens(data, auth_token, skype_token, skype_spaces_token, refresh_token)
+        apply_all_tokens(data,
+                         { auth_token: auth_token, skype_token: skype_token,
+                           skype_spaces_token: skype_spaces_token, refresh_token: refresh_token })
       rescue SystemCallError, IOError => e
         warn "teems: Could not update token file: #{e.message}"
         false
@@ -98,11 +100,11 @@ module Teems
         write_token_file(data)
       end
 
-      def apply_all_tokens(data, auth_token, skype_token, skype_spaces_token, refresh_token)
-        updates = { 'auth_token' => auth_token, 'skype_token' => skype_token,
+      def apply_all_tokens(data, tokens)
+        updates = { 'auth_token' => tokens[:auth_token], 'skype_token' => tokens[:skype_token],
                     'tokens_refreshed_at' => Time.now.iso8601 }
-        updates['skype_spaces_token'] = skype_spaces_token if skype_spaces_token
-        updates['refresh_token'] = refresh_token if refresh_token
+        updates['skype_spaces_token'] = tokens[:skype_spaces_token] if tokens[:skype_spaces_token]
+        updates['refresh_token'] = tokens[:refresh_token] if tokens[:refresh_token]
         data.merge!(updates)
         write_token_file(data)
       end

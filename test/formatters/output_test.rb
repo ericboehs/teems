@@ -119,28 +119,28 @@ module OutputTests
 
     def test_with_verbose_creates_new_instance
       output = Teems::Formatters::Output.new
-      verbose_output = output.with_verbose(true)
+      verbose_output = output.with_verbose
       refute output.verbose?
       assert verbose_output.verbose?
     end
 
     def test_with_quiet_creates_new_instance
       output = Teems::Formatters::Output.new
-      quiet_output = output.with_quiet(true)
+      quiet_output = output.with_quiet
       refute output.quiet?
       assert quiet_output.quiet?
     end
 
-    def test_with_verbose_false_resets_to_normal
+    def test_with_verbose_resets_to_normal
       output = Teems::Formatters::Output.new(mode: :verbose)
-      normal_output = output.with_verbose(false)
+      normal_output = output.with_verbose(:normal)
       assert output.verbose?
       refute normal_output.verbose?
     end
 
-    def test_with_quiet_false_resets_to_normal
+    def test_with_quiet_resets_to_normal
       output = Teems::Formatters::Output.new(mode: :quiet)
-      normal_output = output.with_quiet(false)
+      normal_output = output.with_quiet(:normal)
       assert output.quiet?
       refute normal_output.quiet?
     end

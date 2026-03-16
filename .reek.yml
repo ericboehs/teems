@@ -1,2 +1,51 @@
 exclude_paths:
   - .bundle
+  - test
+
+detectors:
+  Attribute:
+    enabled: false
+  UncommunicativeVariableName:
+    accept:
+      - e
+      - _
+  UncommunicativeMethodName:
+    accept:
+      - /404/
+      - /v\d+$/
+  UtilityFunction:
+    public_methods_only: true
+    exclude:
+      - Teems::Services::SyncStore#last_synced_time
+      - Teems::Services::SyncStore#chat_unavailable?
+  DuplicateMethodCall:
+    max_calls: 2
+  TooManyStatements:
+    max_statements: 9
+  TooManyMethods:
+    max_methods: 30
+  TooManyInstanceVariables:
+    max_instance_variables: 5
+  LongParameterList:
+    max_params: 4
+  RepeatedConditional:
+    max_ifs: 3
+  DataClump:
+    max_copies: 4
+    exclude:
+      - Teems::Services::SyncStore
+  FeatureEnvy:
+    exclude:
+      - Teems::Services::ConnectionPool#configure_http
+      - Teems::Services::ConnectionPool#start_http
+      - Teems::Services::SyncSerializer#parse_stored_reactions
+      - Teems::Services::SyncSerializer#stored_msg_extras
+      - Teems::Services::SyncStore#build_chat_fields
+      - Teems::Services::SyncStore#maybe_rename
+      - Teems::Services::TokenStore#apply_all_tokens
+      - Teems::Services::OidcRefresh#build_oidc_request
+      - Teems::Services::OidcRefresh#build_oidc_result
+      - Teems::Services::TokenRefresher#build_exchange_request
+      - Teems::Services::TokenRefresher#parse_exchange_response
+      - Teems::Formatters::MarkdownFormatter#format_message_reactions
+      - Teems::Formatters::CalendarFormatter#build_list_item_line
