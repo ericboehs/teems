@@ -107,6 +107,20 @@ class UserTest < Minitest::Test
     assert_equal 'john@example.com', user.best_name
   end
 
+  def test_to_s_delegates_to_best_name
+    data = { 'id' => 'user-123', 'displayName' => 'John Doe', 'mail' => 'john@example.com' }
+    user = Teems::Models::User.from_api(data)
+
+    assert_equal 'John Doe', user.to_s
+  end
+
+  def test_to_s_with_nil_display_name
+    data = { 'id' => 'user-123', 'mail' => 'john@example.com' }
+    user = Teems::Models::User.from_api(data)
+
+    assert_equal 'john@example.com', user.to_s
+  end
+
   private
 
   def sample_user_data

@@ -486,4 +486,48 @@ module SyncStoreTests
       assert_equal 'dms', type_dir('oneOnOne')
     end
   end
+
+  class TimestampAndBackupTest < Minitest::Test
+    def test_last_synced_time_returns_nil_on_bad_timestamp
+      with_temp_config do
+        store = Teems::Services::SyncStore.new
+        state = { 'chats' => { 'chat1' => { 'last_synced_at' => 'not-a-timestamp' } } }
+
+        assert_nil store.last_synced_time(state, 'chat1')
+      end
+    end
+
+    def test_backup_corrupt_state_file
+      with_temp_config do
+        store = Teems::Services::SyncStore.new
+        FileUtils.mkdir_p(store.sync_dir)
+        state_file = File.join(store.sync_dir, 'sync_state.json')
+        File.write(state_file, 'not valid json{{{')
+
+        result = store.load_state
+
+        assert_equal({}, result)
+        corrupt_files = Dir.glob(File.join(store.sync_dir, 'sync_state.json.corrupt.*'))
+        assert_equal 1, corrupt_files.length
+      end
+    end
+
+    def test_backup_corrupt_file_handles_rename_error
+      with_temp_config do
+        store = Teems::Services::SyncStore.new
+        write_corrupt_state(store, readonly_dir: true)
+        assert_equal({}, store.load_state)
+      ensure
+        File.chmod(0o755, store.sync_dir) if store
+      end
+    end
+
+    private
+
+    def write_corrupt_state(store, readonly_dir: false)
+      FileUtils.mkdir_p(store.sync_dir)
+      File.write(File.join(store.sync_dir, 'sync_state.json'), 'bad json')
+      File.chmod(0o000, store.sync_dir) if readonly_dir
+    end
+  end
 end

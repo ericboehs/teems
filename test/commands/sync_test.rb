@@ -720,4 +720,31 @@ module SyncCommandTests
       end
     end
   end
+
+  class SaveStateErrorTest < Minitest::Test
+    include SharedHelpers
+
+    class FailingSaveSync < Teems::Commands::Sync
+      private
+
+      def init_sync_state
+        super
+        @sync_store.define_singleton_method(:save_state) { |_| raise 'disk full' }
+      end
+    end
+
+    def test_save_state_safely_catches_error_and_increments_errors
+      with_temp_config do
+        exit_code = nil
+        result = capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.api_client.stub('conversations', { 'conversations' => [] })
+          exit_code = FailingSaveSync.new([], runner: runner).execute
+        end
+
+        assert_equal 1, exit_code
+        assert_match(/Failed to save sync state/, result[:stderr])
+      end
+    end
+  end
 end

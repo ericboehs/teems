@@ -319,4 +319,23 @@ module BaseCommandTests
       call_count
     end
   end
+
+  class DefaultHelpTextTest < Minitest::Test
+    class NoHelpCommand < Teems::Commands::Base
+      def execute
+        0
+      end
+    end
+
+    def test_default_help_text_shown_when_not_overridden
+      with_temp_config do
+        result = capture_output do |output|
+          cmd = NoHelpCommand.new(['--help'], runner: test_runner(output: output))
+          cmd.send(:validate_options)
+        end
+
+        assert_match(/No help available/, result[:stdout])
+      end
+    end
+  end
 end
