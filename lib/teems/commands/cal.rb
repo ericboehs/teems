@@ -266,12 +266,22 @@ module Teems
       end
 
       def send_delete(event_id)
+        event = fetch_event_for_display(event_id)
         with_token_refresh { runner.calendar_api.delete_event(event_id: event_id) }
-        success("Event ##{@event_number} deleted")
+        display_delete_result(event)
         0
       rescue ApiError => e
         error("Failed to delete event: #{e.message}")
         1
+      end
+
+      def fetch_event_for_display(event_id)
+        with_token_refresh { runner.calendar_api.get_event(event_id: event_id, timezone: detect_timezone) }
+      end
+
+      def display_delete_result(event)
+        success("Deleted: \"#{event.subject}\"")
+        event.create_summary_lines.each { |line| puts "  #{line}" }
       end
 
       def event_to_hash(event)

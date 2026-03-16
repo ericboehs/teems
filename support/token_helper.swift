@@ -1,6 +1,7 @@
 import Foundation
 import WebKit
 import Security
+import CommonCrypto
 
 // Headless WKWebView token extractor for Microsoft Teams
 // Uses OAuth2 implicit flow with redirect interception (inspired by fossteams/teams-token)
@@ -24,8 +25,12 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
     private var teamsToken: String?
     private var skypeToken: String?
     private var graphToken: String?
+    private var refreshToken: String?
     private var tenantId: String?
     private var loginHint: String?
+
+    // PKCE for authorization code flow
+    private var codeVerifier: String?
 
     private static let safariUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15"
@@ -76,9 +81,35 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
             fail("No tenant ID for Graph authorization")
             return
         }
-        let url = buildAuthorizeURL(responseType: "token", tenant: tid, resource: GRAPH_RESOURCE)
-        log("Requesting Graph access_token...")
+        let verifier = generateCodeVerifier()
+        codeVerifier = verifier
+        let challenge = generateCodeChallenge(verifier)
+        var url = buildAuthorizeURL(responseType: "code", tenant: tid, resource: GRAPH_RESOURCE)
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        components.queryItems?.append(URLQueryItem(name: "code_challenge", value: challenge))
+        components.queryItems?.append(URLQueryItem(name: "code_challenge_method", value: "S256"))
+        url = components.url!
+        log("Requesting Graph authorization code...")
         webView.load(URLRequest(url: url))
+    }
+
+    private func generateCodeVerifier() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return Data(bytes).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private func generateCodeChallenge(_ verifier: String) -> String {
+        let data = verifier.data(using: .utf8)!
+        var hash = [UInt8](repeating: 0, count: 32)
+        data.withUnsafeBytes { CC_SHA256($0.baseAddress, CC_LONG(data.count), &hash) }
+        return Data(hash).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 
     private func buildAuthorizeURL(responseType: String, tenant: String, resource: String? = nil) -> URL {
@@ -158,23 +189,23 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
     // MARK: - Redirect handling
 
     private func handleRedirect(url: URL) {
-        let params = parseFragment(url.fragment ?? "")
+        let fragmentParams = parseFragment(url.fragment ?? "")
+        let queryParams = parseFragment(url.query ?? "")
 
-        if let error = params["error"] {
-            let desc = params["error_description"]?.removingPercentEncoding ?? "unknown"
+        if let error = fragmentParams["error"] ?? queryParams["error"] {
+            let desc = (fragmentParams["error_description"] ?? queryParams["error_description"])?
+                .removingPercentEncoding ?? "unknown"
             log("OAuth error: \(error) — \(desc)")
-            if error == "interaction_required" {
-                needsSafari()
-            } else {
-                fail("OAuth error: \(error)")
-            }
+            if error == "interaction_required" { needsSafari() } else { fail("OAuth error: \(error)") }
             return
         }
 
-        if let idToken = params["id_token"] {
+        if let idToken = fragmentParams["id_token"] {
             handleTeamsToken(idToken)
-        } else if let accessToken = params["access_token"] {
+        } else if let accessToken = fragmentParams["access_token"] {
             handleAccessToken(accessToken)
+        } else if let code = queryParams["code"] {
+            exchangeCodeForTokens(code)
         }
     }
 
@@ -209,6 +240,60 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
         }
     }
 
+    // MARK: - Authorization code exchange
+
+    private func exchangeCodeForTokens(_ code: String) {
+        guard let tid = tenantId else { fail("No tenant ID for code exchange"); return }
+
+        let tokenURL = URL(string: "https://login.microsoftonline.com/\(tid)/oauth2/token")!
+        var request = URLRequest(url: tokenURL)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("https://teams.microsoft.com", forHTTPHeaderField: "Origin")
+
+        var bodyParts = [
+            "grant_type=authorization_code",
+            "client_id=\(TEAMS_APP_ID)",
+            "code=\(code)",
+            "redirect_uri=\(REDIRECT_URI)",
+            "resource=\(GRAPH_RESOURCE)"
+        ]
+        if let verifier = codeVerifier {
+            bodyParts.append("code_verifier=\(verifier)")
+        }
+        let body = bodyParts.joined(separator: "&")
+        request.httpBody = body.data(using: .utf8)
+
+        log("Exchanging authorization code for Graph tokens...")
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+            DispatchQueue.main.async { self?.handleCodeExchangeResult(data, error) }
+        }.resume()
+    }
+
+    private func handleCodeExchangeResult(_ data: Data?, _ error: Error?) {
+        if let error = error { fail("Code exchange error: \(error.localizedDescription)"); return }
+        guard let data = data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            fail("Failed to parse code exchange response")
+            return
+        }
+
+        if let err = json["error"] as? String {
+            fail("Code exchange failed: \(err) — \(json["error_description"] as? String ?? "")")
+            return
+        }
+
+        guard let accessToken = json["access_token"] as? String else {
+            fail("No access_token in code exchange response")
+            return
+        }
+
+        graphToken = accessToken
+        refreshToken = json["refresh_token"] as? String
+        log("Got Graph access token + refresh token")
+        emitResult()
+    }
+
     // MARK: - Auto-click "Stay signed in?"
 
     private func autoClickKMSI() {
@@ -234,6 +319,7 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
         if let g = graphToken { result["auth_token"] = g }
         if let s = skypeToken { result["skype_spaces_token"] = s }
         if let tid = tenantId { result["tenant_id"] = tid }
+        if let rt = refreshToken { result["refresh_token"] = rt }
 
         guard let data = try? JSONSerialization.data(withJSONObject: result),
               let json = String(data: data, encoding: .utf8) else {
