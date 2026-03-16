@@ -43,6 +43,12 @@ module Teems
         Models::Event.from_api(response)
       end
 
+      # Delete an event
+      def delete_event(event_id:)
+        encoded_id = URI.encode_www_form_component(event_id)
+        delete(:graph, "/v1.0/me/events/#{encoded_id}")
+      end
+
       # RSVP to an event (accept, decline, or tentatively accept)
       def rsvp_event(event_id:, action:, comment: nil, notify: :send)
         encoded_id = URI.encode_www_form_component(event_id)

@@ -14,6 +14,7 @@ module Teems
         teems cal decline <N>            Decline event #N
         teems cal tentative <N>          Tentatively accept event #N
         teems cal create "Title" [opts]  Create a new event
+        teems cal delete <N>             Delete event #N
 
       OPTIONS:
         --days N             Show events for the next N days (default: 1)
@@ -139,6 +140,7 @@ module Teems
         when 'today'     then parse_today_subcommand(remaining)
         when 'tomorrow'  then parse_tomorrow_subcommand(remaining)
         when 'create'    then parse_create_subcommand(remaining)
+        when 'delete'    then parse_delete_subcommand(remaining)
         when *RSVP_ACTIONS then parse_rsvp_subcommand(remaining)
         else @subcommand = 'list'
         end
@@ -171,6 +173,12 @@ module Teems
         @subcommand = 'create'
         remaining.shift
         @create_subject = remaining.shift
+      end
+
+      def parse_delete_subcommand(remaining)
+        @subcommand = 'delete'
+        remaining.shift
+        @event_number = remaining.shift&.to_i
       end
     end
 
@@ -245,6 +253,20 @@ module Teems
 
         error("Event ##{@event_number} not found. Run 'teems cal' first to list events.")
         nil
+      end
+
+      def delete_event
+        return missing_event_number unless @event_number&.positive?
+
+        event_id = lookup_event_id
+        return 1 unless event_id
+
+        with_token_refresh { runner.calendar_api.delete_event(event_id: event_id) }
+        success("Event ##{@event_number} deleted")
+        0
+      rescue ApiError => e
+        error("Failed to delete event: #{e.message}")
+        1
       end
 
       def event_to_hash(event)
@@ -457,6 +479,7 @@ module Teems
         case @subcommand
         when 'show' then show_event
         when 'create' then create_event
+        when 'delete' then delete_event
         when 'accept', 'decline', 'tentative' then rsvp_event
         else list_events
         end
