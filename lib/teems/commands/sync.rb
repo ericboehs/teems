@@ -188,8 +188,8 @@ module Teems
 
       def format_dry_run_chat(chat_data)
         chat = Models::Chat.from_api(chat_data)
-        status = dry_run_sync_status(chat.id)
-        puts "  #{chat.display_name}\n    ID: #{chat.id}\n    Status: #{status}\n"
+        chat_id = chat.id
+        puts "  #{chat.display_name}\n    ID: #{chat_id}\n    Status: #{dry_run_sync_status(chat_id)}\n"
       end
 
       def dry_run_sync_status(chat_id)
@@ -225,18 +225,22 @@ module Teems
       private
 
       def login_if_requested
-        return unless @options[:auth]
-        return if tokens_already_valid?
+        return unless @options[:auth] && !tokens_already_valid?
 
         tokens = runner.token_extractor.extract
         return save_login_tokens(tokens) if tokens&.dig(:auth_token) && tokens[:skype_token]
 
-        report_extraction_failure(tokens)
+        tokens&.dig(:auth_token) ? report_partial_extraction : report_full_extraction_failure
       end
 
-      def report_extraction_failure(tokens)
+      def report_partial_extraction
         error('Failed to authenticate via Safari')
-        error('  auth_token extracted but skype_token exchange failed') if tokens&.dig(:auth_token)
+        error('  auth_token extracted but skype_token exchange failed')
+        1
+      end
+
+      def report_full_extraction_failure
+        error('Failed to authenticate via Safari')
         1
       end
 

@@ -2,12 +2,12 @@
 
 module Teems
   module Models
-    # Represents a chat (1:1, group, or meeting chat)
     CHAT_TYPE_LABELS = {
       'oneOnOne' => '1:1 Chat', 'group' => 'Group Chat', 'meeting' => 'Meeting Chat',
       'channel' => 'Channel', 'space' => 'Space'
     }.freeze
 
+    # Represents a chat (1:1, group, or meeting chat)
     Chat = Data.define(:id, :topic, :chat_type, :created_at, :last_updated, :unread, :favorite, :pinned) do
       def self.from_api(data)
         # Handle both Graph API format and ng.msg format

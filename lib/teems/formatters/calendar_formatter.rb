@@ -107,7 +107,8 @@ module Teems
       end
 
       def format_event_subject(event)
-        event.cancelled? ? gray_text("#{event.subject} (cancelled)") : event.subject
+        title = event.subject
+        event.cancelled? ? gray_text("#{title} (cancelled)") : title
       end
 
       def gray_text(text) = @output.gray(text)

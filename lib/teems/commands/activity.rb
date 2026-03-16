@@ -66,12 +66,17 @@ module Teems
       end
 
       def parse_meeting_range(location)
-        start_match = location.match(%r{<StartDateTime>(.+?)</StartDateTime>})
+        start_match, end_match = extract_datetime_matches(location)
         return nil unless start_match
 
-        build_time_range(start_match[1], location.match(%r{<EndDateTime>(.+?)</EndDateTime>}))
+        build_time_range(start_match[1], end_match)
       rescue ArgumentError
         nil
+      end
+
+      def extract_datetime_matches(text)
+        [text.match(%r{<StartDateTime>(.+?)</StartDateTime>}),
+         text.match(%r{<EndDateTime>(.+?)</EndDateTime>})]
       end
 
       def build_time_range(start_str, end_match)

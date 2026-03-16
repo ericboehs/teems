@@ -54,7 +54,10 @@ module Teems
 
       private
 
-      def paginate_messages(messages, chat_id, start_time, backward_link, page_count)
+      def paginate_messages(chat_id, start_time)
+        messages = []
+        backward_link = nil
+        page_count = 0
         loop do
           page_messages, backward_link = fetch_messages_page(chat_id, start_time, backward_link, page_count)
           break if page_messages.empty? || log_and_check_max(page_count += 1, page_messages)
@@ -62,6 +65,7 @@ module Teems
           backward_link = accumulate_page(messages, page_messages, backward_link, start_time)
           break unless backward_link
         end
+        messages
       end
 
       def accumulate_page(messages, page_messages, backward_link, start_time)
@@ -132,10 +136,7 @@ module Teems
 
       # Fetch all messages from a chat since start_time with pagination
       def fetch_all_messages(chat_id, start_time)
-        messages = []
-        backward_link = nil
-        page_count = 0
-        paginate_messages(messages, chat_id, start_time, backward_link, page_count)
+        messages = paginate_messages(chat_id, start_time)
         filter_and_sort_messages(messages, start_time)
       end
 
@@ -164,9 +165,8 @@ module Teems
       end
 
       def merge_messages(existing, new_messages)
-        by_id = index_by_id(existing)
-        new_messages.each { |msg| by_id[msg.id] = msg }
-        by_id.values.sort_by { |msg| msg.created_at || Time.at(0) }
+        merged = index_by_id(existing).merge(index_by_id(new_messages))
+        merged.values.sort_by { |msg| msg.created_at || Time.at(0) }
       end
 
       def index_by_id(messages) = messages.to_h { |msg| [msg.id, msg] }

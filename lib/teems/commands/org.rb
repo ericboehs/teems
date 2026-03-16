@@ -60,10 +60,12 @@ module Teems
 
       def handle_reports_error(err, context)
         debug("Could not fetch #{context}: #{err.message}")
-        raise unless err.not_found? || err.forbidden?
+        raise unless recoverable_reports_error?(err)
 
         []
       end
+
+      def recoverable_reports_error?(err) = err.not_found? || err.forbidden?
 
       def target_is_me?
         positional_args.empty?

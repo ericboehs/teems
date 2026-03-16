@@ -52,13 +52,13 @@ module Teems
         post(:graph, "/v1.0/me/events/#{encoded_id}/#{api_action}", body: rsvp_body(comment, notify))
       end
 
+      private
+
       def rsvp_body(comment, notify)
         body = { sendResponse: notify == :send }
         body[:comment] = comment if comment
         body
       end
-
-      private
 
       def calendar_view_params(start_dt, end_dt, top)
         { 'startDateTime' => start_dt, 'endDateTime' => end_dt,
