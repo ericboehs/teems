@@ -327,22 +327,22 @@ module CLITests
 
   class EnsureCloseTest < Minitest::Test
     class MockCloseCLI < Teems::CLI
-      attr_reader :close_called
+      attr_reader :mock_api
 
       def initialize(argv, output:)
         super
-        @close_called = false
+        @mock_api = Teems::TestHelpers::MockApiClient.new
+        @mock_api.instance_variable_set(:@closed, false)
+        @mock_api.define_singleton_method(:close) { @closed = true }
+        @mock_api.define_singleton_method(:closed?) { @closed }
       end
 
       private
 
       def build_runner(args)
         out = verbose_mode?(args) ? verbose_output : @output
-        mock_api = Teems::TestHelpers::MockApiClient.new
-        mock_api.define_singleton_method(:close) { @closed = true }
-        mock_api.define_singleton_method(:closed?) { @closed }
         store = Teems::TestHelpers::MockTokenStore.new(configured: false)
-        Teems::Runner.new(output: out, token_store: store, api_client: mock_api)
+        Teems::Runner.new(output: out, token_store: store, api_client: @mock_api)
       end
     end
 
@@ -353,7 +353,9 @@ module CLITests
         output = Teems::Formatters::Output.new(io: out, err: err, color: false)
         cli = MockCloseCLI.new(%w[auth status], output: output)
         exit_code = cli.run
+
         assert_includes [0, 1], exit_code
+        assert cli.mock_api.closed?, 'Expected API client to be closed after CLI.run'
       end
     end
   end

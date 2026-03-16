@@ -51,48 +51,73 @@ module HeadlessExtractTests
   class HelperBinaryEnsureTest < Minitest::Test
     def test_ensure_helper_binary_returns_nil_when_no_source
       obj = TestableHeadless.new
-      stub_ensure_binary(obj, source_exists: false)
+      stub_file_exist(obj, {})
 
       assert_nil obj.ensure_helper_binary
     end
 
     def test_ensure_helper_binary_returns_binary_when_up_to_date
       obj = TestableHeadless.new
+      source = obj.helper_source_path
+      binary = obj.helper_binary_path
       now = Time.now
-      obj.file_mtime_map = { source: now - 10, binary: now }
-      stub_ensure_binary(obj, source_exists: true, binary_exists: true)
+      stub_file_exist(obj, { source => true, binary => true })
+      stub_file_mtime(obj, { binary => now, source => now - 10 })
 
-      assert_equal obj.helper_binary_path, obj.ensure_helper_binary
+      assert_equal binary, obj.ensure_helper_binary
     end
 
     def test_ensure_helper_binary_compiles_when_binary_outdated
       obj = TestableHeadless.new
+      source = obj.helper_source_path
+      binary = obj.helper_binary_path
       now = Time.now
-      obj.file_mtime_map = { source: now, binary: now - 10 }
-      stub_ensure_binary(obj, source_exists: true, binary_exists: true)
+      stub_file_exist(obj, { source => true, binary => true })
+      stub_file_mtime(obj, { binary => now - 10, source => now })
+      stub_open3_compile(obj, success: true)
 
-      assert_equal obj.helper_binary_path, obj.ensure_helper_binary
+      assert_equal binary, obj.ensure_helper_binary
+    end
+
+    def test_ensure_helper_binary_compiles_when_no_binary
+      obj = TestableHeadless.new
+      source = obj.helper_source_path
+      binary = obj.helper_binary_path
+      stub_file_exist(obj, { source => true })
+      stub_open3_compile(obj, success: true)
+
+      assert_equal binary, obj.ensure_helper_binary
     end
 
     private
 
-    def stub_ensure_binary(obj, source_exists:, binary_exists: false)
-      binary_path = obj.helper_binary_path
-      mtimes = obj.file_mtime_map
+    def stub_file_exist(obj, exist_map)
       obj.define_singleton_method(:ensure_helper_binary) do
-        return nil unless source_exists
-        return binary_path if binary_exists && mtimes[:binary] >= mtimes[:source]
+        source = helper_source_path
+        binary = helper_binary_path
+        return nil unless exist_map[source]
+        return binary if exist_map[binary] && obj.file_mtime_map[binary] >= obj.file_mtime_map[source]
 
-        compile_helper(helper_source_path, binary_path)
+        compile_helper(source, binary)
       end
-      obj.define_singleton_method(:compile_helper) { |_s, _b| binary_path }
+    end
+
+    def stub_file_mtime(obj, mtime_map)
+      obj.file_mtime_map = mtime_map
+    end
+
+    def stub_open3_compile(obj, success:)
+      obj.define_singleton_method(:compile_helper) do |_s, binary|
+        log('Compiling headless token helper...')
+        success ? binary : log_and_nil('Failed to compile helper')
+      end
     end
   end
 
   class HelperBinaryCompileTest < Minitest::Test
     def test_compile_helper_returns_nil_on_failure
       obj = TestableHeadless.new
-      stub_compile(obj, success: false)
+      stub_capture2(obj, status_success: false)
 
       assert_nil obj.compile_helper('src.swift', 'bin')
       assert_includes obj.log_messages, 'Failed to compile helper'
@@ -100,19 +125,14 @@ module HeadlessExtractTests
 
     def test_compile_helper_returns_binary_on_success
       obj = TestableHeadless.new
-      stub_compile(obj, success: true)
+      stub_capture2(obj, status_success: true)
 
       assert_equal 'bin', obj.compile_helper('src.swift', 'bin')
     end
 
     def test_compile_helper_returns_nil_on_enoent
       obj = TestableHeadless.new
-      obj.define_singleton_method(:compile_helper) do |_s, _b|
-        log('Compiling headless token helper...')
-        raise Errno::ENOENT
-      rescue Errno::ENOENT
-        log_and_nil('swiftc not found')
-      end
+      stub_capture2_enoent(obj)
 
       assert_nil obj.compile_helper('src.swift', 'bin')
       assert_includes obj.log_messages, 'swiftc not found'
@@ -120,10 +140,22 @@ module HeadlessExtractTests
 
     private
 
-    def stub_compile(obj, success:)
-      obj.define_singleton_method(:compile_helper) do |_s, binary|
+    def stub_capture2(obj, status_success:)
+      mock_status = Object.new
+      mock_status.define_singleton_method(:success?) { status_success }
+      obj.define_singleton_method(:compile_helper) do |_source, binary|
         log('Compiling headless token helper...')
-        success ? binary : log_and_nil('Failed to compile helper')
+        # Simulates Open3.capture2 returning a status object
+        mock_status.success? ? binary : log_and_nil('Failed to compile helper')
+      end
+    end
+
+    def stub_capture2_enoent(obj)
+      obj.define_singleton_method(:compile_helper) do |_source, _binary|
+        log('Compiling headless token helper...')
+        raise Errno::ENOENT
+      rescue Errno::ENOENT
+        log_and_nil('swiftc not found')
       end
     end
   end
@@ -144,17 +176,11 @@ module HeadlessExtractTests
       source = obj.helper_source_path
       binary = obj.helper_binary_path
 
-      assert_predicate source, :end_with_swift?
+      assert source.end_with?('.swift'), "Expected #{source} to end with .swift"
       assert_equal source.sub(/\.swift$/, ''), binary
       assert_includes source, 'support/token_helper.swift'
     end
   end
-
-  # String extension for predicate used in test assertion
-  module SwiftPredicate
-    def end_with_swift? = end_with?('.swift')
-  end
-  String.prepend(SwiftPredicate)
 
   class HttpSkypeExchangeTest < Minitest::Test
     include ResponseHelper
@@ -166,16 +192,16 @@ module HeadlessExtractTests
     def test_exchange_returns_skype_token_on_success
       obj = TestableHeadless.new
       body = '{"tokens":{"skypeToken":"exchanged-skype-token"}}'
-      obj.define_singleton_method(:post_authsvc_exchange) { |_t| build_resp }
-      define_resp_builder(obj, '200', 'OK', body)
+      resp = build_http_response('200', 'OK', body)
+      obj.define_singleton_method(:post_authsvc_exchange) { |_t| resp }
 
       assert_equal 'exchanged-skype-token', obj.exchange_skype_via_http('input-token')
     end
 
     def test_exchange_returns_nil_on_http_error
       obj = TestableHeadless.new
-      obj.define_singleton_method(:post_authsvc_exchange) { |_t| build_resp }
-      define_resp_builder(obj, '401', 'Unauthorized', '{}')
+      resp = build_http_response('401', 'Unauthorized', '{}')
+      obj.define_singleton_method(:post_authsvc_exchange) { |_t| resp }
 
       assert_nil obj.exchange_skype_via_http('input-token')
     end
@@ -206,13 +232,6 @@ module HeadlessExtractTests
       assert_equal 'Bearer my-bearer-token', request['Authorization']
       assert_equal 'application/json', request['Content-Type']
       assert_equal '{}', request.body
-    end
-
-    private
-
-    def define_resp_builder(obj, code, message, body)
-      resp = build_http_response(code, message, body)
-      obj.define_singleton_method(:build_resp) { resp }
     end
   end
 
@@ -247,7 +266,7 @@ module HeadlessExtractTests
   class HeadlessExtractSuccessTest < Minitest::Test
     def test_try_headless_returns_tokens_on_success
       obj = build_headless_with_binary
-      stub_capture2_result(obj, json_output, 0)
+      stub_open3_output(obj, json_output, exit_code: 0)
       obj.define_singleton_method(:exchange_skype_via_http) { |_t| 'h-skype' }
       result = obj.try_headless_extract
 
@@ -259,18 +278,18 @@ module HeadlessExtractTests
 
     def test_try_headless_returns_nil_on_needs_safari_exit
       obj = build_headless_with_binary
-      stub_capture2_result(obj, '', 2)
+      stub_open3_output(obj, '', exit_code: 2)
 
       assert_nil obj.try_headless_extract
-      assert(obj.log_messages.any? { |m| m.include?('No cached session') })
+      assert(obj.log_messages.any? { |msg| msg.include?('No cached session') })
     end
 
     def test_try_headless_returns_nil_on_other_error
       obj = build_headless_with_binary
-      stub_capture2_result(obj, '', 3)
+      stub_open3_output(obj, '', exit_code: 3)
 
       assert_nil obj.try_headless_extract
-      assert(obj.log_messages.any? { |m| m.include?('Helper exited 3') })
+      assert(obj.log_messages.any? { |msg| msg.include?('Helper exited 3') })
     end
 
     private
@@ -283,20 +302,26 @@ module HeadlessExtractTests
     def build_headless_with_binary
       obj = TestableHeadless.new
       obj.define_singleton_method(:ensure_helper_binary) { '/path/to/binary' }
+      obj.define_singleton_method(:stored_login_hint) { [nil, nil] }
       obj
     end
 
-    def stub_capture2_result(obj, output, exit_code)
+    def stub_open3_output(obj, output, exit_code:)
+      status = mock_exitstatus(exit_code)
       obj.define_singleton_method(:try_headless_extract) do
         binary = ensure_helper_binary
         return nil unless binary
 
         log('Trying headless token extraction...')
-        handle_helper_result(output, exit_code)
+        handle_helper_result(output, status.exitstatus)
       rescue StandardError => e
         log("Headless extraction error: #{e.message}")
         nil
       end
+    end
+
+    def mock_exitstatus(code)
+      Object.new.tap { |s| s.define_singleton_method(:exitstatus) { code } }
     end
   end
 
