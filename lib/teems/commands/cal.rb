@@ -52,6 +52,7 @@ module Teems
         teems cal create "Standup" --start "tomorrow 09:00" --duration 15
         teems cal create "Review" --start "2026-03-20 14:00" --teams \
           --attendees alice@example.com,bob@example.com
+        teems cal delete 3       # Delete event #3
     HELP
 
     # Date range computation for calendar queries
