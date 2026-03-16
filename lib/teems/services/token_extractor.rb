@@ -132,11 +132,12 @@ module Teems
       def parse_decrypt_result(result, attempt)
         parsed = JSON.parse(result)
         return log_decrypt_error(parsed['error']) if parsed['error']
-        return nil unless parsed['auth_token']
+
+        auth_token = parsed['auth_token']
+        return nil unless auth_token
 
         log("V2 tokens decrypted after #{attempt + 1}s")
-        finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'],
-                        **extract_v1_refresh_data)
+        finalize_tokens(auth_token, parsed['skype_spaces_token'], **extract_v1_refresh_data)
       end
 
       def log_decrypt_error(message)
@@ -227,9 +228,7 @@ module Teems
         return nil unless parsed&.dig('auth_token')
 
         finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'],
-                        refresh_token: parsed['refresh_token'],
-                        client_id: parsed['client_id'],
-                        tenant_id: parsed['tenant_id'])
+                        **v1_extras(parsed))
       rescue JSON::ParserError => e
         log("Failed to parse v1 token extraction result: #{e.message}")
         nil
@@ -247,18 +246,22 @@ module Teems
         parsed = parse_safari_json(EXTRACT_TOKENS_JS)
         return {} unless parsed&.dig('refresh_token')
 
-        { refresh_token: parsed['refresh_token'],
-          client_id: parsed['client_id'],
-          tenant_id: parsed['tenant_id'] }
+        v1_extras(parsed)
       rescue JSON::ParserError
         {}
       end
 
-      def finalize_tokens(auth_token, skype_spaces_token, refresh_token: nil, client_id: nil, tenant_id: nil)
+      def v1_extras(parsed)
+        { refresh_token: parsed['refresh_token'],
+          client_id: parsed['client_id'],
+          tenant_id: parsed['tenant_id'] }
+      end
+
+      def finalize_tokens(auth_token, skype_spaces_token, **extras)
         skype_token = exchange_skype_if_available(skype_spaces_token)
         { auth_token: auth_token, skype_token: skype_token,
           skype_spaces_token: skype_spaces_token, chatsvc_token: nil,
-          refresh_token: refresh_token, client_id: client_id, tenant_id: tenant_id }
+          refresh_token: nil, client_id: nil, tenant_id: nil, **extras }
       end
     end
 

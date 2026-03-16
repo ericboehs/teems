@@ -2,6 +2,8 @@
 
 module Teems
   module Models
+    PENDING_RESPONSES = [nil, 'none'].freeze
+
     # Represents a calendar event from Microsoft Graph API
     Event = Data.define(
       :id,
@@ -112,7 +114,7 @@ module Teems
       end
 
       def pending_attendees
-        attendees.select { |att| !att[:response] || att[:response] == 'none' }
+        attendees.select { |att| PENDING_RESPONSES.include?(att[:response]) }
       end
     end
   end

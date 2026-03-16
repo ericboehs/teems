@@ -36,27 +36,27 @@ module CalendarFormatterTests
     include SharedHelpers
 
     def test_format_event_list_compact
-      result = @formatter.format_event_list([build_event])
+      result = @formatter.format_event_list_compact([build_event])
       assert_includes result, '[1]'
       assert_includes result, '09:00-10:00'
       assert_includes result, 'Weekly Standup'
     end
 
     def test_format_event_list_with_location
-      result = @formatter.format_event_list([build_event(location: 'Conference Room A')])
+      result = @formatter.format_event_list_compact([build_event(location: 'Conference Room A')])
       assert_includes result, 'Conference Room A'
     end
 
     def test_format_event_list_all_day
-      assert_includes @formatter.format_event_list([build_event(is_all_day: true)]), 'ALL DAY'
+      assert_includes @formatter.format_event_list_compact([build_event(is_all_day: true)]), 'ALL DAY'
     end
 
     def test_format_event_list_cancelled
-      assert_includes @formatter.format_event_list([build_event(is_cancelled: true)]), 'cancelled'
+      assert_includes @formatter.format_event_list_compact([build_event(is_cancelled: true)]), 'cancelled'
     end
 
     def test_format_event_list_verbose_shows_organizer
-      assert_includes @formatter.format_event_list([build_event], verbose: true), 'Alice Manager'
+      assert_includes @formatter.format_event_list_verbose([build_event]), 'Alice Manager'
     end
 
     def test_format_event_list_verbose_shows_rsvp_summary
@@ -65,7 +65,7 @@ module CalendarFormatterTests
         { name: 'Carol', email: 'carol@test.com', type: 'required', response: 'declined' },
         { name: 'Dave', email: 'dave@test.com', type: 'optional', response: 'tentativelyAccepted' }
       ]
-      result = @formatter.format_event_list([build_event(attendees: attendees)], verbose: true)
+      result = @formatter.format_event_list_verbose([build_event(attendees: attendees)])
       assert_includes result, '1 accepted'
       assert_includes result, '1 declined'
       assert_includes result, '1 tentative'
@@ -73,7 +73,7 @@ module CalendarFormatterTests
 
     def test_format_event_list_multiple_events
       events = [build_event(subject: 'Meeting 1'), build_event(subject: 'Meeting 2')]
-      result = @formatter.format_event_list(events)
+      result = @formatter.format_event_list_compact(events)
       assert_includes result, '[1]'
       assert_includes result, '[2]'
       assert_includes result, 'Meeting 1'
@@ -81,19 +81,19 @@ module CalendarFormatterTests
     end
 
     def test_format_event_list_no_location
-      refute_includes @formatter.format_event_list([build_event(location: nil)]), '()'
+      refute_includes @formatter.format_event_list_compact([build_event(location: nil)]), '()'
     end
 
     def test_format_event_list_empty_location
-      refute_includes @formatter.format_event_list([build_event(location: '')]), '()'
+      refute_includes @formatter.format_event_list_compact([build_event(location: '')]), '()'
     end
 
     def test_format_event_list_verbose_no_organizer
-      refute_includes @formatter.format_event_list([build_event(organizer: nil)], verbose: true), 'Organizer:'
+      refute_includes @formatter.format_event_list_verbose([build_event(organizer: nil)]), 'Organizer:'
     end
 
     def test_format_event_list_verbose_no_attendees
-      result = @formatter.format_event_list([build_event(attendees: [], organizer: nil)], verbose: true)
+      result = @formatter.format_event_list_verbose([build_event(attendees: [], organizer: nil)])
       refute_includes result, '|'
     end
 

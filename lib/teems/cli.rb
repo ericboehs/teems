@@ -96,7 +96,7 @@ module Teems
     end
 
     def verbose_output
-      @output.with_verbose(true)
+      @output.with_verbose
     end
 
     def setup_verbose_logging(runner, output)
