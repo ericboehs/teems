@@ -63,8 +63,8 @@ module Teems
         return nil unless response.is_a?(Net::HTTPSuccess)
 
         JSON.parse(response.body).dig('tokens', 'skypeToken')
-      rescue StandardError => e
-        log("Skype exchange failed: #{e.message}")
+      rescue StandardError => err
+        log("Skype exchange failed: #{err.message}")
         nil
       end
 
@@ -114,8 +114,8 @@ module Teems
         log('Trying headless token extraction...')
         output, status = Open3.capture2(binary, *build_helper_args)
         handle_helper_result(output, status.exitstatus)
-      rescue StandardError => e
-        log("Headless extraction error: #{e.message}")
+      rescue StandardError => err
+        log("Headless extraction error: #{err.message}")
         nil
       end
 
@@ -167,8 +167,8 @@ module Teems
         return nil unless parsed['auth_token']
 
         build_headless_tokens(parsed)
-      rescue JSON::ParserError => e
-        log("Failed to parse headless result: #{e.message}")
+      rescue JSON::ParserError => err
+        log("Failed to parse headless result: #{err.message}")
         nil
       end
 

@@ -35,8 +35,9 @@ module Teems
       end
 
       def stored_msg_core(data)
+        created_at_raw = data['created_at']
         { id: data['id'], sender_id: data['sender_id'], sender_name: data['sender_name'],
-          content: data['content'], created_at: data['created_at'] ? Time.parse(data['created_at']) : nil,
+          content: data['content'], created_at: created_at_raw ? Time.parse(created_at_raw) : nil,
           message_type: data['message_type'] }
       end
 
@@ -142,15 +143,18 @@ module Teems
       end
 
       def message_with_timestamp(msg, start_time)
-        timestamp = msg.created_at || Time.at(0)
-        [timestamp, msg] if !msg.created_at || timestamp >= start_time
+        created_at = msg.created_at
+        timestamp = created_at || Time.at(0)
+        [timestamp, msg] if !created_at || timestamp >= start_time
       end
 
       def merge_messages(existing, new_messages)
-        by_id = existing.to_h { |msg| [msg.id, msg] }
+        by_id = index_by_id(existing)
         new_messages.each { |msg| by_id[msg.id] = msg }
         by_id.values.sort_by { |msg| msg.created_at || Time.at(0) }
       end
+
+      def index_by_id(messages) = messages.to_h { |msg| [msg.id, msg] }
 
       def write_chat_files(chat, messages)
         fmt = Formatters::MarkdownFormatter.new(chat_name: chat.display_name,

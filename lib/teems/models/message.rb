@@ -34,8 +34,9 @@ module Teems
       end
 
       def self.ng_msg_extras(data, props)
+        root_message_id = data['rootMessageId']
         {
-          reply_to_id: data['rootMessageId'] == data['id'] ? nil : data['rootMessageId'],
+          reply_to_id: root_message_id == data['id'] ? nil : root_message_id,
           reactions: parse_ng_msg_reactions(props['emotions']),
           attachments: parse_files_json(props['files']),
           importance: nil

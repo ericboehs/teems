@@ -21,8 +21,8 @@ module Teems
 
       def try_oidc_refresh
         oidc_refresh
-      rescue *TokenRefresher::RECOVERABLE_ERRORS => e
-        log("OIDC refresh error: #{e.class}: #{e.message}, falling back to authsvc...")
+      rescue *TokenRefresher::RECOVERABLE_ERRORS => err
+        log("OIDC refresh error: #{err.class}: #{err.message}, falling back to authsvc...")
         nil
       end
 
@@ -47,10 +47,11 @@ module Teems
       end
 
       def build_oidc_result(graph, skype)
-        skype_token = exchange_token(skype['access_token'])
+        skype_access_token = skype['access_token']
+        skype_token = exchange_token(skype_access_token)
         return nil unless skype_token
 
-        { auth_token: graph['access_token'], skype_spaces_token: skype['access_token'],
+        { auth_token: graph['access_token'], skype_spaces_token: skype_access_token,
           skype_token: skype_token, refresh_token: skype['refresh_token'] }
       end
 
@@ -110,8 +111,8 @@ module Teems
         return result if result
 
         attempt_authsvc_refresh
-      rescue *RECOVERABLE_ERRORS => e
-        log("Token exchange error: #{e.class}: #{e.message}")
+      rescue *RECOVERABLE_ERRORS => err
+        log("Token exchange error: #{err.class}: #{err.message}")
         false
       end
 

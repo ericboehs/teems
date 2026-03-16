@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for calendar event list and detail formatting
 module CalendarFormatterTests
+  # Shared setup and event builders for calendar formatter tests
   module SharedHelpers
     def setup
       @output = test_output
@@ -32,8 +34,14 @@ module CalendarFormatterTests
     end
   end
 
+  # Tests compact and verbose event list formatting with location, time, and RSVP
   class EventListTest < Minitest::Test
     include SharedHelpers
+
+    def initialize(*)
+      @formatter = nil
+      super
+    end
 
     def test_format_event_list_compact
       result = @formatter.format_event_list_compact([build_event])
@@ -102,8 +110,14 @@ module CalendarFormatterTests
     end
   end
 
+  # Tests event detail formatting for subject, time, location, organizer, and status
   class EventDetailBasicTest < Minitest::Test
     include SharedHelpers
+
+    def initialize(*)
+      @formatter = nil
+      super
+    end
 
     def test_format_event_detail_subject
       assert_includes @formatter.format_event_detail(build_event), 'Weekly Standup'
@@ -176,8 +190,14 @@ module CalendarFormatterTests
     end
   end
 
+  # Tests attendee display formatting with response symbols and organizer markers
   class EventDetailAttendeesTest < Minitest::Test
     include SharedHelpers
+
+    def initialize(*)
+      @formatter = nil
+      super
+    end
 
     def test_format_event_detail_required_attendees
       attendees = [{ name: 'Bob', email: 'bob@test.com', type: 'required', response: 'accepted' }]

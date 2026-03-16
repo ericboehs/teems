@@ -109,7 +109,8 @@ module Teems
 
       def week_monday
         today = Date.today
-        today - (today.wday.zero? ? 6 : today.wday - 1)
+        wday = today.wday
+        today - (wday.zero? ? 6 : wday - 1)
       end
 
       def date_range_for_days
@@ -150,8 +151,8 @@ module Teems
 
       def parse_show_subcommand(remaining)
         @subcommand = 'show'
-        remaining.shift
-        @event_number = remaining.shift&.to_i
+        _, event_arg = remaining.shift(2)
+        @event_number = event_arg&.to_i
       end
 
       def parse_today_subcommand(remaining)
@@ -166,20 +167,21 @@ module Teems
       end
 
       def parse_rsvp_subcommand(remaining)
-        @subcommand = remaining.shift
-        @event_number = remaining.shift&.to_i
+        action, event_arg = remaining.shift(2)
+        @subcommand = action
+        @event_number = event_arg&.to_i
       end
 
       def parse_create_subcommand(remaining)
         @subcommand = 'create'
-        remaining.shift
-        @create_subject = remaining.shift
+        _, subject = remaining.shift(2)
+        @create_subject = subject
       end
 
       def parse_delete_subcommand(remaining)
         @subcommand = 'delete'
-        remaining.shift
-        @event_number = remaining.shift&.to_i
+        _, event_arg = remaining.shift(2)
+        @event_number = event_arg&.to_i
       end
     end
 
@@ -198,8 +200,8 @@ module Teems
         return 1 unless event_id
 
         render_single_event(event_id)
-      rescue ApiError => e
-        error("Failed to fetch event: #{e.message}")
+      rescue ApiError => err
+        error("Failed to fetch event: #{err.message}")
         1
       end
 
@@ -224,8 +226,8 @@ module Teems
         return 1 unless event_id
 
         send_rsvp(event_id)
-      rescue ApiError => e
-        error("Failed to respond to event: #{e.message}")
+      rescue ApiError => err
+        error("Failed to respond to event: #{err.message}")
         1
       end
 
@@ -270,8 +272,8 @@ module Teems
         with_token_refresh { runner.calendar_api.delete_event(event_id: event_id) }
         display_delete_result(event)
         0
-      rescue ApiError => e
-        error("Failed to delete event: #{e.message}")
+      rescue ApiError => err
+        error("Failed to delete event: #{err.message}")
         1
       end
 
@@ -301,10 +303,11 @@ module Teems
       end
 
       def split_time_input(raw)
+        today = Date.today
         if raw.start_with?('tomorrow ')
-          [Date.today + 1, raw.delete_prefix('tomorrow ')]
+          [today + 1, raw.delete_prefix('tomorrow ')]
         elsif raw.match?(/\A(?:today\s+)?\d{1,2}:\d{2}\z/)
-          [Date.today, raw.delete_prefix('today ')]
+          [today, raw.delete_prefix('today ')]
         elsif raw.match?(/\A\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\z/)
           raw.split(/\s+/, 2)
         end
@@ -339,8 +342,8 @@ module Teems
 
         start_dt, end_dt = times
         send_create_request(start_dt, end_dt)
-      rescue ApiError => e
-        error("Failed to create event: #{e.message}")
+      rescue ApiError => err
+        error("Failed to create event: #{err.message}")
         1
       end
 
@@ -409,9 +412,12 @@ module Teems
       end
 
       def add_optional_event_fields(body)
-        body[:location] = { displayName: @options[:location] } if @options[:location]
-        body[:body] = { contentType: 'text', content: @options[:body] } if @options[:body]
-        body[:attendees] = @options[:attendees].map { |e| attendee_entry(e) } if @options[:attendees]
+        location = @options[:location]
+        body_text = @options[:body]
+        attendees = @options[:attendees]
+        body[:location] = { displayName: location } if location
+        body[:body] = { contentType: 'text', content: body_text } if body_text
+        body[:attendees] = attendees.map { |email| attendee_entry(email) } if attendees
         add_teams_meeting(body) if @options[:teams]
         body
       end
@@ -500,8 +506,8 @@ module Teems
         return error("Invalid date: #{@options[:date]}") && 1 unless range
 
         fetch_and_display_events(range)
-      rescue ApiError => e
-        error("Failed to fetch calendar: #{e.message}")
+      rescue ApiError => err
+        error("Failed to fetch calendar: #{err.message}")
         1
       end
 

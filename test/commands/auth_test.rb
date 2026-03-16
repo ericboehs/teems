@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for the auth command
 module AuthCommandTests
+  # Shared helpers for building auth runners and executing auth actions
   module Helpers
     private
 
@@ -36,6 +38,7 @@ module AuthCommandTests
     end
   end
 
+  # Tests for help, status, logout, and unknown action handling
   class BasicTest < Minitest::Test
     include Helpers
 
@@ -70,8 +73,9 @@ module AuthCommandTests
         store = mock_token_store(configured: true, account: nil)
         result, exit_code = run_auth_with_code('status', store: store)
         assert_equal 0, exit_code
-        assert_match(/Token file exists but is incomplete/, result[:stdout])
-        assert_match(/teems auth login/, result[:stdout])
+        stdout = result[:stdout]
+        assert_match(/Token file exists but is incomplete/, stdout)
+        assert_match(/teems auth login/, stdout)
       end
     end
 
@@ -118,6 +122,7 @@ module AuthCommandTests
     end
   end
 
+  # Tests for login flow including token extraction and manual instructions
   class LoginTest < Minitest::Test
     include Helpers
 
@@ -151,8 +156,9 @@ module AuthCommandTests
       with_temp_config do
         result, exit_code = run_auth_with_code('manual')
         assert_equal 0, exit_code
-        assert_match(/manually extract tokens/, result[:stdout])
-        assert_match(/teems auth set-tokens/, result[:stdout])
+        stdout = result[:stdout]
+        assert_match(/manually extract tokens/, stdout)
+        assert_match(/teems auth set-tokens/, stdout)
       end
     end
 
@@ -169,9 +175,9 @@ module AuthCommandTests
       with_temp_config do
         store = mock_token_store(account: mock_account)
         store.define_singleton_method(:token_age) { 100_800 }
-        result = run_auth('status', store: store)
-        assert_match(/Tokens are 28 hours old/, result[:stdout])
-        assert_match(/may be expired/, result[:stdout])
+        stdout = run_auth('status', store: store)[:stdout]
+        assert_match(/Tokens are 28 hours old/, stdout)
+        assert_match(/may be expired/, stdout)
       end
     end
 
@@ -197,6 +203,7 @@ module AuthCommandTests
     end
   end
 
+  # Tests for importing tokens from JSON files via set-tokens
   class ImportTokensTest < Minitest::Test
     include Helpers
 
@@ -262,6 +269,7 @@ module AuthCommandTests
     end
   end
 
+  # Tests for setting tokens via stdin input
   class SetTokensStdinTest < Minitest::Test
     def test_set_tokens_from_stdin
       with_temp_config do
@@ -302,6 +310,7 @@ module AuthCommandTests
     end
   end
 
+  # Tests for stripping token prefixes like Bearer and skypetoken=
   class CleanTokenTest < Minitest::Test
     def test_clean_token_strips_bearer_prefix
       with_temp_config do |dir|
@@ -332,6 +341,7 @@ module AuthCommandTests
     end
   end
 
+  # Tests for token file permission and directory path error handling
   class FilePermissionTest < Minitest::Test
     def test_import_unreadable_file_shows_error
       with_temp_config do |dir|

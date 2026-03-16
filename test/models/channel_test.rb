@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests Channel model parsing from API data, membership types, and display name formatting
 class ChannelTest < Minitest::Test
   def test_from_api_extracts_fields
     channel = Teems::Models::Channel.from_api(sample_channel)

@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests console message formatting with timestamps, sender names, reactions, and color output
 class MessageFormatterTest < Minitest::Test
   def test_format_includes_timestamp
     output = test_output

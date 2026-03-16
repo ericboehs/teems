@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for SyncEngine message fetching, merging, pagination, and debug output
 module SyncEngineTests
+  # Shared builders for engine instances, message stubs, and paginated responses
   module SharedHelpers
     private
 
@@ -63,9 +65,10 @@ module SyncEngineTests
     end
 
     def sample_engine_chat
+      now = Time.now
       Teems::Models::Chat.new(
         id: '19:test@thread.v2', topic: 'Test', chat_type: 'group',
-        created_at: Time.now, last_updated: Time.now,
+        created_at: now, last_updated: now,
         unread: false, favorite: false, pinned: false
       )
     end
@@ -86,6 +89,7 @@ module SyncEngineTests
     end
   end
 
+  # Tests message fetching with pagination, filtering, cutoff detection, and verbose output
   class FetchMessagesTest < Minitest::Test
     include SharedHelpers
 
@@ -179,6 +183,7 @@ module SyncEngineTests
     end
   end
 
+  # Tests message deduplication, stored message reconstruction, and nil timestamp handling
   class MergeTest < Minitest::Test
     include SharedHelpers
 
@@ -240,6 +245,7 @@ module SyncEngineTests
     end
   end
 
+  # Tests internal helpers: debug output, page parsing, cutoff detection, and link advancement
   class InternalsTest < Minitest::Test
     include SharedHelpers
 

@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for markdown export formatting of chat messages
 module MarkdownFormatterTests
+  # Shared message and formatter builders for markdown formatter tests
   module Helpers
     private
 
@@ -21,6 +23,7 @@ module MarkdownFormatterTests
     end
   end
 
+  # Tests markdown header generation, date grouping, and basic message formatting
   class HeaderAndBasicTest < Minitest::Test
     include Helpers
 
@@ -107,6 +110,7 @@ module MarkdownFormatterTests
     end
   end
 
+  # Tests emoji reaction mapping and file attachment formatting in markdown output
   class ReactionsAndAttachmentsTest < Minitest::Test
     include Helpers
 

@@ -170,8 +170,8 @@ module Teems
         items = items.select { |item| item[:unread] } if @options[:unread]
         render_activities(items)
         0
-      rescue ApiError => e
-        error("Failed to fetch activity: #{e.message}")
+      rescue ApiError => err
+        error("Failed to fetch activity: #{err.message}")
         1
       end
 
@@ -212,7 +212,8 @@ module Teems
         unread_marker = item[:unread] ? output.bold('* ') : '  '
         formatted = format_activity(item[:raw_activity], item[:time])
         formatted.lines.each_with_index do |line, idx|
-          puts idx.zero? ? "#{unread_marker}#{line.chomp}" : "  #{line.chomp}"
+          stripped = line.chomp
+          puts idx.zero? ? "#{unread_marker}#{stripped}" : "  #{stripped}"
         end
         puts
       end

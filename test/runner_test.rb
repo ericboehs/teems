@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for Runner initialization, service wiring, and API accessor methods
 module RunnerTests
+  # Tests Runner default initialization and delegated service methods
   class BasicTest < Minitest::Test
     def test_initializes_with_default_services
       with_temp_config do
@@ -81,6 +83,7 @@ module RunnerTests
     end
   end
 
+  # Tests that Runner returns the correct API instances for each resource type
   class ApiTest < Minitest::Test
     def test_channels_api_returns_channels_api
       with_temp_config do |dir|

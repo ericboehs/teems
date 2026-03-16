@@ -47,9 +47,9 @@ module Teems
         msg_date = msg.created_at&.strftime('%Y-%m-%d')
         return current_date if msg_date == current_date
 
-        lines << '' if current_date
-        lines << "## #{msg_date || 'Unknown Date'}"
-        lines << ''
+        heading = "## #{msg_date || 'Unknown Date'}"
+        date_section = current_date ? ['', heading, ''] : [heading, '']
+        lines.concat(date_section)
         msg_date
       end
 
@@ -102,7 +102,8 @@ module Teems
       end
 
       def format_single_reaction(reaction)
-        emoji = REACTION_EMOJI[reaction[:type]] || reaction[:type]
+        type = reaction[:type]
+        emoji = REACTION_EMOJI[type] || type
         count = reaction[:count] || 1
         count > 1 ? "#{emoji} \u00d7#{count}" : emoji.to_s
       end

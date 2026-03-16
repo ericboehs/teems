@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests for the Channels API wrapper (teams and channel listing)
 class ApiChannelsTest < Minitest::Test
   def test_list_teams_calls_correct_endpoint
     api_client = Teems::TestHelpers::MockApiClient.new
@@ -63,7 +64,8 @@ class ApiChannelsTest < Minitest::Test
     channels.get_channel(team_id: 'team@123', channel_id: '19:ch@thread')
 
     call = api_client.calls.last
-    assert_includes call[:path], 'team%40123'
-    assert_includes call[:path], '19%3Ach%40thread'
+    call_path = call[:path]
+    assert_includes call_path, 'team%40123'
+    assert_includes call_path, '19%3Ach%40thread'
   end
 end

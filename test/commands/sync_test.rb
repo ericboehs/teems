@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for the sync command
 module SyncCommandTests
+  # Shared fixture data for sync test scenarios
   module SharedFixtures
     private
 
@@ -34,6 +36,7 @@ module SyncCommandTests
     end
   end
 
+  # Shared helpers for building sync runners and verifying sync results
   module SharedHelpers
     include SharedFixtures
 
@@ -46,9 +49,15 @@ module SyncCommandTests
       [configured_runner(output: output), out, err]
     end
 
-    def sync_result(out, err)
-      { stdout: out.string, stderr: err.string }
+    def build_sync_runner_with_chats(chats, error_stubs: {})
+      runner, out, err = build_sync_runner
+      api = runner.api_client
+      api.stub('conversations', { 'conversations' => chats })
+      error_stubs.each { |path, error| api.stub_error(path, error) }
+      [runner, out, err]
     end
+
+    def sync_result(out, err) = { stdout: out.string, stderr: err.string }
 
     def execute_with_no_sleep(args, runner:)
       cmd = Teems::Commands::Sync.new(args, runner: runner)
@@ -64,34 +73,25 @@ module SyncCommandTests
     end
 
     def run_sync_with_chat_list(chats:, msg_stub: nil, error_stubs: {}, args: [])
-      runner, out, err = build_sync_runner
-      api = runner.api_client
-      api.stub('conversations', { 'conversations' => chats })
-      api.stub('messages', msg_stub) if msg_stub
-      error_stubs.each { |path, error| api.stub_error(path, error) }
+      runner, out, err = build_sync_runner_with_chats(chats, error_stubs: error_stubs)
+      runner.api_client.stub('messages', msg_stub) if msg_stub
       Teems::Commands::Sync.new(args, runner: runner).execute
       sync_result(out, err)
     end
 
     def run_sync_returning_exit_code(chats:, error_stubs: {})
-      runner, out, err = build_sync_runner
-      runner.api_client.stub('conversations', { 'conversations' => chats })
-      error_stubs.each { |path, error| runner.api_client.stub_error(path, error) }
+      runner, out, err = build_sync_runner_with_chats(chats, error_stubs: error_stubs)
       exit_code = Teems::Commands::Sync.new([], runner: runner).execute
       [exit_code, sync_result(out, err)]
     end
 
     def capture_exit_code_with_chat_list(chats:, error_stubs: {})
-      runner, _out, _err = build_sync_runner
-      runner.api_client.stub('conversations', { 'conversations' => chats })
-      error_stubs.each { |path, error| runner.api_client.stub_error(path, error) }
+      runner, _out, _err = build_sync_runner_with_chats(chats, error_stubs: error_stubs)
       Teems::Commands::Sync.new([], runner: runner).execute
     end
 
     def run_sync_with_sleep_stub(chats:, error:)
-      runner, out, err = build_sync_runner
-      runner.api_client.stub('conversations', { 'conversations' => chats })
-      runner.api_client.stub_error('messages', error)
+      runner, out, err = build_sync_runner_with_chats(chats, error_stubs: { 'messages' => error })
       execute_with_no_sleep([], runner: runner)
       sync_result(out, err)
     end
@@ -109,15 +109,14 @@ module SyncCommandTests
     def run_first_sync(chat_id)
       capture_output do |output|
         runner = configured_runner(output: output)
-        runner.api_client.stub('conversations', { 'conversations' => [sample_ngmsg_chat] })
-        runner.api_client.stub('messages', { 'messages' => [sample_ng_msg_message], '_metadata' => {} })
+        api = runner.api_client
+        api.stub('conversations', { 'conversations' => [sample_ngmsg_chat] })
+        api.stub('messages', { 'messages' => [sample_ng_msg_message], '_metadata' => {} })
         Teems::Commands::Sync.new(['--chat', chat_id], runner: runner).execute
       end
     end
 
-    def build_cmd(args)
-      Teems::Commands::Sync.new(args, runner: configured_runner)
-    end
+    def build_cmd(args) = Teems::Commands::Sync.new(args, runner: configured_runner)
 
     def mark_chat_unavailable(chat_id, display_name:)
       store = Teems::Services::SyncStore.new
@@ -152,6 +151,7 @@ module SyncCommandTests
     end
   end
 
+  # Helpers for testing sync authentication and token refresh flows
   module AuthHelpers
     private
 
@@ -189,8 +189,10 @@ module SyncCommandTests
     end
 
     def setup_verbose_response_logging(runner, _out)
-      runner.api_client.on_response = lambda { |path, code|
-        runner.output.debug("  API <- #{code} #{path[0..80]}") if runner.output.verbose?
+      api = runner.api_client
+      output = runner.output
+      api.on_response = lambda { |path, code|
+        output.debug("  API <- #{code} #{path[0..80]}") if output.verbose?
       }
     end
 
@@ -221,8 +223,9 @@ module SyncCommandTests
       expired = Teems::ApiError.new('Invalid token', status_code: 401)
       result = capture_output do |output|
         runner = build_auth_runner(output: output, save_result: true)
-        runner.api_client.stub_transient_error('conversations', expired, times: 1)
-        runner.api_client.stub('conversations', { 'conversations' => [] })
+        api = runner.api_client
+        api.stub_transient_error('conversations', expired, times: 1)
+        api.stub('conversations', { 'conversations' => [] })
         exit_code = Teems::Commands::Sync.new(['--auth'], runner: runner).execute
       end
       [exit_code, result]
@@ -243,6 +246,7 @@ module SyncCommandTests
     end
   end
 
+  # Tests for auth, help, option parsing, and basic sync behavior
   class BasicTest < Minitest::Test
     include SharedHelpers
 
@@ -324,15 +328,17 @@ module SyncCommandTests
     end
   end
 
+  # Tests for single chat sync, file creation, and state updates
   class SyncOperationsTest < Minitest::Test
     include SharedHelpers
 
     def test_sync_single_chat
       with_temp_config do
         result = run_sync(['--chat', '19:test@thread.v2'], stubs: msg_stub)
+        stdout = result[:stdout]
 
-        assert_match(/Sync complete/, result[:stdout])
-        assert_match(/Chats synced: 1/, result[:stdout])
+        assert_match(/Sync complete/, stdout)
+        assert_match(/Chats synced: 1/, stdout)
         assert_sync_files_exist('19:test@thread.v2')
       end
     end
@@ -391,9 +397,10 @@ module SyncCommandTests
       chats = [sample_ngmsg_chat,
                { 'id' => '48:notifications', 'threadProperties' => { 'threadType' => 'chat' } }]
       result = with_temp_config { run_sync_with_chat_list(chats: chats, msg_stub: msg_response, args: ['-v']) }
+      stdout = result[:stdout]
 
-      assert_match(/Sync complete/, result[:stdout])
-      assert_match(/Chats synced: 1/, result[:stdout])
+      assert_match(/Sync complete/, stdout)
+      assert_match(/Chats synced: 1/, stdout)
     end
 
     def test_summary_shows_skipped_count
@@ -418,6 +425,7 @@ module SyncCommandTests
     end
   end
 
+  # Tests for 404 handling, retry logic, and API error reporting
   class ErrorHandlingTest < Minitest::Test
     include SharedHelpers
     include AuthHelpers
@@ -426,12 +434,11 @@ module SyncCommandTests
       with_temp_config do
         result = run_sync_with_sleep_stub(chats: [sample_ngmsg_chat],
                                           error: Teems::ApiError.new('HTTP 404: Not Found', status_code: 404))
-
-        assert_match(/Chat unavailable \(404\)/, result[:stderr])
-        assert_match(/will skip on future syncs/, result[:stderr])
-        assert Teems::Services::SyncStore.new.chat_unavailable?(
-          Teems::Services::SyncStore.new.load_state, '19:chat123@thread.v2'
-        )
+        stderr = result[:stderr]
+        assert_match(/Chat unavailable \(404\)/, stderr)
+        assert_match(/will skip on future syncs/, stderr)
+        store = Teems::Services::SyncStore.new
+        assert store.chat_unavailable?(store.load_state, '19:chat123@thread.v2')
       end
     end
 
@@ -452,13 +459,7 @@ module SyncCommandTests
       with_temp_config do
         error = Teems::ApiError.new('HTTP 404: Not Found', status_code: 404)
         result = run_transient_404_sync(error: error)
-
-        assert_match(/Sync complete/, result[:stdout])
-        assert_match(/Chats synced: 1/, result[:stdout])
-        refute_match(/Chat unavailable/, result[:stderr])
-        refute Teems::Services::SyncStore.new.chat_unavailable?(
-          Teems::Services::SyncStore.new.load_state, '19:chat123@thread.v2'
-        )
+        assert_transient_404_recovered(result)
       end
     end
 
@@ -467,9 +468,9 @@ module SyncCommandTests
       result = with_temp_config do
         run_sync_with_chat_list(chats: [sample_ngmsg_chat], error_stubs: { 'messages' => error })
       end
-
-      assert_match(/Failed to sync/, result[:stderr])
-      assert_match(/500/, result[:stderr])
+      stderr = result[:stderr]
+      assert_match(/Failed to sync/, stderr)
+      assert_match(/500/, stderr)
       assert_match(/Sync complete/, result[:stdout])
     end
 
@@ -478,7 +479,6 @@ module SyncCommandTests
       exit_code = with_temp_config do
         capture_exit_code_with_chat_list(chats: [sample_ngmsg_chat], error_stubs: { 'messages' => error })
       end
-
       assert_equal 1, exit_code
     end
 
@@ -490,7 +490,6 @@ module SyncCommandTests
           runner.api_client.stub_error('conversations', Teems::ApiError.new('Network error: connection refused'))
           exit_code = Teems::Commands::Sync.new([], runner: runner).execute
         end
-
         assert_equal 1, exit_code
         assert_match(/Failed to fetch chats/, result[:stderr])
       end
@@ -501,26 +500,42 @@ module SyncCommandTests
       result = with_temp_config do
         run_sync_with_chat_list(chats: [sample_ngmsg_chat], error_stubs: { 'messages' => error })
       end
-
-      assert_match(/Failed to sync/, result[:stderr])
-      refute_match(/Chat unavailable/, result[:stderr])
+      stderr = result[:stderr]
+      assert_match(/Failed to sync/, stderr)
+      refute_match(/Chat unavailable/, stderr)
     end
+
+    private
+
+    def assert_transient_404_recovered(result)
+      stdout = result[:stdout]
+      assert_match(/Sync complete/, stdout)
+      assert_match(/Chats synced: 1/, stdout)
+      refute_match(/Chat unavailable/, result[:stderr])
+      store = Teems::Services::SyncStore.new
+      refute store.chat_unavailable?(store.load_state, '19:chat123@thread.v2')
+    end
+  end
+
+  # Tests for unexpected errors, retry edge cases, and error summary reporting
+  class ErrorReportingTest < Minitest::Test
+    include SharedHelpers
+    include AuthHelpers
 
     def test_sync_unexpected_error_in_chat_reports_and_continues
       error = RuntimeError.new('unexpected disk error')
       result = with_temp_config do
         run_sync_with_chat_list(chats: [sample_ngmsg_chat], error_stubs: { 'messages' => error })
       end
-
       assert_match(/Unexpected error syncing/, result[:stderr])
       assert_match(/Sync complete/, result[:stdout])
     end
 
     def test_retry_404_then_non_404_error
       result = with_temp_config { run_retry_not_found_then_server_error }
-
-      assert_match(/Failed to sync/, result[:stderr])
-      assert_match(/500/, result[:stderr])
+      stderr = result[:stderr]
+      assert_match(/Failed to sync/, stderr)
+      assert_match(/500/, stderr)
     end
 
     def test_sync_error_without_backtrace
@@ -528,7 +543,6 @@ module SyncCommandTests
       result = with_temp_config do
         run_sync_with_chat_list(chats: [sample_ngmsg_chat], error_stubs: { 'messages' => error }, args: ['-v'])
       end
-
       assert_match(/Unexpected error syncing/, result[:stderr])
     end
 
@@ -537,11 +551,11 @@ module SyncCommandTests
       result = with_temp_config do
         run_sync_with_chat_list(chats: [sample_ngmsg_chat], error_stubs: { 'messages' => error })
       end
-
       assert_match(/Errors:/, result[:stderr])
     end
   end
 
+  # Tests for incremental sync, deduplication, dry-run, and state management
   class IncrementalAndStateTest < Minitest::Test
     include SharedHelpers
 
@@ -563,10 +577,11 @@ module SyncCommandTests
         preseed_messages(chat_id, [duplicate_message_fixture])
         run_sync(['--chat', chat_id], stubs: msg_stub)
         messages = load_synced_messages(chat_id)
+        first_message = messages.first
 
         assert_equal 1, messages.length
-        assert_equal '1768935087318', messages.first['id']
-        assert_equal 'Jane Smith', messages.first['sender_name']
+        assert_equal '1768935087318', first_message['id']
+        assert_equal 'Jane Smith', first_message['sender_name']
       end
     end
 
@@ -576,17 +591,19 @@ module SyncCommandTests
         run_first_sync(chat_id)
         result = run_sync(['--chat', chat_id],
                           stubs: { 'messages' => { 'messages' => [], '_metadata' => {} } })
+        stdout = result[:stdout]
 
-        assert_match(/Sync complete/, result[:stdout])
-        assert_match(/skipped/, result[:stdout])
+        assert_match(/Sync complete/, stdout)
+        assert_match(/skipped/, stdout)
       end
     end
 
     def test_dry_run_shows_chats_without_writing
       result = with_temp_config { run_sync_with_chat_list(chats: [sample_ngmsg_chat], args: ['--dry-run']) }
+      stdout = result[:stdout]
 
-      assert_match(/Dry run/, result[:stdout])
-      assert_match(/19:chat123@thread.v2/, result[:stdout])
+      assert_match(/Dry run/, stdout)
+      assert_match(/19:chat123@thread.v2/, stdout)
     end
 
     def test_dry_run_shows_never_synced_status
@@ -610,10 +627,11 @@ module SyncCommandTests
       chats = [sample_ngmsg_chat, system_chat]
       with_temp_config do
         exit_code, result = run_dry_run_with_chats(chats)
+        stdout = result[:stdout]
 
         assert_equal 0, exit_code
-        assert_match(/Dry run/, result[:stdout])
-        assert_match(/system streams skipped/, result[:stdout])
+        assert_match(/Dry run/, stdout)
+        assert_match(/system streams skipped/, stdout)
       end
     end
 
@@ -630,6 +648,7 @@ module SyncCommandTests
     end
   end
 
+  # Tests for verbose API logging and Safari auth token refresh
   class VerboseAndAuthTest < Minitest::Test
     include SharedHelpers
     include AuthHelpers
@@ -647,8 +666,9 @@ module SyncCommandTests
     def test_verbose_sync_with_api_calls
       with_temp_config do
         out, runner = build_verbose_runner
-        runner.api_client.stub('conversations', { 'conversations' => [sample_ngmsg_chat] })
-        runner.api_client.stub('messages', { 'messages' => [sample_ng_msg_message], '_metadata' => {} })
+        api = runner.api_client
+        api.stub('conversations', { 'conversations' => [sample_ngmsg_chat] })
+        api.stub('messages', { 'messages' => [sample_ng_msg_message], '_metadata' => {} })
         setup_verbose_response_logging(runner, out)
         Teems::Commands::Sync.new(['-v'], runner: runner).execute
 
@@ -722,10 +742,17 @@ module SyncCommandTests
     end
   end
 
+  # Tests for handling errors when saving sync state to disk
   class SaveStateErrorTest < Minitest::Test
     include SharedHelpers
 
+    # Sync subclass that simulates disk write failures during state save
     class FailingSaveSync < Teems::Commands::Sync
+      def initialize(args, runner:)
+        @sync_store = nil
+        super
+      end
+
       private
 
       def init_sync_state

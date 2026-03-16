@@ -52,8 +52,8 @@ module Teems
           return {} unless context_json
 
           parse_context_json(context_json)
-        rescue JSON::ParserError => e
-          warn "teems: Could not parse Teams URL context: #{e.message}"
+        rescue JSON::ParserError => err
+          warn "teems: Could not parse Teams URL context: #{err.message}"
           {}
         end
 

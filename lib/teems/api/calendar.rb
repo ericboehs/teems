@@ -65,10 +65,12 @@ module Teems
       def paginate_events(path, params:, headers:)
         events = []
         response = get(:graph, path, params: params, headers: headers)
-        events.concat(parse_events(response))
-        while (next_link = response['@odata.nextLink'])
-          response = get(:graph, next_link, headers: headers)
+        loop do
           events.concat(parse_events(response))
+          next_link = response['@odata.nextLink']
+          break unless next_link
+
+          response = get(:graph, next_link, headers: headers)
         end
         events
       end

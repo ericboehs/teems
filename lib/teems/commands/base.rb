@@ -123,8 +123,8 @@ module Teems
       # Usage: with_token_refresh { runner.messages_api.chat_messages(chat_id: id) }
       def with_token_refresh
         yield
-      rescue ApiError => e
-        raise unless e.unauthorized? || e.message.include?('expired')
+      rescue ApiError => err
+        raise unless err.unauthorized? || err.message.include?('expired')
 
         debug('Token expired, attempting refresh...')
         raise unless runner.refresh_tokens

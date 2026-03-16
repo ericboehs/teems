@@ -21,8 +21,8 @@ module Teems
         @paths.ensure_config_dir
         data = build_save_data(name, auth_token, skype_token, extra_tokens)
         write_token_file(data)
-      rescue SystemCallError, IOError => e
-        warn "teems: Could not save tokens: #{e.message}"
+      rescue SystemCallError, IOError => err
+        warn "teems: Could not save tokens: #{err.message}"
         false
       end
 
@@ -32,8 +32,8 @@ module Teems
         return false if data.empty?
 
         apply_skype_token(data, skype_token)
-      rescue SystemCallError, IOError => e
-        warn "teems: Could not update token file: #{e.message}"
+      rescue SystemCallError, IOError => err
+        warn "teems: Could not update token file: #{err.message}"
         false
       end
 
@@ -55,8 +55,8 @@ module Teems
         apply_all_tokens(data,
                          { auth_token: auth_token, skype_token: skype_token,
                            skype_spaces_token: skype_spaces_token, refresh_token: refresh_token })
-      rescue SystemCallError, IOError => e
-        warn "teems: Could not update token file: #{e.message}"
+      rescue SystemCallError, IOError => err
+        warn "teems: Could not update token file: #{err.message}"
         false
       end
 
@@ -87,11 +87,13 @@ module Teems
       end
 
       def build_account(data)
-        return nil unless data['auth_token'] && data['skype_token']
+        auth_token = data['auth_token']
+        skype_token = data['skype_token']
+        return nil unless auth_token && skype_token
 
         Models::Account.new(
-          name: data['name'] || 'default', auth_token: data['auth_token'],
-          skype_token: data['skype_token'], chatsvc_token: data['chatsvc_token'],
+          name: data['name'] || 'default', auth_token: auth_token,
+          skype_token: skype_token, chatsvc_token: data['chatsvc_token'],
           presence_token: data['skype_spaces_token']
         )
       end
@@ -102,10 +104,12 @@ module Teems
       end
 
       def apply_all_tokens(data, tokens)
+        skype_spaces = tokens[:skype_spaces_token]
+        refresh = tokens[:refresh_token]
         updates = { 'auth_token' => tokens[:auth_token], 'skype_token' => tokens[:skype_token],
                     'tokens_refreshed_at' => Time.now.iso8601 }
-        updates['skype_spaces_token'] = tokens[:skype_spaces_token] if tokens[:skype_spaces_token]
-        updates['refresh_token'] = tokens[:refresh_token] if tokens[:refresh_token]
+        updates['skype_spaces_token'] = skype_spaces if skype_spaces
+        updates['refresh_token'] = refresh if refresh
         data.merge!(updates)
         write_token_file(data)
       end
@@ -124,8 +128,8 @@ module Teems
         return {} unless File.exist?(tokens_file)
 
         JSON.parse(File.read(tokens_file))
-      rescue JSON::ParserError => e
-        warn "teems: Token file corrupted (#{e.message}), please re-authenticate with: teems auth login"
+      rescue JSON::ParserError => err
+        warn "teems: Token file corrupted (#{err.message}), please re-authenticate with: teems auth login"
         {}
       end
     end

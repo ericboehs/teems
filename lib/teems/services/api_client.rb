@@ -127,8 +127,8 @@ module Teems
         response = yield(http)
         @on_response&.call(path, response.code)
         handle_response(response)
-      rescue *NETWORK_ERRORS => e
-        raise ApiError, "Network error: #{e.message}"
+      rescue *NETWORK_ERRORS => err
+        raise ApiError, "Network error: #{err.message}"
       end
 
       def handle_response(response)
@@ -137,7 +137,9 @@ module Teems
         when Net::HTTPUnauthorized   then raise ApiError.new('Invalid token or session expired', status_code: 401)
         when Net::HTTPForbidden      then raise ApiError.new('Access forbidden', status_code: 403)
         when Net::HTTPTooManyRequests then raise_rate_limit(response)
-        else raise ApiError.new("HTTP #{response.code}: #{response.message}", status_code: response.code.to_i)
+        else
+          code = response.code
+          raise ApiError.new("HTTP #{code}: #{response.message}", status_code: code.to_i)
         end
       end
 

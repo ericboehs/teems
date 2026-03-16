@@ -66,8 +66,8 @@ module Teems
         return applescript_failure(status) unless status.success?
 
         output.strip
-      rescue IOError, SystemCallError => e
-        log_applescript_error(e)
+      rescue IOError, SystemCallError => err
+        log_applescript_error(err)
       end
 
       def applescript_failure(status)
@@ -99,8 +99,8 @@ module Teems
         return nil if status == 'no_key'
 
         poll_decrypt_result
-      rescue JSON::ParserError => e
-        log("Failed to parse v2 token decryption result: #{e.message}")
+      rescue JSON::ParserError => err
+        log("Failed to parse v2 token decryption result: #{err.message}")
         nil
       end
 
@@ -131,7 +131,8 @@ module Teems
 
       def parse_decrypt_result(result, attempt)
         parsed = JSON.parse(result)
-        return log_decrypt_error(parsed['error']) if parsed['error']
+        error = parsed['error']
+        return log_decrypt_error(error) if error
 
         auth_token = parsed['auth_token']
         return nil unless auth_token
@@ -165,8 +166,8 @@ module Teems
         return nil if result.to_s.empty?
 
         parse_exchange_result(result)
-      rescue JSON::ParserError => e
-        log("Failed to parse token exchange result: #{e.message}")
+      rescue JSON::ParserError => err
+        log("Failed to parse token exchange result: #{err.message}")
         nil
       end
 
@@ -229,8 +230,8 @@ module Teems
 
         finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'],
                         **v1_extras(parsed))
-      rescue JSON::ParserError => e
-        log("Failed to parse v1 token extraction result: #{e.message}")
+      rescue JSON::ParserError => err
+        log("Failed to parse v1 token extraction result: #{err.message}")
         nil
       end
 
@@ -361,7 +362,8 @@ module Teems
           consecutive_ready = page_ready? ? consecutive_ready + 1 : 0
           break if consecutive_ready >= 3
 
-          log("Waiting... (#{second + 1}s)") if ((second + 1) % 10).zero?
+          elapsed = second + 1
+          log("Waiting... (#{elapsed}s)") if (elapsed % 10).zero?
         end
       end
 

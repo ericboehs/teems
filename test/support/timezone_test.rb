@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests timezone detection from environment variables and short label generation
 class TimezoneTest < Minitest::Test
   include Teems::Support::Timezone
 

@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for TokenExtractor Safari automation, v1/v2 token paths, and login waiting
 module TokenExtractorTests
+  # Testable subclass that stubs AppleScript, system calls, and sleep for safe testing
   class TestableTokenExtractor < Teems::Services::TokenExtractor
     attr_accessor :applescript_results, :system_result, :applescript_call_count
 
@@ -33,14 +35,15 @@ module TokenExtractorTests
     end
   end
 
+  # Shared builders for extractor instances, token sequences, and verbose output
   module Helpers
     TEAMS_URL = 'https://teams.microsoft.com/v2/|complete'
     LOGIN_URL = 'https://login.microsoftonline.com/|loading'
 
     def build_extractor(output: nil)
-      e = TestableTokenExtractor.new(output: output)
-      e.system_result = true
-      e
+      extractor = TestableTokenExtractor.new(output: output)
+      extractor.system_result = true
+      extractor
     end
 
     def add_open_safari(extractor)
@@ -87,8 +90,7 @@ module TokenExtractorTests
       results = extractor.applescript_results
       results << 'started'
       results << first_result
-      24.times { results << nil }
-      results << nil
+      25.times { results << nil }
     end
 
     # v1 success tokens
@@ -118,6 +120,7 @@ module TokenExtractorTests
     end
   end
 
+  # Tests Safari availability check, token extraction, and manual instruction output
   class BasicTest < Minitest::Test
     include Helpers
 
@@ -142,8 +145,7 @@ module TokenExtractorTests
       extractor = build_extractor
       add_preamble(extractor)
       results = extractor.applescript_results
-      60.times { results << nil }
-      results << nil
+      61.times { results << nil }
 
       assert_nil extractor.extract
     end
@@ -155,6 +157,7 @@ module TokenExtractorTests
     end
   end
 
+  # Tests v2 encrypted token decryption path including success, timeout, and error cases
   class V2DecryptorTest < Minitest::Test
     include Helpers
 
@@ -163,8 +166,7 @@ module TokenExtractorTests
       add_v2_preamble(extractor)
       results = extractor.applescript_results
       results << 'no_key'
-      24.times { results << nil }
-      results << nil
+      25.times { results << nil }
 
       assert_nil extractor.extract
     end
@@ -211,6 +213,7 @@ module TokenExtractorTests
     end
   end
 
+  # Tests skype token exchange handling for nil, empty, error, and JSON parse failures
   class ExchangerTest < Minitest::Test
     include Helpers
 
@@ -260,6 +263,7 @@ module TokenExtractorTests
     end
   end
 
+  # Tests v1 token polling with success, JSON parse error recovery, and exhaustion
   class PollingTest < Minitest::Test
     include Helpers
 
@@ -297,6 +301,7 @@ module TokenExtractorTests
     end
   end
 
+  # Tests page ready detection requiring Teams URL and complete load state
   class PageReadyTest < Minitest::Test
     include Helpers
 
@@ -330,26 +335,27 @@ module TokenExtractorTests
       results = extractor.applescript_results
       results << nil
       add_ready_sequence(extractor)
-      results << '{"auth_token":"test","skype_spaces_token":null}'
-      results << nil
+      results.push('{"auth_token":"test","skype_spaces_token":null}', nil)
       assert extractor.extract
     end
   end
 
+  # Tests login wait progress logging during authentication redirect polling
   class WaitForLoginTest < Minitest::Test
     include Helpers
 
     def test_wait_for_login_logs_progress_every_ten_seconds
       extractor, err = build_verbose_extractor
       add_login_wait_preamble(extractor)
-      extractor.applescript_results << '{"auth_token":"delayed-auth","skype_spaces_token":null}'
-      extractor.applescript_results << nil
+      results = extractor.applescript_results
+      results.push('{"auth_token":"delayed-auth","skype_spaces_token":null}', nil)
       result = extractor.extract
       assert_equal 'delayed-auth', result[:auth_token]
       assert_match(/Waiting.*10s/, err.string)
     end
   end
 
+  # Tests debug message logging when verbose output is attached
   class WithOutputTest < Minitest::Test
     include Helpers
 
@@ -363,7 +369,9 @@ module TokenExtractorTests
     end
   end
 
+  # Tests AppleScript error handling for exit failures, IO errors, and missing osascript
   class AppleScriptErrorTest < Minitest::Test
+    # Exposes private AppleScript error methods for testing
     class ExposedAutomation < Teems::Services::TokenExtractor
       public :applescript_failure, :log_applescript_error, :applescript_error_message
 
@@ -404,6 +412,7 @@ module TokenExtractorTests
     end
   end
 
+  # Tests v2 extraction path with unparseable v1 refresh data fallback
   class V1RefreshDataTest < Minitest::Test
     include Helpers
 

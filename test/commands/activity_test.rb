@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for the activity command
 module ActivityCommandTests
+  # Shared helpers for building and running activity test scenarios
   module Helpers
     private
 
@@ -48,6 +50,7 @@ module ActivityCommandTests
     end
   end
 
+  # Tests for help, auth, empty activity, and error handling
   class BasicTest < Minitest::Test
     include Helpers
 
@@ -57,8 +60,9 @@ module ActivityCommandTests
           runner = configured_runner(output: out)
           Teems::Commands::Activity.new(['--help'], runner: runner).execute
         end
-        assert_match(/teems activity/, result[:stdout])
-        assert_match(/--unread/, result[:stdout])
+        stdout = result[:stdout]
+        assert_match(/teems activity/, stdout)
+        assert_match(/--unread/, stdout)
       end
     end
 
@@ -97,21 +101,24 @@ module ActivityCommandTests
     end
   end
 
+  # Tests for activity display formatting and content rendering
   class DisplayTest < Minitest::Test
     include Helpers
 
     def test_shows_mention
       result = run_activity([], [mention_activity(who: 'Bob Smith', preview: 'Hey there')])
-      assert_match(/Bob Smith/, result[:stdout])
-      assert_match(/mentioned you/, result[:stdout])
-      assert_match(/Hey there/, result[:stdout])
+      stdout = result[:stdout]
+      assert_match(/Bob Smith/, stdout)
+      assert_match(/mentioned you/, stdout)
+      assert_match(/Hey there/, stdout)
     end
 
     def test_shows_reaction
       result = run_activity([], [reaction_activity(who: 'Carol', preview: 'Nice work!')])
-      assert_match(/Carol/, result[:stdout])
-      assert_match(/reacted/, result[:stdout])
-      assert_match(/Nice work!/, result[:stdout])
+      stdout = result[:stdout]
+      assert_match(/Carol/, stdout)
+      assert_match(/reacted/, stdout)
+      assert_match(/Nice work!/, stdout)
     end
 
     def test_shows_source_topic
@@ -121,8 +128,9 @@ module ActivityCommandTests
 
     def test_shows_calendar_canceled
       result = run_activity([], [calendar_activity(subtype: 'privateMeetingCanceled', preview: 'Standup')])
-      assert_match(/canceled/, result[:stdout])
-      assert_match(/Standup/, result[:stdout])
+      stdout = result[:stdout]
+      assert_match(/canceled/, stdout)
+      assert_match(/Standup/, stdout)
     end
 
     def test_shows_calendar_invited
@@ -143,8 +151,9 @@ module ActivityCommandTests
     def test_truncates_long_preview
       long = 'A' * 200
       result = run_activity([], [mention_activity(preview: long)])
-      assert_match(/A{120}\.\.\./, result[:stdout])
-      refute_match(/A{121}/, result[:stdout])
+      stdout = result[:stdout]
+      assert_match(/A{120}\.\.\./, stdout)
+      refute_match(/A{121}/, stdout)
     end
 
     def test_unread_marker
@@ -158,6 +167,7 @@ module ActivityCommandTests
     end
   end
 
+  # Tests for calendar meeting time display in activity items
   class CalendarTimeTest < Minitest::Test
     include Helpers
 
@@ -176,6 +186,7 @@ module ActivityCommandTests
     end
   end
 
+  # Tests for unread filtering, ordering, and JSON output
   class FilterTest < Minitest::Test
     include Helpers
 
@@ -183,8 +194,9 @@ module ActivityCommandTests
       msgs = [mention_activity(who: 'Unread', read: false),
               mention_activity(who: 'Read', read: true, time: '2026-01-20T11:00:00Z')]
       result = run_activity(['--unread'], msgs)
-      assert_match(/Unread/, result[:stdout])
-      refute_match(/\bRead\b/, result[:stdout])
+      stdout = result[:stdout]
+      assert_match(/Unread/, stdout)
+      refute_match(/\bRead\b/, stdout)
     end
 
     def test_unread_filter_empty
@@ -196,8 +208,9 @@ module ActivityCommandTests
       early = mention_activity(who: 'Early', time: '2026-01-20T08:00:00Z')
       late = mention_activity(who: 'Late', time: '2026-01-20T16:00:00Z')
       result = run_activity([], [early, late])
-      late_pos = result[:stdout].index('Late')
-      early_pos = result[:stdout].index('Early')
+      stdout = result[:stdout]
+      late_pos = stdout.index('Late')
+      early_pos = stdout.index('Early')
       assert late_pos < early_pos, 'Expected Late before Early'
     end
 
@@ -205,9 +218,10 @@ module ActivityCommandTests
       result = run_activity(['--json'], [mention_activity(who: 'TestUser')])
       json = JSON.parse(result[:stdout])
       assert_instance_of Array, json
-      assert_equal 'TestUser', json.first['who']
-      assert_equal 'mentionInChat', json.first['type']
-      refute json.first.key?('raw_activity')
+      first_item = json.first
+      assert_equal 'TestUser', first_item['who']
+      assert_equal 'mentionInChat', first_item['type']
+      refute first_item.key?('raw_activity')
     end
   end
 end

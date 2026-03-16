@@ -83,10 +83,11 @@ module Teems
         result = Services::TeamsUrlParser.parse(target)
         return error('Invalid Teams URL format') || nil unless result
 
+        conversation_id = result.conversation_id
         team_id = result.team_id
-        debug("Parsed URL: conversation=#{result.conversation_id}, team=#{team_id}")
+        debug("Parsed URL: conversation=#{conversation_id}, team=#{team_id}")
         @options[:team_id] = team_id if team_id
-        result.conversation_id
+        conversation_id
       end
 
       def fetch_messages(target)
@@ -100,8 +101,8 @@ module Teems
           )
         end
         display_messages(extract_messages_data(response))
-      rescue ApiError => e
-        error("Failed to fetch channel messages: #{e.message}")
+      rescue ApiError => err
+        error("Failed to fetch channel messages: #{err.message}")
       end
 
       def fetch_chat_messages(chat_id)
@@ -109,8 +110,8 @@ module Teems
           runner.messages_api.chat_messages(chat_id: chat_id, limit: @options[:limit])
         end
         display_messages(extract_messages_data(response))
-      rescue ApiError => e
-        error("Failed to fetch chat messages: #{e.message}")
+      rescue ApiError => err
+        error("Failed to fetch chat messages: #{err.message}")
       end
 
       def extract_messages_data(response) = response['messages'] || response['posts'] || response['value'] || []
@@ -139,10 +140,10 @@ module Teems
       end
 
       def display_reactions(message)
-        return unless message.reactions.any?
+        reactions = message.reactions
+        return unless reactions.any?
 
-        reaction_text = message.reactions.map { |reaction| "#{reaction[:type]}(#{reaction[:count]})" }.join(' ')
-        puts "  #{output.gray(reaction_text)}"
+        puts "  #{output.gray(reactions.map { |reaction| "#{reaction[:type]}(#{reaction[:count]})" }.join(' '))}"
       end
 
       def message_to_hash(message)

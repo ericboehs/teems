@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for Account model creation, validation, and auth header generation
 module AccountTests
+  # Tests Account construction, token validation, and string freezing
   class BasicTest < Minitest::Test
     def test_creates_account_with_required_tokens
       account = Teems::Models::Account.new(name: 'default', auth_token: 'eyJ0test', skype_token: 'eyJ1test')
@@ -60,6 +62,7 @@ module AccountTests
     end
   end
 
+  # Tests auth header formatting for Teams, Skype, and chatsvc endpoints
   class HeadersTest < Minitest::Test
     def test_teams_auth_header_format
       assert_equal 'Bearer my-auth-token', mock_account(auth_token: 'my-auth-token').teams_auth_header

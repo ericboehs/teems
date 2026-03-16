@@ -51,7 +51,8 @@ module Teems
       end
 
       def organizer?(att, event)
-        event.organizer && att[:email]&.downcase == event.organizer[:email]&.downcase
+        organizer = event.organizer
+        organizer && att[:email]&.downcase == organizer[:email]&.downcase
       end
 
       def response_to_symbol(response)
@@ -101,7 +102,8 @@ module Teems
 
       def build_list_item_line(event, number)
         time = event.all_day? ? 'ALL DAY   ' : event.time_range_display.ljust(11)
-        subject = event.cancelled? ? gray_text("#{event.subject} (cancelled)") : event.subject
+        title = event.subject
+        subject = event.cancelled? ? gray_text("#{title} (cancelled)") : title
         "  #{@output.cyan("[#{number}]")} #{time} #{subject}#{list_item_location(event)}"
       end
 
@@ -152,9 +154,17 @@ module Teems
         "  Organizer: #{org[:name]} (#{org[:email]})" if org
       end
 
-      def detail_link(event) = event.online_meeting_url && "  Link:      #{event.online_meeting_url}"
+      def detail_link(event)
+        url = event.online_meeting_url
+        url && "  Link:      #{url}"
+      end
+
       def detail_status(event) = event.cancelled? ? "  Status:    #{@output.red('CANCELLED')}" : nil
-      def detail_show_as(event) = event.show_as && "  Show as:   #{event.show_as}"
+
+      def detail_show_as(event)
+        show_as = event.show_as
+        show_as && "  Show as:   #{show_as}"
+      end
 
       def detail_body_section(event)
         preview = event.body_preview.to_s.strip
@@ -169,9 +179,11 @@ module Teems
 
       def format_detail_time(event)
         return '  Time:      ALL DAY' if event.all_day?
-        return '  Time:      (unknown)' unless event.start_time && event.end_time
 
-        "  Time:      #{event.start_time.strftime('%A, %B %-d, %Y')}  #{event.time_range_display}"
+        start_time = event.start_time
+        return '  Time:      (unknown)' unless start_time && event.end_time
+
+        "  Time:      #{start_time.strftime('%A, %B %-d, %Y')}  #{event.time_range_display}"
       end
 
       def attendee_rsvp_summary(event)

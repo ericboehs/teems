@@ -24,7 +24,8 @@ module Teems
     # Token input methods for manual token entry and file import
     module AuthTokenInput
       def set_tokens
-        return import_tokens_from_file(positional_args[1]) if positional_args[1]
+        file_path = positional_args[1]
+        return import_tokens_from_file(file_path) if file_path
 
         prompt_and_save_tokens
       end
@@ -77,8 +78,8 @@ module Teems
         return data if data.is_a?(Integer)
 
         build_and_save_file_tokens(data)
-      rescue Errno::EACCES => e
-        error("Cannot read file: #{e.message}")
+      rescue Errno::EACCES => err
+        error("Cannot read file: #{err.message}")
       rescue Errno::EISDIR
         error("Path is a directory, not a file: #{file_path}")
       end

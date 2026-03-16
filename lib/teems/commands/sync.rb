@@ -39,12 +39,13 @@ module Teems
 
         info("[#{index + 1}/#{total}] Syncing: #{chat.display_name}")
         with_404_retry(chat) { sync_single_chat(chat) }
-      rescue StandardError => e
-        handle_sync_error(chat, e)
+      rescue StandardError => err
+        handle_sync_error(chat, err)
       end
 
       def skip_chat(chat, index, total)
-        debug("[#{index + 1}/#{total}] Skipping #{skip_reason(chat.id)}: #{chat.display_name} (#{chat.id})")
+        chat_id = chat.id
+        debug("[#{index + 1}/#{total}] Skipping #{skip_reason(chat_id)}: #{chat.display_name} (#{chat_id})")
         @stats[:skipped] += 1
       end
 
@@ -66,8 +67,9 @@ module Teems
       end
 
       def fetch_new_messages(chat)
-        start_time = @sync_store.last_synced_time(@state, chat.id) || since_time
-        with_token_refresh { sync_engine.fetch_all_messages(chat.id, start_time) }
+        chat_id = chat.id
+        start_time = @sync_store.last_synced_time(@state, chat_id) || since_time
+        with_token_refresh { sync_engine.fetch_all_messages(chat_id, start_time) }
       end
 
       def merge_and_update(chat, new_messages)
@@ -95,9 +97,9 @@ module Teems
 
       def with_404_retry(chat, &)
         yield
-      rescue ApiError => e
+      rescue ApiError => err
         output.flush
-        return handle_non_404_error(chat, e) unless e.not_found?
+        return handle_non_404_error(chat, err) unless err.not_found?
 
         retry_after_not_found(chat, &)
       end
@@ -111,8 +113,8 @@ module Teems
         debug("  Got 404, retrying in #{RETRY_DELAY_SECONDS}s...")
         sleep(RETRY_DELAY_SECONDS)
         yield
-      rescue ApiError => e
-        handle_persistent_not_found(chat, e)
+      rescue ApiError => err
+        handle_persistent_not_found(chat, err)
       end
 
       def handle_persistent_not_found(chat, error)
@@ -135,14 +137,15 @@ module Teems
         return build_single_chat if @options[:chat_id]
 
         fetch_all_chats
-      rescue ApiError => e
-        error("Failed to fetch chats: #{e.message}")
+      rescue ApiError => err
+        error("Failed to fetch chats: #{err.message}")
         nil
       end
 
       def build_single_chat
-        info("Fetching chat info for #{@options[:chat_id]}...")
-        [{ 'id' => @options[:chat_id], 'threadProperties' => {} }]
+        chat_id = @options[:chat_id]
+        info("Fetching chat info for #{chat_id}...")
+        [{ 'id' => chat_id, 'threadProperties' => {} }]
       end
 
       def fetch_all_chats
@@ -157,7 +160,8 @@ module Teems
 
       def show_dry_run(chats)
         syncable = chats.reject { |chat| skip_reason(chat['id']) }
-        display_dry_run_header(chats.length - syncable.length, syncable.length)
+        syncable_count = syncable.length
+        display_dry_run_header(chats.length - syncable_count, syncable_count)
         syncable.each { |chat| format_dry_run_chat(chat) }
         0
       end
@@ -170,26 +174,29 @@ module Teems
 
       def format_dry_run_chat(chat_data)
         chat = Models::Chat.from_api(chat_data)
-        last_sync = @sync_store.last_synced_time(@state, chat.id)
+        chat_id = chat.id
+        last_sync = @sync_store.last_synced_time(@state, chat_id)
         status = last_sync ? "last synced #{last_sync.strftime('%Y-%m-%d %H:%M')}" : 'never synced'
-        puts "  #{chat.display_name}\n    ID: #{chat.id}\n    Status: #{status}\n"
+        puts "  #{chat.display_name}\n    ID: #{chat_id}\n    Status: #{status}\n"
       end
 
       def show_summary
         puts
         success('Sync complete!')
         info("  Chats synced: #{@stats[:synced]}")
-        info("  Chats skipped (no new messages): #{@stats[:skipped]}") if @stats[:skipped].positive?
+        skipped = @stats[:skipped]
+        info("  Chats skipped (no new messages): #{skipped}") if skipped.positive?
         info("  Total messages: #{@stats[:messages_total]}")
         display_error_count
         info("  Output: #{@sync_store.sync_dir}")
       end
 
       def display_error_count
-        return unless @stats[:errors].positive?
+        error_count = @stats[:errors]
+        return unless error_count.positive?
 
         output.flush
-        warn("  Errors: #{@stats[:errors]}")
+        warn("  Errors: #{error_count}")
       end
     end
 
@@ -330,9 +337,9 @@ module Teems
 
       def save_state_safely
         @sync_store.save_state(@state)
-      rescue StandardError => e
+      rescue StandardError => err
         @stats[:errors] += 1
-        error("Warning: Failed to save sync state: #{e.message}")
+        error("Warning: Failed to save sync state: #{err.message}")
       end
 
       def since_time = Time.now - ((@options[:since_days] || DEFAULT_SINCE_DAYS) * 86_400)

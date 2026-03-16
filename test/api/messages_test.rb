@@ -2,7 +2,15 @@
 
 require 'test_helper'
 
+# Tests for the Messages API wrapper (chat, channel, and reply messages)
 class MessagesApiTest < Minitest::Test
+  def initialize(*)
+    @api_client = nil
+    @account = nil
+    @messages_api = nil
+    super
+  end
+
   def setup
     @api_client = Teems::TestHelpers::MockApiClient.new
     @account = mock_account
@@ -15,9 +23,10 @@ class MessagesApiTest < Minitest::Test
     @messages_api.chat_messages(chat_id: '19:abc@thread.v2')
 
     call = @api_client.calls.first
+    call_path = call[:path]
     assert_equal :get, call[:method]
-    assert_includes call[:path], '19%3Aabc%40thread.v2'
-    assert_includes call[:path], 'messages'
+    assert_includes call_path, '19%3Aabc%40thread.v2'
+    assert_includes call_path, 'messages'
   end
 
   def test_chat_messages_passes_limit
@@ -57,8 +66,10 @@ class MessagesApiTest < Minitest::Test
     @messages_api.chat_messages_page(chat_id: '19:abc@thread.v2', start_time: start)
 
     call = @api_client.calls.first
-    assert call[:params][:startTime]
-    assert_kind_of Integer, call[:params][:startTime]
+    call_params = call[:params]
+    start_time = call_params[:startTime]
+    assert start_time
+    assert_kind_of Integer, start_time
   end
 
   def test_chat_messages_page_with_backward_link

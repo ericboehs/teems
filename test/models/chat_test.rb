@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for Chat model parsing from Graph API and ng.msg formats
 module ChatTests
+  # Tests Chat creation from Graph API response data
   class GraphApiTest < Minitest::Test
     def test_from_api_extracts_fields
       chat = Teems::Models::Chat.from_api(sample_chat)
@@ -14,7 +16,6 @@ module ChatTests
 
     def test_from_api_parses_created_at
       chat = Teems::Models::Chat.from_api(sample_chat)
-
       created_at = chat.created_at
       assert_instance_of Time, created_at
       assert_equal 2026, created_at.year
@@ -24,9 +25,9 @@ module ChatTests
 
     def test_from_api_parses_last_updated
       chat = Teems::Models::Chat.from_api(sample_chat)
-
-      assert_instance_of Time, chat.last_updated
-      assert_equal 20, chat.last_updated.day
+      last_updated = chat.last_updated
+      assert_instance_of Time, last_updated
+      assert_equal 20, last_updated.day
     end
 
     def test_one_on_one_returns_true
@@ -116,18 +117,13 @@ module ChatTests
       data.delete('createdDateTime')
       data.delete('lastUpdatedDateTime')
       chat = Teems::Models::Chat.from_api(data)
-
       assert_nil chat.created_at
       assert_nil chat.last_updated
     end
 
     def test_handles_invalid_times_gracefully
-      data = sample_chat.merge(
-        'createdDateTime' => 'not-a-date',
-        'lastUpdatedDateTime' => 'also-not-a-date'
-      )
+      data = sample_chat.merge('createdDateTime' => 'not-a-date', 'lastUpdatedDateTime' => 'also-not-a-date')
       chat = Teems::Models::Chat.from_api(data)
-
       assert_nil chat.created_at
       assert_nil chat.last_updated
     end
@@ -139,6 +135,7 @@ module ChatTests
     end
   end
 
+  # Tests Chat parsing from ng.msg API format with thread properties
   class NgMsgApiTest < Minitest::Test
     def test_from_api_detects_ngmsg_format
       ngmsg_data = {
@@ -259,6 +256,7 @@ module ChatTests
     end
   end
 
+  # Tests ng.msg chat status detection for unread, favorite, and pinned states
   class NgMsgStatusTest < Minitest::Test
     def test_detects_unread
       chat = parse(props: { 'consumptionhorizon' => '1000;1000;user1' }, last_msg: '2000')

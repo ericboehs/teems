@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests Teams URL parsing for chat, channel, and message links with context extraction
 class TeamsUrlParserTest < Minitest::Test
   def test_parse_chat_url
     url = 'https://teams.microsoft.com/l/message/19:cc1bfd83bde443f0a9caa23026308bc9@thread.v2/1769003118480?context=%7B%22contextType%22%3A%22chat%22%7D'

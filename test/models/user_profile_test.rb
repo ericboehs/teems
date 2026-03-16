@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests for UserProfile model API parsing, name fallback, and search display
 module UserProfileTests
   FULL_PROFILE = {
     'id' => 'user-uuid-123', 'displayName' => 'John Doe',
@@ -11,6 +12,7 @@ module UserProfileTests
     'businessPhones' => ['+1 (555) 123-4567'], 'mobilePhone' => '+1 (555) 987-6543'
   }.freeze
 
+  # Tests UserProfile field extraction from API response data
   class FromApiTest < Minitest::Test
     def test_extracts_identity_fields
       profile = Teems::Models::UserProfile.from_api(FULL_PROFILE)
@@ -55,6 +57,7 @@ module UserProfileTests
     end
   end
 
+  # Tests best_name fallback chain from display name through email to ID
   class BestNameTest < Minitest::Test
     def test_returns_display_name
       assert_equal 'John Doe', Teems::Models::UserProfile.from_api(FULL_PROFILE).best_name
@@ -87,6 +90,7 @@ module UserProfileTests
     end
   end
 
+  # Tests UserProfile hash conversion with identity and detail keys
   class ToHashTest < Minitest::Test
     def test_returns_identity_keys
       hash = Teems::Models::UserProfile.from_api(FULL_PROFILE).to_h
@@ -106,6 +110,7 @@ module UserProfileTests
     end
   end
 
+  # Tests search display tuple generation for name, title, and email
   class SearchDisplayTest < Minitest::Test
     def test_returns_name_title_email
       profile = Teems::Models::UserProfile.from_api(FULL_PROFILE)
@@ -117,6 +122,7 @@ module UserProfileTests
     end
   end
 
+  # Tests JSON attribute extraction for cache serialization
   class JsonAttrsTest < Minitest::Test
     def test_returns_hash_and_id
       profile = Teems::Models::UserProfile.from_api(FULL_PROFILE)

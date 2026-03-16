@@ -21,16 +21,16 @@ module Teems
 
       def fetch_my_manager(_user_id)
         with_token_refresh { runner.users_api.manager_me }
-      rescue ApiError => e
-        raise unless e.not_found?
+      rescue ApiError => err
+        raise unless err.not_found?
 
         nil
       end
 
       def fetch_user_manager(user_id)
         with_token_refresh { runner.users_api.manager(user_id) }
-      rescue ApiError => e
-        raise unless e.not_found?
+      rescue ApiError => err
+        raise unless err.not_found?
 
         nil
       end
@@ -45,18 +45,18 @@ module Teems
 
       def fetch_my_reports(_user_id)
         with_token_refresh { runner.users_api.direct_reports_me }
-      rescue ApiError => e
-        debug("Could not fetch direct reports: #{e.message}")
-        raise unless e.not_found? || e.forbidden?
+      rescue ApiError => err
+        debug("Could not fetch direct reports: #{err.message}")
+        raise unless err.not_found? || err.forbidden?
 
         []
       end
 
       def fetch_user_reports(user_id)
         with_token_refresh { runner.users_api.direct_reports(user_id) }
-      rescue ApiError => e
-        debug("Could not fetch direct reports for #{user_id}: #{e.message}")
-        raise unless e.not_found? || e.forbidden?
+      rescue ApiError => err
+        debug("Could not fetch direct reports for #{user_id}: #{err.message}")
+        raise unless err.not_found? || err.forbidden?
 
         []
       end
@@ -79,9 +79,10 @@ module Teems
       end
 
       def render_tree(managers, target, reports)
+        depth = managers.length
         managers.each_with_index { |mgr, index| puts "#{'  ' * index}#{format_person(mgr)}" }
-        puts "#{'  ' * managers.length}--> #{format_person(target)}"
-        render_reports(reports[:reports], managers.length + 1)
+        puts "#{'  ' * depth}--> #{format_person(target)}"
+        render_reports(reports[:reports], depth + 1)
       end
 
       def render_reports(reports, level)
@@ -93,7 +94,8 @@ module Teems
 
       def format_person(profile)
         title = profile.job_title
-        title && !title.empty? ? "#{profile.best_name} (#{title})" : profile.best_name.to_s
+        name = profile.best_name
+        title && !title.empty? ? "#{name} (#{title})" : name.to_s
       end
 
       def build_json(managers, target, reports)
@@ -181,8 +183,8 @@ module Teems
 
         render_org(*fetch_org_data(target))
         0
-      rescue ApiError => e
-        error("Failed to fetch org chart: #{e.message}")
+      rescue ApiError => err
+        error("Failed to fetch org chart: #{err.message}")
         1
       end
 

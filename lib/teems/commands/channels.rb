@@ -47,8 +47,8 @@ module Teems
 
         render_teams(teams)
         0
-      rescue ApiError => e
-        error("Failed to fetch teams: #{e.message}")
+      rescue ApiError => err
+        error("Failed to fetch teams: #{err.message}")
         1
       end
 
@@ -77,8 +77,8 @@ module Teems
       def display_team_channels(api, team_data)
         channels = api.list_channels(team_id: team_data['id'])['value'] || []
         channels.each { |channel_data| display_channel(channel_data, team_data) }
-      rescue ApiError => e
-        puts "  #{output.red('Error:')} #{e.message}"
+      rescue ApiError => err
+        puts "  #{output.red('Error:')} #{err.message}"
       end
 
       def display_channel(channel_data, team_data)
@@ -95,9 +95,10 @@ module Teems
       end
 
       def team_to_hash(api, team_data)
-        channels_response = api.list_channels(team_id: team_data['id'])
+        team_id = team_data['id']
+        channels_response = api.list_channels(team_id: team_id)
         {
-          id: team_data['id'],
+          id: team_id,
           name: team_data['displayName'],
           channels: (channels_response['value'] || []).map do |channel|
             { id: channel['id'], name: channel['displayName'], membership_type: channel['membershipType'] }

@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for TokenRefresher skype token exchange, OIDC refresh, and error recovery
 module TokenRefresherTests
+  # Tests initialization, recoverable errors constant, and missing token handling
   class BasicTest < Minitest::Test
     def test_recoverable_errors_constant_defined
       errors = Teems::Services::TokenRefresher::RECOVERABLE_ERRORS
@@ -56,6 +58,7 @@ module TokenRefresherTests
     end
   end
 
+  # Testable subclass that mocks the exchange_token HTTP call
   class TestableTokenRefresher < Teems::Services::TokenRefresher
     attr_accessor :mock_response, :mock_error
 
@@ -66,6 +69,7 @@ module TokenRefresherTests
     end
   end
 
+  # Tests refresh success, failure, and token preservation using mock HTTP
   class MockHttpTest < Minitest::Test
     def test_refresh_returns_true_on_successful_exchange
       with_temp_config do |dir|
@@ -128,7 +132,9 @@ module TokenRefresherTests
     end
   end
 
+  # Tests HTTP client and request construction for token exchange
   class BuildMethodsTest < Minitest::Test
+    # Exposes private build methods for testing exchange request construction
     class ExposedBuilder < Teems::Services::TokenRefresher
       public :build_exchange_http, :build_exchange_request
     end
@@ -162,7 +168,9 @@ module TokenRefresherTests
     end
   end
 
+  # Tests exchange response parsing, error handling, and timeout recovery
   class ExchangeTokenTest < Minitest::Test
+    # Exposes private exchange and parse methods for testing
     class ExposedTokenRefresher < Teems::Services::TokenRefresher
       public :exchange_token, :parse_exchange_response
     end
@@ -266,6 +274,7 @@ module TokenRefresherTests
     end
   end
 
+  # Tests OIDC refresh flow with Graph and Skype scopes and authsvc fallback
   class OidcRefreshTest < Minitest::Test
     GRAPH = Teems::Services::TokenRefresher::GRAPH_SCOPE
     SKYPE = Teems::Services::TokenRefresher::SKYPE_SCOPE
@@ -274,8 +283,9 @@ module TokenRefresherTests
       with_temp_config do |dir|
         refresher, store = build_successful_oidc(dir)
         assert refresher.refresh
-        assert_equal 'new-auth', store.account.auth_token
-        assert_equal 'new-skype', store.account.skype_token
+        account = store.account
+        assert_equal 'new-auth', account.auth_token
+        assert_equal 'new-skype', account.skype_token
       end
     end
 
@@ -375,7 +385,9 @@ module TokenRefresherTests
     end
   end
 
+  # Tests OIDC request construction and token URI generation with tenant ID
   class OidcBuildMethodsTest < Minitest::Test
+    # Exposes private OIDC request and URI methods for testing
     class ExposedOidc < Teems::Services::TokenRefresher
       public :build_oidc_request, :oidc_token_uri
     end
@@ -421,7 +433,9 @@ module TokenRefresherTests
     end
   end
 
+  # Tests OIDC token request failure handling and logging
   class OidcTokenRequestTest < Minitest::Test
+    # Exposes private OIDC request and logging methods for testing
     class ExposedOidcRequest < Teems::Services::TokenRefresher
       public :oidc_token_request, :log_oidc_failure, :oidc_token_uri
     end
@@ -464,7 +478,9 @@ module TokenRefresherTests
     end
   end
 
+  # Tests exchange failure logging and malformed JSON error handling
   class LogExchangeFailureTest < Minitest::Test
+    # Exposes private parse_exchange_response method for testing failure paths
     class ExposedExchange < Teems::Services::TokenRefresher
       public :parse_exchange_response
     end

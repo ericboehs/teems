@@ -22,8 +22,8 @@ module Teems
         with_token_refresh do
           runner.users_api.schedule(email, start_time: start_time, end_time: end_time, timezone: timezone)
         end
-      rescue ApiError => e
-        debug("Could not fetch schedule for #{email}: #{e.message}")
+      rescue ApiError => err
+        debug("Could not fetch schedule for #{email}: #{err.message}")
         nil
       end
 
@@ -288,8 +288,8 @@ module Teems
         else
           search_users(query)
         end
-      rescue ApiError => e
-        error("Failed to look up user: #{e.message}")
+      rescue ApiError => err
+        error("Failed to look up user: #{err.message}")
         1
       end
 
@@ -329,8 +329,8 @@ module Teems
         mri = "8:orgid:#{user_id}"
         result = with_token_refresh { runner.users_api.teams_presence(mri) }
         result&.first
-      rescue ApiError => e
-        debug("Could not fetch presence for #{user_id}: #{e.message}")
+      rescue ApiError => err
+        debug("Could not fetch presence for #{user_id}: #{err.message}")
         nil
       end
 

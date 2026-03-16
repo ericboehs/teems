@@ -32,8 +32,8 @@ module Teems
       dispatch_command(command_name, args)
     rescue Interrupt
       handle_interrupt
-    rescue StandardError => e
-      handle_error(e)
+    rescue StandardError => err
+      handle_error(err)
     end
 
     private
@@ -50,8 +50,8 @@ module Teems
 
     def dispatch_command(command_name, args)
       COMMANDS[command_name] ? run_command(command_name, args) : show_unknown_command(command_name)
-    rescue ConfigError, AuthError, ApiError => e
-      handle_known_error(e)
+    rescue ConfigError, AuthError, ApiError => err
+      handle_known_error(err)
     end
 
     def show_unknown_command(command_name)
@@ -63,7 +63,8 @@ module Teems
 
     def handle_known_error(error)
       label = error_label(error)
-      @output.error(label ? "#{label}: #{error.message}" : error.message)
+      message = error.message
+      @output.error(label ? "#{label}: #{message}" : message)
       log_error(error)
       1
     end
