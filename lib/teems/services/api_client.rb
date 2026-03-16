@@ -7,7 +7,8 @@ module Teems
       ENDPOINTS = {
         graph: 'https://graph.microsoft.com',
         teams: 'https://teams.microsoft.com',
-        msgservice: 'https://ng.msg.gcc.teams.microsoft.com'
+        msgservice: 'https://ng.msg.gcc.teams.microsoft.com',
+        presence: 'https://presence.gcc.teams.microsoft.com'
       }.freeze
 
       private
@@ -50,7 +51,8 @@ module Teems
 
       AUTH_HEADERS = {
         msgservice: ->(account) { ['Authentication', account.skype_auth_header] },
-        teams: ->(account) { ['Authorization', "Bearer #{account.skype_token}"] }
+        teams: ->(account) { ['Authorization', "Bearer #{account.skype_token}"] },
+        presence: ->(account) { ['Authorization', "Bearer #{account.presence_token}"] }
       }.freeze
       DEFAULT_AUTH_HEADER = ->(account) { ['Authorization', account.teams_auth_header] }
 

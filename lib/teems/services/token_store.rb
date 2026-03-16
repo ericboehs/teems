@@ -91,7 +91,8 @@ module Teems
 
         Models::Account.new(
           name: data['name'] || 'default', auth_token: data['auth_token'],
-          skype_token: data['skype_token'], chatsvc_token: data['chatsvc_token']
+          skype_token: data['skype_token'], chatsvc_token: data['chatsvc_token'],
+          presence_token: data['skype_spaces_token']
         )
       end
 

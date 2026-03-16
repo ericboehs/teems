@@ -50,6 +50,7 @@ module Teems
     autoload :Message, 'teems/models/message'
     autoload :Parsing, 'teems/models/parsing'
     autoload :User, 'teems/models/user'
+    autoload :UserProfile, 'teems/models/user_profile'
   end
 
   # Application services for configuration, caching, and API communication
@@ -84,6 +85,8 @@ module Teems
     autoload :Messages, 'teems/commands/messages'
     autoload :Sync, 'teems/commands/sync'
     autoload :Help, 'teems/commands/help'
+    autoload :Who, 'teems/commands/who'
+    autoload :Org, 'teems/commands/org'
   end
 
   # Thin wrappers around Teams API endpoints
@@ -93,6 +96,7 @@ module Teems
     autoload :Channels, 'teems/api/channels'
     autoload :Chats, 'teems/api/chats'
     autoload :Messages, 'teems/api/messages'
+    autoload :Users, 'teems/api/users'
   end
 
   # Utility classes for paths and helpers
