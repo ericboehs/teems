@@ -216,7 +216,7 @@ module WhoCommandTests
     def test_shows_now_marker
       result = run_who_with_stub([], full_stubs)
 
-      assert_match(/\u25B2now/, result[:stdout])
+      assert_match(/\^ now/, result[:stdout])
     end
 
     def test_hides_schedule_on_api_error
