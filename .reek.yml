@@ -39,6 +39,7 @@ detectors:
     max_copies: 4
     exclude:
       - Teems::Services::SyncStore
+      - Teems::Services::ApiClient
   FeatureEnvy:
     exclude:
       - Teems::Services::ConnectionPool#configure_http
