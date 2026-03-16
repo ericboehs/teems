@@ -47,26 +47,14 @@ module Teems
       end
     end
 
-    # Core sync logic: fetch, merge, and write chat messages.
-    # Extracted from Commands::Sync to keep the command thin.
-    class SyncEngine
-      include SyncSerializer
-
+    # Pagination helpers for fetching chat messages across pages
+    module SyncPagination
       API_DELAY_SECONDS = 0.5
       MAX_PAGES = 500
 
-      def initialize(runner:, sync_store:, state:, output:)
-        @runner = runner
-        @sync_store = sync_store
-        @state = state
-        @output = output
-      end
+      private
 
-      # Fetch all messages from a chat since start_time with pagination
-      def fetch_all_messages(chat_id, start_time)
-        messages = []
-        backward_link = nil
-        page_count = 0
+      def paginate_messages(messages, chat_id, start_time, backward_link, page_count)
         loop do
           page_messages, backward_link = fetch_messages_page(chat_id, start_time, backward_link, page_count)
           break if page_messages.empty? || log_and_check_max(page_count += 1, page_messages)
@@ -74,7 +62,6 @@ module Teems
           backward_link = accumulate_page(messages, page_messages, backward_link, start_time)
           break unless backward_link
         end
-        filter_and_sort_messages(messages, start_time)
       end
 
       def accumulate_page(messages, page_messages, backward_link, start_time)
@@ -82,17 +69,6 @@ module Teems
         messages.concat(parsed)
         cutoff ? nil : advance_link(backward_link, start_time)
       end
-
-      def merge_and_write(chat, existing_raw, new_messages)
-        existing = existing_raw.map { |data| message_from_stored(data) }
-        all_messages = merge_messages(existing, new_messages)
-        write_chat_files(chat, all_messages)
-        all_messages
-      end
-
-      def message_from_stored(data) = Models::Message.new(**stored_msg_attrs(data))
-
-      private
 
       def fetch_messages_page(chat_id, start_time, backward_link, page_count)
         response = fetch_page_response(chat_id, start_time, backward_link, page_count)
@@ -118,10 +94,15 @@ module Teems
 
       def parse_page_messages(page_messages, start_time)
         parsed = page_messages.map { |msg_data| Models::Message.from_api(msg_data) }
-        oldest = parsed.min_by { |msg| msg.created_at || Time.now }
-        cutoff = oldest&.created_at && oldest.created_at < start_time
-        debug('  Reached cutoff date, stopping pagination') if cutoff
+        cutoff = reached_cutoff?(parsed, start_time)
         [parsed, cutoff]
+      end
+
+      def reached_cutoff?(parsed, start_time)
+        oldest = parsed.min_by { |msg| msg.created_at || Time.now }
+        return false unless oldest&.created_at && oldest.created_at < start_time
+
+        debug('  Reached cutoff date, stopping pagination') || true
       end
 
       def rewrite_start_time(link, start_time)
@@ -134,6 +115,40 @@ module Teems
         sleep(API_DELAY_SECONDS)
         rewrite_start_time(backward_link, start_time)
       end
+    end
+
+    # Core sync logic: fetch, merge, and write chat messages.
+    # Extracted from Commands::Sync to keep the command thin.
+    class SyncEngine
+      include SyncSerializer
+      include SyncPagination
+
+      def initialize(runner:, sync_store:, state:, output:)
+        @runner = runner
+        @sync_store = sync_store
+        @state = state
+        @output = output
+      end
+
+      # Fetch all messages from a chat since start_time with pagination
+      def fetch_all_messages(chat_id, start_time)
+        messages = []
+        backward_link = nil
+        page_count = 0
+        paginate_messages(messages, chat_id, start_time, backward_link, page_count)
+        filter_and_sort_messages(messages, start_time)
+      end
+
+      def merge_and_write(chat, existing_raw, new_messages)
+        existing = existing_raw.map { |data| message_from_stored(data) }
+        all_messages = merge_messages(existing, new_messages)
+        write_chat_files(chat, all_messages)
+        all_messages
+      end
+
+      def message_from_stored(data) = Models::Message.new(**stored_msg_attrs(data))
+
+      private
 
       def filter_and_sort_messages(messages, start_time)
         messages.reject(&:system_message?)

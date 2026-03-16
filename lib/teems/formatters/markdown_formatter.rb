@@ -34,9 +34,7 @@ module Teems
 
       def format_message_groups(messages, lines)
         current_date = nil
-        messages.each do |msg|
-          next if msg.system_message?
-
+        messages.reject(&:system_message?).each do |msg|
           current_date = append_date_header(lines, msg, current_date)
           lines.concat(format_message(msg))
           lines << ''
@@ -47,9 +45,8 @@ module Teems
         msg_date = msg.created_at&.strftime('%Y-%m-%d')
         return current_date if msg_date == current_date
 
-        heading = "## #{msg_date || 'Unknown Date'}"
-        date_section = current_date ? ['', heading, ''] : [heading, '']
-        lines.concat(date_section)
+        lines << '' if current_date
+        lines.push("## #{msg_date || 'Unknown Date'}", '')
         msg_date
       end
 
@@ -81,13 +78,12 @@ module Teems
       end
 
       def format_message_attachments(msg)
-        attachments = msg.attachments
-        return [] unless attachments.is_a?(Array) && attachments.any?
+        Array(msg.attachments).map { |att| format_attachment(att) }
+      end
 
-        attachments.map do |att|
-          name = att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
-          "\u{1F4CE} #{name}"
-        end
+      def format_attachment(att)
+        name = att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
+        "\u{1F4CE} #{name}"
       end
 
       def format_message_reactions(msg)

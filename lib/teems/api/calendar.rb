@@ -49,10 +49,13 @@ module Teems
       def rsvp_event(event_id:, action:, comment: nil, notify: :send)
         encoded_id = URI.encode_www_form_component(event_id)
         api_action = action == 'tentative' ? 'tentativelyAccept' : action
+        post(:graph, "/v1.0/me/events/#{encoded_id}/#{api_action}", body: rsvp_body(comment, notify))
+      end
+
+      def rsvp_body(comment, notify)
         body = { sendResponse: notify == :send }
         body[:comment] = comment if comment
-
-        post(:graph, "/v1.0/me/events/#{encoded_id}/#{api_action}", body: body)
+        body
       end
 
       private
@@ -65,14 +68,17 @@ module Teems
       def paginate_events(path, params:, headers:)
         events = []
         response = get(:graph, path, params: params, headers: headers)
+        collect_paginated_events(events, response, headers)
+      end
+
+      def collect_paginated_events(events, response, headers)
         loop do
           events.concat(parse_events(response))
           next_link = response['@odata.nextLink']
-          break unless next_link
+          break events unless next_link
 
           response = get(:graph, next_link, headers: headers)
         end
-        events
       end
 
       def timezone_header(timezone)

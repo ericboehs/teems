@@ -61,33 +61,35 @@ module Teems
         return nil unless activity['activityType'] == 'msGraph'
 
         location = activity.dig('activityContext', 'location')
-        return nil unless location
-
-        parsed = parse_meeting_range(location)
-        return nil unless parsed
-
-        "  #{format_time_range(*parsed)}"
+        parsed = location && parse_meeting_range(location)
+        "  #{format_time_range(*parsed)}" if parsed
       end
 
       def parse_meeting_range(location)
         start_match = location.match(%r{<StartDateTime>(.+?)</StartDateTime>})
         return nil unless start_match
 
-        end_match = location.match(%r{<EndDateTime>(.+?)</EndDateTime>})
-        start_time = Time.parse(start_match[1]).getlocal
-        end_time = end_match ? Time.parse(end_match[1]).getlocal : nil
-        [start_time, end_time]
+        build_time_range(start_match[1], location.match(%r{<EndDateTime>(.+?)</EndDateTime>}))
       rescue ArgumentError
         nil
+      end
+
+      def build_time_range(start_str, end_match)
+        start_time = Time.parse(start_str).getlocal
+        end_time = end_match ? Time.parse(end_match[1]).getlocal : nil
+        [start_time, end_time]
       end
 
       def format_time_range(start_time, end_time)
         start_str = start_time.strftime('%b %-d, %-I:%M %p')
         return start_str unless end_time
 
-        end_fmt = (end_time - start_time) >= 86_400 ? '%b %-d, %-I:%M %p' : '%-I:%M %p'
-        end_str = end_time.strftime(end_fmt)
-        "#{start_str} - #{end_str}"
+        "#{start_str} - #{format_end_time(start_time, end_time)}"
+      end
+
+      def format_end_time(start_time, end_time)
+        fmt = (end_time - start_time) >= 86_400 ? '%b %-d, %-I:%M %p' : '%-I:%M %p'
+        end_time.strftime(fmt)
       end
 
       def parse_behalf(activity)
@@ -166,11 +168,20 @@ module Teems
       private
 
       def show_activity
-        items = fetch_and_parse.sort_by { |item| item[:time] || '' }.reverse
-        items = items.select { |item| item[:unread] } if @options[:unread]
-        render_activities(items)
+        render_activities(filtered_activities)
         0
       rescue ApiError => err
+        activity_fetch_error(err)
+      end
+
+      def filtered_activities
+        items = sorted_activities
+        @options[:unread] ? items.select { |item| item[:unread] } : items
+      end
+
+      def sorted_activities = fetch_and_parse.sort_by { |item| item[:time] || '' }.reverse
+
+      def activity_fetch_error(err)
         error("Failed to fetch activity: #{err.message}")
         1
       end
@@ -209,12 +220,12 @@ module Teems
       end
 
       def display_single_activity(item)
-        unread_marker = item[:unread] ? output.bold('* ') : '  '
-        formatted = format_activity(item[:raw_activity], item[:time])
-        formatted.lines.each_with_index do |line, idx|
-          stripped = line.chomp
-          puts idx.zero? ? "#{unread_marker}#{stripped}" : "  #{stripped}"
-        end
+        marker = item[:unread] ? output.bold('* ') : '  '
+        print_activity_lines(marker, format_activity(item[:raw_activity], item[:time]))
+      end
+
+      def print_activity_lines(marker, text)
+        text.lines.each_with_index { |line, idx| puts idx.zero? ? "#{marker}#{line.chomp}" : "  #{line.chomp}" }
         puts
       end
     end

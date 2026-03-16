@@ -10,7 +10,10 @@ module Teems
         managers = []
         current_id = target_id
         fetch = method(target_is_me? ? :fetch_my_manager : :fetch_user_manager)
+        collect_managers(managers, current_id, fetch)
+      end
 
+      def collect_managers(managers, current_id, fetch)
         while (mgr = fetch.call(current_id))
           managers.unshift(mgr)
           current_id = mgr.id
@@ -46,16 +49,17 @@ module Teems
       def fetch_my_reports(_user_id)
         with_token_refresh { runner.users_api.direct_reports_me }
       rescue ApiError => err
-        debug("Could not fetch direct reports: #{err.message}")
-        raise unless err.not_found? || err.forbidden?
-
-        []
+        handle_reports_error(err, 'direct reports')
       end
 
       def fetch_user_reports(user_id)
         with_token_refresh { runner.users_api.direct_reports(user_id) }
       rescue ApiError => err
-        debug("Could not fetch direct reports for #{user_id}: #{err.message}")
+        handle_reports_error(err, "direct reports for #{user_id}")
+      end
+
+      def handle_reports_error(err, context)
+        debug("Could not fetch #{context}: #{err.message}")
         raise unless err.not_found? || err.forbidden?
 
         []
@@ -179,13 +183,19 @@ module Teems
 
       def show_org_chart
         target = resolve_target
-        return 1 unless target
-
-        render_org(*fetch_org_data(target))
-        0
+        target ? display_org(target) : 1
       rescue ApiError => err
+        org_fetch_error(err)
+      end
+
+      def org_fetch_error(err)
         error("Failed to fetch org chart: #{err.message}")
         1
+      end
+
+      def display_org(target)
+        render_org(*fetch_org_data(target))
+        0
       end
 
       def fetch_org_data(target)

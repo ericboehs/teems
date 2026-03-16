@@ -18,12 +18,14 @@ module Teems
           uri = URI.parse(url)
           return nil unless teams_url?(uri)
 
-          match = uri.path.match(MESSAGE_PATH_PATTERN)
-          return nil unless match
-
-          build_result(match, uri.query)
+          match_and_build(uri)
         rescue URI::InvalidURIError
           nil
+        end
+
+        def match_and_build(uri)
+          match = uri.path.match(MESSAGE_PATH_PATTERN)
+          match ? build_result(match, uri.query) : nil
         end
 
         def teams_url?(uri_or_string)
@@ -48,13 +50,22 @@ module Teems
         def parse_context(query_string)
           return {} unless query_string
 
-          context_json = URI.decode_www_form(query_string).to_h['context']
-          return {} unless context_json
-
-          parse_context_json(context_json)
+          parse_context_param(extract_context_param(query_string))
         rescue JSON::ParserError => err
+          log_context_parse_error(err)
+        end
+
+        def parse_context_param(context_json)
+          context_json ? parse_context_json(context_json) : {}
+        end
+
+        def log_context_parse_error(err)
           warn "teems: Could not parse Teams URL context: #{err.message}"
           {}
+        end
+
+        def extract_context_param(query_string)
+          URI.decode_www_form(query_string).to_h['context']
         end
 
         def parse_context_json(json)

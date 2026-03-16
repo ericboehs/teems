@@ -102,9 +102,12 @@ module Teems
 
       def build_list_item_line(event, number)
         time = event.all_day? ? 'ALL DAY   ' : event.time_range_display.ljust(11)
-        title = event.subject
-        subject = event.cancelled? ? gray_text("#{title} (cancelled)") : title
+        subject = format_event_subject(event)
         "  #{@output.cyan("[#{number}]")} #{time} #{subject}#{list_item_location(event)}"
+      end
+
+      def format_event_subject(event)
+        event.cancelled? ? gray_text("#{event.subject} (cancelled)") : event.subject
       end
 
       def gray_text(text) = @output.gray(text)

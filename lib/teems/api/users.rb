@@ -22,11 +22,14 @@ module Teems
 
       def search(query)
         sanitized = query.gsub(/["\\]/, '')
-        params = { '$search' => "\"displayName:#{sanitized}\" OR \"mail:#{sanitized}\"",
-                   '$select' => USER_SELECT, '$count' => 'true', '$top' => 10 }
         headers = { 'ConsistencyLevel' => 'eventual' }
-        response = get(:graph, '/v1.0/users', params: params, headers: headers)
+        response = get(:graph, '/v1.0/users', params: search_params(sanitized), headers: headers)
         (response['value'] || []).map { |data| Models::UserProfile.from_api(data) }
+      end
+
+      def search_params(sanitized)
+        { '$search' => "\"displayName:#{sanitized}\" OR \"mail:#{sanitized}\"",
+          '$select' => USER_SELECT, '$count' => 'true', '$top' => 10 }
       end
 
       def manager(user_id)

@@ -16,15 +16,20 @@ module Teems
       private
 
       def fetch_schedule(email, timezone, work_start, work_end)
-        date_str = Time.now.strftime('%Y-%m-%d')
-        start_time = "#{date_str}T#{format('%02d', work_start)}:00:00"
-        end_time = "#{date_str}T#{format('%02d', work_end)}:00:00"
-        with_token_refresh do
-          runner.users_api.schedule(email, start_time: start_time, end_time: end_time, timezone: timezone)
-        end
+        request_schedule(email, timezone, *schedule_time_range(work_start, work_end))
       rescue ApiError => err
         debug("Could not fetch schedule for #{email}: #{err.message}")
         nil
+      end
+
+      def request_schedule(email, timezone, start_time, end_time)
+        with_token_refresh do
+          runner.users_api.schedule(email, start_time: start_time, end_time: end_time, timezone: timezone)
+        end
+      end
+
+      def schedule_time_range(work_start, work_end)
+        [work_start, work_end].map { |hour| "#{Time.now.strftime('%Y-%m-%d')}T#{format('%02d', hour)}:00:00" }
       end
 
       def render_schedule(schedule, ctx)
@@ -71,9 +76,12 @@ module Teems
         slot = slot_for_now(ctx.work_start)
         return nil unless slot >= 0 && slot < view.length
 
+        format_cal_label(view, slot, ctx)
+      end
+
+      def format_cal_label(view, slot, ctx)
         label = view[slot] == '0' ? 'Free' : 'Busy'
-        suffix = next_change_label(view, slot, ctx)
-        "#{label}#{suffix}"
+        "#{label}#{next_change_label(view, slot, ctx)}"
       end
 
       def next_change_label(view, slot, ctx)
@@ -104,19 +112,22 @@ module Teems
       end
 
       def parse_work_hours(schedule)
-        start_str = schedule.dig('workingHours', 'startTime')
-        end_str = schedule.dig('workingHours', 'endTime')
-        work_start = start_str ? start_str.split(':').first.to_i : 9
-        work_end = end_str ? end_str.split(':').first.to_i : 17
-        [work_start, work_end]
+        [parse_hour(schedule, 'startTime', 9), parse_hour(schedule, 'endTime', 17)]
+      end
+
+      def parse_hour(schedule, key, default)
+        value = schedule.dig('workingHours', key)
+        value ? value.split(':').first.to_i : default
       end
 
       def fetch_schedule_for(email, timezone)
         return nil unless email
 
         schedule = fetch_schedule(email, timezone, *DEFAULT_WORK_HOURS)
-        return nil unless schedule
+        schedule && refetch_if_custom_hours(schedule, email, timezone)
+      end
 
+      def refetch_if_custom_hours(schedule, email, timezone)
         actual_hours = parse_work_hours(schedule)
         return schedule if actual_hours == DEFAULT_WORK_HOURS
 
@@ -146,17 +157,28 @@ module Teems
       end
 
       def render_normal_status(presence_data)
-        availability = presence_data.dig('presence', 'availability')
-        label = WhoSchedule::STATUS_LABELS[availability] || availability
-        expiry = format_presence_expiry(presence_data)
-        text = expiry ? "#{label} (#{expiry})" : label
+        label = presence_label(presence_data)
+        text = label_with_expiry(label, format_presence_expiry(presence_data))
         puts "  Status      #{text}" if label
+      end
+
+      def presence_label(presence_data)
+        availability = presence_data.dig('presence', 'availability')
+        WhoSchedule::STATUS_LABELS[availability] || availability
+      end
+
+      def label_with_expiry(label, expiry)
+        expiry ? "#{label} (#{expiry})" : label
       end
 
       def format_presence_expiry(presence_data)
         expiry_str = presence_data.dig('presence', 'forcedAvailability', 'expiry')
         return nil unless expiry_str
 
+        parse_expiry_time(expiry_str)
+      end
+
+      def parse_expiry_time(expiry_str)
         expiry = Time.parse(expiry_str).localtime
         "until #{expiry.strftime('%b %-d')}"
       rescue ArgumentError
@@ -282,15 +304,14 @@ module Teems
       private
 
       def lookup_user
-        query = positional_args.join(' ')
-        if query.empty?
-          show_current_user
-        else
-          search_users(query)
-        end
+        dispatch_lookup(positional_args.join(' '))
       rescue ApiError => err
         error("Failed to look up user: #{err.message}")
         1
+      end
+
+      def dispatch_lookup(query)
+        query.empty? ? show_current_user : search_users(query)
       end
 
       def show_current_user
@@ -326,12 +347,15 @@ module Teems
       def fetch_presence_data(user_id)
         return nil unless user_id
 
-        mri = "8:orgid:#{user_id}"
-        result = with_token_refresh { runner.users_api.teams_presence(mri) }
-        result&.first
+        fetch_teams_presence("8:orgid:#{user_id}")
       rescue ApiError => err
         debug("Could not fetch presence for #{user_id}: #{err.message}")
         nil
+      end
+
+      def fetch_teams_presence(mri)
+        result = with_token_refresh { runner.users_api.teams_presence(mri) }
+        result&.first
       end
 
       def json_profile(attrs, user_id)

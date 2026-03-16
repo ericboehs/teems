@@ -32,16 +32,11 @@ module Teems
       end
 
       def execute
-        result = validate_options
+        result = validate_options || require_auth
         return result if result
 
-        auth_result = require_auth
-        return auth_result if auth_result
-
         target = resolve_target
-        return 1 unless target
-
-        fetch_messages(target)
+        target ? fetch_messages(target) : 1
       end
 
       protected
@@ -81,13 +76,13 @@ module Teems
         return target unless target.start_with?('https://')
 
         result = Services::TeamsUrlParser.parse(target)
-        return error('Invalid Teams URL format') || nil unless result
+        result ? apply_parsed_url(result) : (error('Invalid Teams URL format') || nil)
+      end
 
-        conversation_id = result.conversation_id
-        team_id = result.team_id
-        debug("Parsed URL: conversation=#{conversation_id}, team=#{team_id}")
-        @options[:team_id] = team_id if team_id
-        conversation_id
+      def apply_parsed_url(result)
+        debug("Parsed URL: conversation=#{result.conversation_id}, team=#{result.team_id}")
+        @options[:team_id] = result.team_id if result.team_id
+        result.conversation_id
       end
 
       def fetch_messages(target)
@@ -131,12 +126,16 @@ module Teems
       end
 
       def display_message(message)
-        time_str = message.created_at&.strftime('%Y-%m-%d %H:%M') || ''
-        importance = message.important? ? output.red('!') : ''
-        puts "#{output.blue("[#{time_str}]")} #{importance}#{output.bold(message.sender_name)}:"
+        puts format_message_header(message)
         puts "  #{message.content}"
         display_reactions(message)
         puts
+      end
+
+      def format_message_header(message)
+        time = message.created_at&.strftime('%Y-%m-%d %H:%M')
+        importance = message.important? ? output.red('!') : ''
+        "#{output.blue("[#{time}]")} #{importance}#{output.bold(message.sender_name)}:"
       end
 
       def display_reactions(message)

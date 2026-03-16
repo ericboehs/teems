@@ -37,10 +37,14 @@ module Teems
         chat = Models::Chat.from_api(chat_data)
         return skip_chat(chat, index, total) if skip_reason(chat.id)
 
-        info("[#{index + 1}/#{total}] Syncing: #{chat.display_name}")
-        with_404_retry(chat) { sync_single_chat(chat) }
+        sync_chat_with_logging(chat, index, total)
       rescue StandardError => err
         handle_sync_error(chat, err)
+      end
+
+      def sync_chat_with_logging(chat, index, total)
+        info("[#{index + 1}/#{total}] Syncing: #{chat.display_name}")
+        with_404_retry(chat) { sync_single_chat(chat) }
       end
 
       def skip_chat(chat, index, total)
@@ -57,11 +61,14 @@ module Teems
       end
 
       def sync_single_chat(chat)
-        chat_id = chat.id
-        @sync_store.ensure_dir_name(@state, chat_id, chat.display_name, chat_type: chat.chat_type)
+        @sync_store.ensure_dir_name(@state, chat.id, chat.display_name, chat_type: chat.chat_type)
         new_messages = fetch_new_messages(chat)
         debug("  Fetched #{new_messages.length} new message(s)")
-        return skip_unchanged(chat_id) if new_messages.empty? && @sync_store.last_synced_time(@state, chat_id)
+        process_fetched_messages(chat, new_messages)
+      end
+
+      def process_fetched_messages(chat, new_messages)
+        return skip_unchanged(chat.id) if new_messages.empty? && @sync_store.last_synced_time(@state, chat.id)
 
         merge_and_update(chat, new_messages)
       end
@@ -150,18 +157,25 @@ module Teems
 
       def fetch_all_chats
         info('Fetching chat list...')
-        response = with_token_refresh { runner.chats_api.list(limit: 200) }
-        chats = response['conversations'] || response['value'] || []
-        return info('No chats found') || [] if chats.empty?
+        chats = fetch_raw_chats
+        chats.tap { |list| list.empty? ? info('No chats found') : debug("Found #{list.length} chats") }
+      end
 
-        debug("Found #{chats.length} chats")
-        chats
+      def fetch_raw_chats
+        parse_chat_response(with_token_refresh { runner.chats_api.list(limit: 200) })
+      end
+
+      def parse_chat_response(response)
+        response['conversations'] || response['value'] || []
       end
 
       def show_dry_run(chats)
         syncable = chats.reject { |chat| skip_reason(chat['id']) }
-        syncable_count = syncable.length
-        display_dry_run_header(chats.length - syncable_count, syncable_count)
+        display_dry_run_list(chats.length - syncable.length, syncable)
+      end
+
+      def display_dry_run_list(skipped_count, syncable)
+        display_dry_run_header(skipped_count, syncable.length)
         syncable.each { |chat| format_dry_run_chat(chat) }
         0
       end
@@ -174,21 +188,27 @@ module Teems
 
       def format_dry_run_chat(chat_data)
         chat = Models::Chat.from_api(chat_data)
-        chat_id = chat.id
+        status = dry_run_sync_status(chat.id)
+        puts "  #{chat.display_name}\n    ID: #{chat.id}\n    Status: #{status}\n"
+      end
+
+      def dry_run_sync_status(chat_id)
         last_sync = @sync_store.last_synced_time(@state, chat_id)
-        status = last_sync ? "last synced #{last_sync.strftime('%Y-%m-%d %H:%M')}" : 'never synced'
-        puts "  #{chat.display_name}\n    ID: #{chat_id}\n    Status: #{status}\n"
+        last_sync ? "last synced #{last_sync.strftime('%Y-%m-%d %H:%M')}" : 'never synced'
       end
 
       def show_summary
         puts
         success('Sync complete!')
+        show_summary_stats
+        info("  Output: #{@sync_store.sync_dir}")
+      end
+
+      def show_summary_stats
         info("  Chats synced: #{@stats[:synced]}")
-        skipped = @stats[:skipped]
-        info("  Chats skipped (no new messages): #{skipped}") if skipped.positive?
+        info("  Chats skipped (no new messages): #{@stats[:skipped]}") if @stats[:skipped].positive?
         info("  Total messages: #{@stats[:messages_total]}")
         display_error_count
-        info("  Output: #{@sync_store.sync_dir}")
       end
 
       def display_error_count
@@ -211,6 +231,10 @@ module Teems
         tokens = runner.token_extractor.extract
         return save_login_tokens(tokens) if tokens&.dig(:auth_token) && tokens[:skype_token]
 
+        report_extraction_failure(tokens)
+      end
+
+      def report_extraction_failure(tokens)
         error('Failed to authenticate via Safari')
         error('  auth_token extracted but skype_token exchange failed') if tokens&.dig(:auth_token)
         1
@@ -230,12 +254,16 @@ module Teems
       def check_tokens_with_api
         debug('Checking if existing tokens are still valid...')
         runner.chats_api.list(limit: 1)
-        debug('Existing tokens are valid, skipping browser auth')
-        success('Using existing authentication (tokens still valid)')
-        true
+        log_valid_tokens
       rescue ApiError
         debug('Existing tokens are expired or invalid, re-authenticating...')
-        false
+        nil
+      end
+
+      def log_valid_tokens
+        debug('Existing tokens are valid, skipping browser auth')
+        success('Using existing authentication (tokens still valid)')
+        :valid
       end
 
       def save_login_tokens(tokens)
@@ -267,16 +295,14 @@ module Teems
       end
 
       def execute
-        result = validate_options
+        result = validate_and_authenticate
         return result if result
 
-        login_result = login_if_requested
-        return login_result if login_result
-
-        auth_result = require_auth
-        return auth_result if auth_result
-
         run_sync
+      end
+
+      def validate_and_authenticate
+        validate_options || login_if_requested || require_auth
       end
 
       protected
@@ -312,8 +338,10 @@ module Teems
         chats.each_with_index { |chat_data, index| sync_or_skip_chat(chat_data, index, chats.length) }
         save_state_safely
         show_summary
-        @stats[:errors].positive? ? 1 : 0
+        sync_exit_code
       end
+
+      def sync_exit_code = @stats[:errors].positive? ? 1 : 0
 
       def init_sync_state
         @sync_store = Services::SyncStore.new

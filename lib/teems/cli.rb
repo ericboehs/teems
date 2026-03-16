@@ -25,15 +25,18 @@ module Teems
 
     def run
       command_name, *args = @argv
-
-      return show_help if help_requested?(command_name)
-      return show_version if version_requested?(command_name)
-
-      dispatch_command(command_name, args)
+      route_command(command_name, args)
     rescue Interrupt
       handle_interrupt
     rescue StandardError => err
       handle_error(err)
+    end
+
+    def route_command(command_name, args)
+      return show_help if help_requested?(command_name)
+      return show_version if version_requested?(command_name)
+
+      dispatch_command(command_name, args)
     end
 
     private
@@ -61,11 +64,10 @@ module Teems
       1
     end
 
-    def handle_known_error(error)
-      label = error_label(error)
-      message = error.message
-      @output.error(label ? "#{label}: #{message}" : message)
-      log_error(error)
+    def handle_known_error(err)
+      label = error_label(err)
+      @output.error(label ? "#{label}: #{err.message}" : err.message)
+      log_error(err)
       1
     end
 
