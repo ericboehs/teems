@@ -102,6 +102,14 @@ module ChatTests
       assert_equal 'somethingNew', chat.chat_type_label
     end
 
+    def test_graph_chats_default_to_not_unread
+      chat = Teems::Models::Chat.from_api(sample_chat)
+
+      refute chat.unread?
+      refute chat.favorite?
+      refute chat.pinned?
+    end
+
     def test_handles_nil_times_gracefully
       data = sample_chat.dup
       data.delete('createdDateTime')
@@ -247,6 +255,59 @@ module ChatTests
         },
         'properties' => { 'lastimreceivedtime' => '2026-01-20T12:00:00Z' }
       }
+    end
+  end
+
+  class NgMsgStatusTest < Minitest::Test
+    def test_detects_unread
+      chat = parse(props: { 'consumptionhorizon' => '1000;1000;user1' }, last_msg: '2000')
+      assert chat.unread?
+    end
+
+    def test_detects_read
+      chat = parse(props: { 'consumptionhorizon' => '2000;2000;user1' }, last_msg: '2000')
+      refute chat.unread?
+    end
+
+    def test_unread_false_without_horizon
+      refute parse(last_msg: '2000').unread?
+    end
+
+    def test_unread_false_without_last_message
+      refute parse(props: { 'consumptionhorizon' => '1000;1000;user1' }).unread?
+    end
+
+    def test_detects_favorite
+      assert parse(props: { 'favorite' => 'true' }).favorite?
+    end
+
+    def test_not_favorite_by_default
+      refute parse.favorite?
+    end
+
+    def test_detects_pinned
+      assert parse(props: { 'ispinned' => 'true' }).pinned?
+    end
+
+    def test_not_pinned_by_default
+      refute parse.pinned?
+    end
+
+    def test_space_uses_space_thread_topic
+      data = { 'id' => '19:space@thread.v2',
+               'threadProperties' => { 'threadType' => 'space', 'spaceThreadTopic' => 'My Team' },
+               'properties' => {} }
+      assert_equal 'My Team', Teems::Models::Chat.from_api(data).topic
+    end
+
+    private
+
+    def parse(props: {}, last_msg: nil)
+      data = { 'id' => '19:test@thread.v2',
+               'threadProperties' => { 'threadType' => 'chat' },
+               'properties' => props }
+      data['lastMessage'] = { 'id' => last_msg } if last_msg
+      Teems::Models::Chat.from_api(data)
     end
   end
 end
