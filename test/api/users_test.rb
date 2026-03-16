@@ -36,11 +36,11 @@ module UsersApiTests
     def test_me_passes_select_param
       @api_client.stub('/v1.0/me', sample_user_profile_data)
       @users_api.me
-      call = @api_client.calls.first
+      select_param = @api_client.calls.first[:params]['$select']
 
-      assert_includes call[:params]['$select'], 'displayName'
-      assert_includes call[:params]['$select'], 'jobTitle'
-      assert_includes call[:params]['$select'], 'department'
+      assert_includes select_param, 'displayName'
+      assert_includes select_param, 'jobTitle'
+      assert_includes select_param, 'department'
     end
 
     def test_me_returns_user_profile_model

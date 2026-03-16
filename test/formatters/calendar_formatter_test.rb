@@ -5,7 +5,7 @@ require 'test_helper'
 module CalendarFormatterTests
   module SharedHelpers
     def setup
-      @output = test_output(color: false)
+      @output = test_output
       @formatter = Teems::Formatters::CalendarFormatter.new(output: @output)
     end
 

@@ -41,12 +41,12 @@ module AuthCommandTests
 
     def test_shows_help_with_help_flag
       with_temp_config do
-        result = run_auth('--help')
-        assert_match(/teems auth/, result[:stdout])
-        assert_match(/USAGE:/, result[:stdout])
-        assert_match(/login/, result[:stdout])
-        assert_match(/logout/, result[:stdout])
-        assert_match(/status/, result[:stdout])
+        stdout = run_auth('--help')[:stdout]
+        assert_match(/teems auth/, stdout)
+        assert_match(/USAGE:/, stdout)
+        assert_match(/login/, stdout)
+        assert_match(/logout/, stdout)
+        assert_match(/status/, stdout)
       end
     end
 
@@ -59,7 +59,7 @@ module AuthCommandTests
 
     def test_status_when_not_configured
       with_temp_config do
-        store = mock_token_store(configured: false)
+        store = mock_unconfigured_store
         result = run_auth('status', store: store)
         assert_match(/Not authenticated/, result[:stdout])
       end
@@ -93,7 +93,7 @@ module AuthCommandTests
 
     def test_logout_when_not_configured
       with_temp_config do
-        store = mock_token_store(configured: false)
+        store = mock_unconfigured_store
         result, exit_code = run_auth_with_code('logout', store: store)
         assert_equal 0, exit_code
         assert_match(/No tokens to clear/, result[:stdout])

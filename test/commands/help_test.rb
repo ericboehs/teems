@@ -17,24 +17,24 @@ class HelpCommandTest < Minitest::Test
   end
 
   def test_shows_commands_section
-    result = run_help
+    stdout = run_help[:stdout]
 
-    assert_match(/COMMANDS:/, result[:stdout])
-    assert_match(/auth/, result[:stdout])
-    assert_match(/channels/, result[:stdout])
-    assert_match(/chats/, result[:stdout])
-    assert_match(/messages/, result[:stdout])
+    assert_match(/COMMANDS:/, stdout)
+    assert_match(/auth/, stdout)
+    assert_match(/channels/, stdout)
+    assert_match(/chats/, stdout)
+    assert_match(/messages/, stdout)
   end
 
   def test_shows_global_options
-    result = run_help
+    stdout = run_help[:stdout]
 
-    assert_match(/GLOBAL OPTIONS:/, result[:stdout])
-    assert_match(/--limit/, result[:stdout])
-    assert_match(/--verbose/, result[:stdout])
-    assert_match(/--quiet/, result[:stdout])
-    assert_match(/--json/, result[:stdout])
-    assert_match(/--help/, result[:stdout])
+    assert_match(/GLOBAL OPTIONS:/, stdout)
+    assert_match(/--limit/, stdout)
+    assert_match(/--verbose/, stdout)
+    assert_match(/--quiet/, stdout)
+    assert_match(/--json/, stdout)
+    assert_match(/--help/, stdout)
   end
 
   def test_shows_examples
@@ -62,12 +62,12 @@ class HelpCommandTest < Minitest::Test
   end
 
   def test_shows_available_commands_for_unknown_command
-    result = run_help(['foobar'])
+    stdout = run_help(['foobar'])[:stdout]
 
-    assert_match(/auth/, result[:stdout])
-    assert_match(/channels/, result[:stdout])
-    assert_match(/chats/, result[:stdout])
-    assert_match(/messages/, result[:stdout])
+    assert_match(/auth/, stdout)
+    assert_match(/channels/, stdout)
+    assert_match(/chats/, stdout)
+    assert_match(/messages/, stdout)
   end
 
   def test_help_for_channels_command

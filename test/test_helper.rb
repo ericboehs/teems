@@ -91,12 +91,14 @@ module Teems
   module TestHelpers
     include SampleData
 
-    def test_output(color: false)
-      Formatters::Output.new(io: StringIO.new, err: StringIO.new, color: color)
+    XDG_ENV_KEYS = %w[XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME].freeze
+
+    def test_output
+      Formatters::Output.new(io: StringIO.new, err: StringIO.new, color: false)
     end
 
-    def test_runner(output: nil, config: nil, token_store: nil, api_client: nil)
-      Runner.new(**{ output: output || test_output, config: config,
+    def test_runner(output: test_output, config: nil, token_store: nil, api_client: nil)
+      Runner.new(**{ output: output, config: config,
                      token_store: token_store, api_client: api_client }.compact)
     end
 
@@ -146,14 +148,13 @@ module Teems
       { stdout: out.string, stderr: err.string }
     end
 
-    def configured_runner(output: nil, account: nil)
-      output ||= test_output
-      store = mock_token_store(account: account || mock_account)
+    def configured_runner(output: test_output, account: mock_account)
+      store = mock_token_store(account: account)
       Runner.new(output: output, token_store: store, api_client: MockApiClient.new)
     end
 
     def save_xdg_env
-      %w[XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME].map { |k| ENV.fetch(k, nil) }
+      XDG_ENV_KEYS.map { |key| ENV.fetch(key, nil) }
     end
 
     def apply_xdg_env(dir)
@@ -163,29 +164,51 @@ module Teems
     end
 
     def restore_xdg_env(saved)
-      %w[XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME].zip(saved).each { |k, v| ENV[k] = v }
+      XDG_ENV_KEYS.zip(saved).each { |key, val| ENV[key] = val }
     end
 
     def mock_token_store(account: nil, configured: true)
       MockTokenStore.new(account: account, configured: configured)
     end
 
+    def mock_unconfigured_store
+      MockTokenStore.new(configured: false)
+    end
+
     # Mock token store class
     class MockTokenStore
-      attr_accessor :skype_spaces_token, :save_result, :refresh_token, :client_id, :tenant_id
+      attr_accessor :save_result
+      attr_reader :account, :extra_tokens
 
       def initialize(account: nil, configured: true)
         @account = account
         @configured = configured
-        @skype_spaces_token = nil
-        @refresh_token = nil
-        @client_id = nil
-        @tenant_id = nil
+        @extra_tokens = { skype_spaces: nil, refresh: nil, client_id: nil, tenant_id: nil }
         @save_result = true
       end
 
       def configured? = @configured
-      attr_reader :account
+
+      def skype_spaces_token = @extra_tokens[:skype_spaces]
+      def refresh_token = @extra_tokens[:refresh]
+      def client_id = @extra_tokens[:client_id]
+      def tenant_id = @extra_tokens[:tenant_id]
+
+      def skype_spaces_token=(val)
+        @extra_tokens[:skype_spaces] = val
+      end
+
+      def refresh_token=(val)
+        @extra_tokens[:refresh] = val
+      end
+
+      def client_id=(val)
+        @extra_tokens[:client_id] = val
+      end
+
+      def tenant_id=(val)
+        @extra_tokens[:tenant_id] = val
+      end
 
       def save(**_kwargs) = @save_result
       def clear = nil
@@ -220,24 +243,14 @@ module Teems
         @transient_errors[path] = { error: error, remaining: times }
       end
 
-      def get(_endpoint, path, account:, params: {}, headers: {})
-        @calls << { method: :get, path: path, params: params, headers: headers, account: account }
-        @call_count += 1
-        @on_request&.call(path, @call_count)
-        check_errors(path)
-        result = find_response(path) || { 'value' => [] }
-        @on_response&.call(path, '200')
-        result
+      def get(_endpoint, path, account:, **)
+        @calls << { method: :get, path: path, account: account, ** }
+        record_and_respond(path, { 'value' => [] })
       end
 
       def post(_endpoint, path, account:, body: nil)
         @calls << { method: :post, path: path, body: body, account: account }
-        @call_count += 1
-        @on_request&.call(path, @call_count)
-        check_errors(path)
-        result = find_response(path) || {}
-        @on_response&.call(path, '200')
-        result
+        record_and_respond(path, {})
       end
 
       def delete(_endpoint, path, account:)
@@ -252,6 +265,15 @@ module Teems
       end
 
       private
+
+      def record_and_respond(path, default)
+        @call_count += 1
+        @on_request&.call(path, @call_count)
+        check_errors(path)
+        result = find_response(path) || default
+        @on_response&.call(path, '200')
+        result
+      end
 
       def check_errors(path)
         # Check transient errors first (they expire after N calls)

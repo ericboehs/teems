@@ -7,13 +7,15 @@ module CalCommandTests
     private
 
     def run_cal(args = [], stubs: {})
+      out = StringIO.new
+      err = StringIO.new
       with_temp_config do
-        return capture_output do |output|
-          runner = configured_runner(output: output)
-          stubs.each { |path, resp| runner.api_client.stub(path, resp) }
-          Teems::Commands::Cal.new(args, runner: runner).execute
-        end
+        output = Teems::Formatters::Output.new(io: out, err: err, color: false)
+        runner = configured_runner(output: output)
+        stubs.each { |path, resp| runner.api_client.stub(path, resp) }
+        Teems::Commands::Cal.new(args, runner: runner).execute
       end
+      { stdout: out.string, stderr: err.string }
     end
 
     def run_cal_runner(args = [], stubs: {})
@@ -58,22 +60,22 @@ module CalCommandTests
       end
     end
 
-    def run_create(args, stub_response: nil)
+    def run_create(args, stub_response: sample_event_data)
       full_args = ['create'] + args
       with_temp_config do
         return capture_output do |output|
           runner = configured_runner(output: output)
-          runner.api_client.stub('/v1.0/me/events', stub_response || sample_event_data)
+          runner.api_client.stub('/v1.0/me/events', stub_response)
           Teems::Commands::Cal.new(full_args, runner: runner).execute
         end
       end
     end
 
-    def run_create_runner(args, stub_response: nil)
+    def run_create_runner(args, stub_response: sample_event_data)
       full_args = ['create'] + args
       with_temp_config do
         runner = configured_runner
-        runner.api_client.stub('/v1.0/me/events', stub_response || sample_event_data)
+        runner.api_client.stub('/v1.0/me/events', stub_response)
         Teems::Commands::Cal.new(full_args, runner: runner).execute
         return runner
       end
@@ -104,7 +106,7 @@ module CalCommandTests
     def test_requires_auth
       with_temp_config do
         result = capture_output do |output|
-          store = mock_token_store(configured: false)
+          store = mock_unconfigured_store
           runner = Teems::Runner.new(output: output, token_store: store)
           Teems::Commands::Cal.new([], runner: runner).execute
         end
@@ -113,12 +115,12 @@ module CalCommandTests
     end
 
     def test_shows_help_with_help_flag
-      result = run_cal(['--help'])
-      assert_match(/teems cal/, result[:stdout])
-      assert_match(/USAGE:/, result[:stdout])
-      assert_match(/--days/, result[:stdout])
-      assert_match(/--week/, result[:stdout])
-      assert_match(/--date/, result[:stdout])
+      stdout = run_cal(['--help'])[:stdout]
+      assert_match(/teems cal/, stdout)
+      assert_match(/USAGE:/, stdout)
+      assert_match(/--days/, stdout)
+      assert_match(/--week/, stdout)
+      assert_match(/--date/, stdout)
     end
 
     def test_help_includes_show_subcommand
@@ -142,22 +144,22 @@ module CalCommandTests
     end
 
     def test_days_option
-      runner = run_cal_runner(['--days', '3'], stubs: { 'calendarView' => { 'value' => [] } }) do |r|
-        assert_equal 3, Teems::Commands::Cal.new(['--days', '3'], runner: r).options[:days]
+      runner = run_cal_runner(['--days', '3'], stubs: { 'calendarView' => { 'value' => [] } }) do |blk_runner|
+        assert_equal 3, Teems::Commands::Cal.new(['--days', '3'], runner: blk_runner).options[:days]
       end
       assert runner
     end
 
     def test_week_option
-      runner = run_cal_runner(['--week'], stubs: { 'calendarView' => { 'value' => [] } }) do |r|
-        assert Teems::Commands::Cal.new(['--week'], runner: r).options[:week]
+      runner = run_cal_runner(['--week'], stubs: { 'calendarView' => { 'value' => [] } }) do |blk_runner|
+        assert Teems::Commands::Cal.new(['--week'], runner: blk_runner).options[:week]
       end
       assert runner
     end
 
     def test_date_option
-      runner = run_cal_runner(['--date', '2026-01-20'], stubs: { 'calendarView' => { 'value' => [] } }) do |r|
-        assert_equal '2026-01-20', Teems::Commands::Cal.new(['--date', '2026-01-20'], runner: r).options[:date]
+      runner = run_cal_runner(['--date', '2026-01-20'], stubs: { 'calendarView' => { 'value' => [] } }) do |blk_runner|
+        assert_equal '2026-01-20', Teems::Commands::Cal.new(['--date', '2026-01-20'], runner: blk_runner).options[:date]
       end
       assert runner
     end
@@ -182,11 +184,11 @@ module CalCommandTests
 
     def test_events_are_numbered_in_output
       events = [sample_event_data, sample_event_data.merge('id' => 'event-2', 'subject' => 'Lunch Break')]
-      result = run_cal([], stubs: { 'calendarView' => { 'value' => events } })
-      assert_match(/\[1\]/, result[:stdout])
-      assert_match(/\[2\]/, result[:stdout])
-      assert_match(/Weekly Standup/, result[:stdout])
-      assert_match(/Lunch Break/, result[:stdout])
+      stdout = run_cal([], stubs: { 'calendarView' => { 'value' => events } })[:stdout]
+      assert_match(/\[1\]/, stdout)
+      assert_match(/\[2\]/, stdout)
+      assert_match(/Weekly Standup/, stdout)
+      assert_match(/Lunch Break/, stdout)
     end
 
     def test_limit_option_passed_to_api
@@ -357,12 +359,12 @@ module CalCommandTests
     end
 
     def test_help_includes_rsvp_subcommands
-      result = run_cal(['--help'])
-      assert_match(/accept <N>/, result[:stdout])
-      assert_match(/decline <N>/, result[:stdout])
-      assert_match(/tentative <N>/, result[:stdout])
-      assert_match(/--comment/, result[:stdout])
-      assert_match(/--no-send/, result[:stdout])
+      stdout = run_cal(['--help'])[:stdout]
+      assert_match(/accept <N>/, stdout)
+      assert_match(/decline <N>/, stdout)
+      assert_match(/tentative <N>/, stdout)
+      assert_match(/--comment/, stdout)
+      assert_match(/--no-send/, stdout)
     end
   end
 
@@ -411,13 +413,13 @@ module CalCommandTests
     end
 
     def test_create_help_included
-      result = run_cal(['--help'])
-      assert_match(/create "Title"/, result[:stdout])
-      assert_match(/--start/, result[:stdout])
-      assert_match(/--duration/, result[:stdout])
-      assert_match(/--all-day/, result[:stdout])
-      assert_match(/--teams/, result[:stdout])
-      assert_match(/--attendees/, result[:stdout])
+      stdout = run_cal(['--help'])[:stdout]
+      assert_match(/create "Title"/, stdout)
+      assert_match(/--start/, stdout)
+      assert_match(/--duration/, stdout)
+      assert_match(/--all-day/, stdout)
+      assert_match(/--teams/, stdout)
+      assert_match(/--attendees/, stdout)
     end
   end
 
@@ -594,12 +596,12 @@ module CalCommandTests
   class DeleteTest < Minitest::Test
     include SharedHelpers
 
-    def run_delete(num, event_id, stub_event: nil)
+    def run_delete(num, event_id, stub_event: sample_event_data)
       with_temp_config do
         return capture_output do |output|
           runner = configured_runner(output: output)
           runner.cache_store.save_calendar_ids({ num => event_id })
-          runner.api_client.stub('events', stub_event || sample_event_data)
+          runner.api_client.stub('events', stub_event)
           Teems::Commands::Cal.new(['delete', num], runner: runner).execute
         end
       end

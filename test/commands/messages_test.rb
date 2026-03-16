@@ -5,13 +5,15 @@ require 'test_helper'
 module MessagesCommandTests
   module Helpers
     def run_messages(args, stubs: {})
+      out = StringIO.new
+      err = StringIO.new
       with_temp_config do
-        capture_output do |output|
-          runner = configured_runner(output: output)
-          stubs.each { |path, resp| runner.api_client.stub(path, resp) }
-          Teems::Commands::Messages.new(args, runner: runner).execute
-        end
+        output = Teems::Formatters::Output.new(io: out, err: err, color: false)
+        runner = configured_runner(output: output)
+        stubs.each { |path, resp| runner.api_client.stub(path, resp) }
+        Teems::Commands::Messages.new(args, runner: runner).execute
       end
+      { stdout: out.string, stderr: err.string }
     end
 
     def run_messages_with_url(url)
@@ -28,7 +30,7 @@ module MessagesCommandTests
     def test_requires_auth
       with_temp_config do
         result = capture_output do |output|
-          store = mock_token_store(configured: false)
+          store = mock_unconfigured_store
           runner = Teems::Runner.new(output: output, token_store: store)
           Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner).execute
         end
@@ -112,10 +114,11 @@ module MessagesCommandTests
     def test_extracts_conversation_id_from_url
       url = 'https://teams.microsoft.com/l/message/19:abc@thread.v2/123?context=%7B%22contextType%22%3A%22chat%22%7D'
       runner = run_messages_with_url(url)
-      call = runner.api_client.calls.find { |c| c[:path].include?('messages') }
+      call = runner.api_client.calls.find { |call_entry| call_entry[:path].include?('messages') }
       assert call, 'Expected messages API to be called'
-      conv_id_present = call[:path].include?('19:abc@thread.v2') || call[:path].include?('19%3Aabc%40thread.v2')
-      assert conv_id_present, "Expected path to contain conversation ID, got: #{call[:path]}"
+      call_path = call[:path]
+      conv_id_present = call_path.include?('19:abc@thread.v2') || call_path.include?('19%3Aabc%40thread.v2')
+      assert conv_id_present, "Expected path to contain conversation ID, got: #{call_path}"
     end
 
     def test_extracts_team_id_from_channel_url
@@ -306,13 +309,13 @@ module MessagesCommandTests
     end
 
     def test_message_nil_created_at_display
-      msg = sample_graph_message.dup.tap { |m| m.delete('createdDateTime') }
+      msg = sample_graph_message.dup.tap { |msg_data| msg_data.delete('createdDateTime') }
       result = run_messages(['19:abc@thread.v2'], stubs: { 'messages' => { 'messages' => [msg] } })
       assert_match(/John Doe/, result[:stdout])
     end
 
     def test_json_output_with_nil_created_at
-      msg = sample_graph_message.dup.tap { |m| m.delete('createdDateTime') }
+      msg = sample_graph_message.dup.tap { |msg_data| msg_data.delete('createdDateTime') }
       result = run_messages(['--json', '19:abc@thread.v2'], stubs: { 'messages' => { 'messages' => [msg] } })
       json = JSON.parse(result[:stdout])
       assert_nil json.first['created_at']

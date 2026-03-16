@@ -342,7 +342,7 @@ module TokenRefresherTests
     def test_oidc_falls_back_on_network_error
       with_temp_config do |dir|
         refresher, store = build_oidc_refresher(dir)
-        refresher.define_singleton_method(:oidc_token_request) { |*| raise SocketError, 'fail' }
+        stub_oidc_network_error(refresher)
         refresher.authsvc_response = 'fallback-skype'
 
         assert refresher.refresh
@@ -351,6 +351,10 @@ module TokenRefresherTests
     end
 
     private
+
+    def stub_oidc_network_error(refresher)
+      refresher.define_singleton_method(:oidc_token_request) { |*| raise SocketError, 'fail' }
+    end
 
     def oidc_graph_response = { 'access_token' => 'new-auth', 'refresh_token' => 'rt2' }
     def oidc_skype_response = { 'access_token' => 'new-spaces', 'refresh_token' => 'rt3' }
@@ -388,9 +392,10 @@ module TokenRefresherTests
     def test_build_oidc_request_params
       with_temp_config do
         request = build_test_oidc_request
-        assert_includes request.body, 'grant_type=refresh_token'
-        assert_includes request.body, 'client_id=test-client'
-        assert_includes request.body, 'refresh_token=my-rt'
+        body = request.body
+        assert_includes body, 'grant_type=refresh_token'
+        assert_includes body, 'client_id=test-client'
+        assert_includes body, 'refresh_token=my-rt'
       end
     end
 

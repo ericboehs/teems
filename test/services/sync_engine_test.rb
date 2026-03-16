@@ -132,9 +132,9 @@ module SyncEngineTests
     def test_fetch_all_messages_nil_created_at_sorted
       with_temp_config do
         engine = build_engine
-        no_time = sample_ng_msg_message.dup.tap do |m|
-          m.delete('composetime')
-          m['id'] = 'no-time-msg'
+        no_time = sample_ng_msg_message.dup.tap do |msg|
+          msg.delete('composetime')
+          msg['id'] = 'no-time-msg'
         end
         stub_messages(engine, [no_time, sample_ng_msg_message])
         messages = engine.fetch_all_messages('19:test@thread.v2', Time.new(2026, 1, 1))
@@ -145,9 +145,9 @@ module SyncEngineTests
     def test_fetch_cutoff_stops_pagination
       with_temp_config do
         engine = build_engine
-        old_msg = sample_ng_msg_message.dup.tap do |m|
-          m['composetime'] = '2025-01-01T12:00:00.000Z'
-          m['id'] = 'old-msg'
+        old_msg = sample_ng_msg_message.dup.tap do |msg|
+          msg['composetime'] = '2025-01-01T12:00:00.000Z'
+          msg['id'] = 'old-msg'
         end
         stub_messages(engine, [old_msg], backward_link: 'https://api.example.com/messages?startTime=123')
         assert_equal 0, engine.fetch_all_messages('19:test@thread.v2', Time.new(2026, 1, 1)).length
@@ -157,10 +157,10 @@ module SyncEngineTests
     def test_fetch_all_messages_with_nil_created_at_msg
       with_temp_config do
         engine = build_engine
-        no_time = sample_ng_msg_message.dup.tap do |m|
-          m.delete('composetime')
-          m.delete('originalarrivaltime')
-          m['id'] = 'nil-time-msg-3'
+        no_time = sample_ng_msg_message.dup.tap do |msg|
+          msg.delete('composetime')
+          msg.delete('originalarrivaltime')
+          msg['id'] = 'nil-time-msg-3'
         end
         stub_messages(engine, [sample_ng_msg_message, no_time])
         assert engine.fetch_all_messages('19:test@thread.v2', Time.new(2026, 1, 1)).length >= 1
@@ -267,9 +267,9 @@ module SyncEngineTests
     def test_parse_page_messages_nil_created_at
       with_temp_config do
         engine = build_public_engine(:parse_page_messages)
-        msg = sample_ng_msg_message.dup.tap do |m|
-          m.delete('composetime')
-          m.delete('originalarrivaltime')
+        msg = sample_ng_msg_message.dup.tap do |msg_data|
+          msg_data.delete('composetime')
+          msg_data.delete('originalarrivaltime')
         end
         parsed, cutoff = engine.parse_page_messages([msg], Time.new(2026, 1, 1))
         assert_equal 1, parsed.length
@@ -297,7 +297,7 @@ module SyncEngineTests
       with_temp_config do
         err = StringIO.new
         engine = build_public_engine(:parse_page_messages, verbose_err: err)
-        old_msg = sample_ng_msg_message.dup.tap { |m| m['composetime'] = '2025-06-01T12:00:00.000Z' }
+        old_msg = sample_ng_msg_message.dup.tap { |msg| msg['composetime'] = '2025-06-01T12:00:00.000Z' }
         _parsed, cutoff = engine.parse_page_messages([old_msg], Time.new(2026, 1, 1))
         assert cutoff
         assert_match(/cutoff/, err.string)
@@ -324,10 +324,10 @@ module SyncEngineTests
     def test_parse_page_with_nil_and_real_dates
       with_temp_config do
         engine = build_public_engine(:parse_page_messages)
-        no_time = sample_ng_msg_message.dup.tap do |m|
-          m.delete('composetime')
-          m.delete('originalarrivaltime')
-          m['id'] = 'no-time-2'
+        no_time = sample_ng_msg_message.dup.tap do |msg|
+          msg.delete('composetime')
+          msg.delete('originalarrivaltime')
+          msg['id'] = 'no-time-2'
         end
         parsed, _cutoff = engine.parse_page_messages([sample_ng_msg_message, no_time], Time.new(2026, 1, 1))
         assert_equal 2, parsed.length

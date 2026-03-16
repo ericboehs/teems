@@ -187,7 +187,7 @@ module BaseCommandTests
     def test_require_auth_returns_error_when_not_configured
       with_temp_config do
         result = capture_output do |output|
-          store = mock_token_store(configured: false)
+          store = mock_unconfigured_store
           runner = Teems::Runner.new(output: output, token_store: store)
           OutputTestCommand.new([], runner: runner).test_require_auth
         end
@@ -278,8 +278,8 @@ module BaseCommandTests
       with_temp_config do |dir|
         cmd, call_count_ref = build_refresh_cmd(dir, refresh_succeeds: true)
         result = cmd.test_with_token_refresh do
-          call_count_ref[:n] += 1
-          raise Teems::ApiError.new('Invalid token', status_code: 401) if call_count_ref[:n] == 1
+          count = call_count_ref[:n] += 1
+          raise Teems::ApiError.new('Invalid token', status_code: 401) if count == 1
 
           'success after refresh'
         end

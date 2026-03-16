@@ -15,10 +15,11 @@ module ChatTests
     def test_from_api_parses_created_at
       chat = Teems::Models::Chat.from_api(sample_chat)
 
-      assert_instance_of Time, chat.created_at
-      assert_equal 2026, chat.created_at.year
-      assert_equal 1, chat.created_at.month
-      assert_equal 15, chat.created_at.day
+      created_at = chat.created_at
+      assert_instance_of Time, created_at
+      assert_equal 2026, created_at.year
+      assert_equal 1, created_at.month
+      assert_equal 15, created_at.day
     end
 
     def test_from_api_parses_last_updated
