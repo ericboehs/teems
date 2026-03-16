@@ -77,6 +77,8 @@ module Teems
         start_time = Time.parse(start_match[1]).getlocal
         end_time = end_match ? Time.parse(end_match[1]).getlocal : nil
         [start_time, end_time]
+      rescue ArgumentError
+        nil
       end
 
       def format_time_range(start_time, end_time)

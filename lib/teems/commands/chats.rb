@@ -21,7 +21,7 @@ module Teems
       end
 
       def parse_chat(chat_data, space_names)
-        return nil if chat_data['id']&.start_with?('48:')
+        return nil if chat_data['id'] == '48:notifications'
 
         chat = Models::Chat.from_api(chat_data)
         resolve_channel_name(chat, chat_data, space_names)
