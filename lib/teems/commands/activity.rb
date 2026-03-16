@@ -167,6 +167,7 @@ module Teems
         items = fetch_and_parse.sort_by { |item| item[:time] || '' }.reverse
         items = items.select { |item| item[:unread] } if @options[:unread]
         render_activities(items)
+        0
       rescue ApiError => e
         error("Failed to fetch activity: #{e.message}")
         1
@@ -187,7 +188,6 @@ module Teems
         else
           display_activities(items)
         end
-        0
       end
 
       def parse_activity(msg)

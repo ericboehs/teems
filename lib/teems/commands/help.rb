@@ -41,7 +41,8 @@ module Teems
       end
 
       def command_descriptions
-        [['auth', 'Authenticate with Teams'],
+        [['activity', 'Show activity feed (mentions, reactions, calendar)'],
+         ['auth', 'Authenticate with Teams'],
          ['cal', 'List calendar events and view details'],
          ['channels', 'List joined teams and channels'],
          ['chats', 'List recent chats'],
