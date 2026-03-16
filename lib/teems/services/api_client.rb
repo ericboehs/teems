@@ -76,6 +76,7 @@ module Teems
     end
 
     # HTTP client for Teams API with connection pooling and multi-endpoint support
+    # :reek:DataClump
     class ApiClient
       include ConnectionPool
       include ResponseHandler
@@ -160,8 +161,8 @@ module Teems
         track_request(path)
         response = yield(http)
         process_response(path, response)
-      rescue *NETWORK_ERRORS => err
-        raise ApiError, "Network error: #{err.message}"
+      rescue *NETWORK_ERRORS => e
+        raise ApiError, "Network error: #{e.message}"
       end
 
       def track_request(path)

@@ -21,8 +21,8 @@ module Teems
 
       def try_oidc_refresh
         oidc_refresh
-      rescue *TokenRefresher::RECOVERABLE_ERRORS => err
-        log("OIDC refresh error: #{err.class}: #{err.message}, falling back to authsvc...")
+      rescue *TokenRefresher::RECOVERABLE_ERRORS => e
+        log("OIDC refresh error: #{e.class}: #{e.message}, falling back to authsvc...")
         nil
       end
 
@@ -111,8 +111,8 @@ module Teems
 
       def refresh
         (oidc_capable? && try_oidc_refresh) || attempt_authsvc_refresh
-      rescue *RECOVERABLE_ERRORS => err
-        log("Token exchange error: #{err.class}: #{err.message}")
+      rescue *RECOVERABLE_ERRORS => e
+        log("Token exchange error: #{e.class}: #{e.message}")
         false
       end
 

@@ -10,10 +10,10 @@ module CLITests
 
     def capture_cli_output(argv)
       out = StringIO.new
-      err = StringIO.new
-      output = Teems::Formatters::Output.new(io: out, err: err, color: false)
+      e = StringIO.new
+      output = Teems::Formatters::Output.new(io: out, err: e, color: false)
       exit_code = Teems::CLI.new(argv, output: output).run
-      { stdout: out.string, stderr: err.string, exit_code: exit_code }
+      { stdout: out.string, stderr: e.string, exit_code: exit_code }
     end
   end
 
@@ -174,8 +174,8 @@ module CLITests
         raise error_class, "Test #{command_name.tr('-', ' ')}" if error_class
 
         super
-      rescue Teems::ConfigError, Teems::AuthError, Teems::ApiError => err
-        handle_known_error(err)
+      rescue Teems::ConfigError, Teems::AuthError, Teems::ApiError => e
+        handle_known_error(e)
       end
     end
 
@@ -263,10 +263,10 @@ module CLITests
 
     def run_mock_error_cli(klass, args = ['trigger-error'])
       out = StringIO.new
-      err = StringIO.new
-      output = Teems::Formatters::Output.new(io: out, err: err, color: false)
+      e = StringIO.new
+      output = Teems::Formatters::Output.new(io: out, err: e, color: false)
       exit_code = klass.new(args, output: output).run
-      { stdout: out.string, stderr: err.string, exit_code: exit_code }
+      { stdout: out.string, stderr: e.string, exit_code: exit_code }
     end
   end
 
@@ -337,10 +337,10 @@ module CLITests
 
     def run_verbose_cli(klass, args)
       out = StringIO.new
-      err = StringIO.new
-      output = Teems::Formatters::Output.new(io: out, err: err, color: false, mode: :verbose)
+      e = StringIO.new
+      output = Teems::Formatters::Output.new(io: out, err: e, color: false, mode: :verbose)
       exit_code = klass.new(args, output: output).run
-      { stdout: out.string, stderr: err.string, exit_code: exit_code }
+      { stdout: out.string, stderr: e.string, exit_code: exit_code }
     end
   end
 
@@ -371,8 +371,8 @@ module CLITests
     def test_ensure_closes_api_client_after_command
       with_temp_config do
         out = StringIO.new
-        err = StringIO.new
-        output = Teems::Formatters::Output.new(io: out, err: err, color: false)
+        e = StringIO.new
+        output = Teems::Formatters::Output.new(io: out, err: e, color: false)
         cli = MockCloseCLI.new(%w[auth status], output: output)
         exit_code = cli.run
 

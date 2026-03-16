@@ -106,7 +106,7 @@ class ChannelsCommandTest < Minitest::Test
     result.merge(exit_code: exit_code)
   end
 
-  def stub_api(api, stubs) = stubs.each { |k, v| api.stub(k, { 'value' => v }) }
+  def stub_api(api, stubs) = stubs.each { |path, data| api.stub(path, { 'value' => data }) }
 
   def run_channels_with_error(message)
     capture_output do |output|

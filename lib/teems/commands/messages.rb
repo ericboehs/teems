@@ -132,8 +132,8 @@ module Teems
           )
         end
         display_messages(extract_messages_data(response))
-      rescue ApiError => err
-        error("Failed to fetch channel messages: #{err.message}")
+      rescue ApiError => e
+        error("Failed to fetch channel messages: #{e.message}")
       end
 
       def fetch_chat_messages(chat_id)
@@ -141,8 +141,8 @@ module Teems
           runner.messages_api.chat_messages(chat_id: chat_id, limit: @options[:limit])
         end
         display_messages(extract_messages_data(response))
-      rescue ApiError => err
-        error("Failed to fetch chat messages: #{err.message}")
+      rescue ApiError => e
+        error("Failed to fetch chat messages: #{e.message}")
       end
 
       def extract_messages_data(response) = response['messages'] || response['posts'] || response['value'] || []

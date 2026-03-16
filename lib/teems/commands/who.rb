@@ -17,8 +17,8 @@ module Teems
 
       def fetch_schedule(email, timezone, work_start, work_end)
         request_schedule(email, timezone, *schedule_time_range(work_start, work_end))
-      rescue ApiError => err
-        debug("Could not fetch schedule for #{email}: #{err.message}")
+      rescue ApiError => e
+        debug("Could not fetch schedule for #{email}: #{e.message}")
         nil
       end
 
@@ -305,8 +305,8 @@ module Teems
 
       def lookup_user
         dispatch_lookup(positional_args.join(' '))
-      rescue ApiError => err
-        error("Failed to look up user: #{err.message}")
+      rescue ApiError => e
+        error("Failed to look up user: #{e.message}")
         1
       end
 
@@ -348,8 +348,8 @@ module Teems
         return nil unless user_id
 
         fetch_teams_presence("8:orgid:#{user_id}")
-      rescue ApiError => err
-        debug("Could not fetch presence for #{user_id}: #{err.message}")
+      rescue ApiError => e
+        debug("Could not fetch presence for #{user_id}: #{e.message}")
         nil
       end
 

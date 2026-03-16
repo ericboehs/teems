@@ -66,8 +66,8 @@ module Teems
         return applescript_failure(status) unless status.success?
 
         output.strip
-      rescue IOError, SystemCallError => err
-        log_applescript_error(err)
+      rescue IOError, SystemCallError => e
+        log_applescript_error(e)
       end
 
       def applescript_failure(status)
@@ -96,8 +96,8 @@ module Teems
 
       def extract_tokens_v2
         poll_decrypt_result unless kick_off_decryption == 'no_key'
-      rescue JSON::ParserError => err
-        log("Failed to parse v2 token decryption result: #{err.message}")
+      rescue JSON::ParserError => e
+        log("Failed to parse v2 token decryption result: #{e.message}")
         nil
       end
 
@@ -171,8 +171,8 @@ module Teems
 
       def exchange_skype_token(skype_spaces_token)
         parse_exchange_result_safe(run_safari_js(build_exchange_script(skype_spaces_token)))
-      rescue JSON::ParserError => err
-        log("Failed to parse token exchange result: #{err.message}")
+      rescue JSON::ParserError => e
+        log("Failed to parse token exchange result: #{e.message}")
         nil
       end
 
@@ -243,8 +243,8 @@ module Teems
 
       def extract_tokens_v1
         build_v1_tokens(parse_safari_json(EXTRACT_TOKENS_JS))
-      rescue JSON::ParserError => err
-        log("Failed to parse v1 token extraction result: #{err.message}")
+      rescue JSON::ParserError => e
+        log("Failed to parse v1 token extraction result: #{e.message}")
         nil
       end
 

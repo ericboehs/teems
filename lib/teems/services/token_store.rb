@@ -20,16 +20,16 @@ module Teems
       def save(name:, auth_token:, skype_token: nil, **extra_tokens)
         @paths.ensure_config_dir
         write_token_file(build_save_data(name, auth_token, skype_token, extra_tokens))
-      rescue SystemCallError, IOError => err
-        warn "teems: Could not save tokens: #{err.message}"
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not save tokens: #{e.message}"
         false
       end
 
       # Update just the skype_token (used during refresh)
       def update_skype_token(skype_token)
         with_loaded_tokens { |data| apply_skype_token(data, skype_token) }
-      rescue SystemCallError, IOError => err
-        warn "teems: Could not update token file: #{err.message}"
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not update token file: #{e.message}"
         false
       end
 
@@ -44,8 +44,8 @@ module Teems
       # Update all tokens at once (used by OIDC refresh)
       def update_all_tokens(**tokens)
         with_loaded_tokens { |data| apply_all_tokens(data, tokens) }
-      rescue SystemCallError, IOError => err
-        warn "teems: Could not update token file: #{err.message}"
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not update token file: #{e.message}"
         false
       end
 
@@ -127,8 +127,8 @@ module Teems
         return {} unless File.exist?(tokens_file)
 
         JSON.parse(File.read(tokens_file))
-      rescue JSON::ParserError => err
-        warn "teems: Token file corrupted (#{err.message}), please re-authenticate with: teems auth login"
+      rescue JSON::ParserError => e
+        warn "teems: Token file corrupted (#{e.message}), please re-authenticate with: teems auth login"
         {}
       end
     end

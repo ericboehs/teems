@@ -106,6 +106,7 @@ module Teems
         "  #{@output.cyan("[#{number}]")} #{time} #{subject}#{list_item_location(event)}"
       end
 
+      # :reek:FeatureEnvy
       def format_event_subject(event)
         title = event.subject
         event.cancelled? ? gray_text("#{title} (cancelled)") : title

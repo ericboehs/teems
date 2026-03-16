@@ -175,8 +175,8 @@ module Teems
       def show_activity
         render_activities(filtered_activities)
         0
-      rescue ApiError => err
-        activity_fetch_error(err)
+      rescue ApiError => e
+        activity_fetch_error(e)
       end
 
       def filtered_activities

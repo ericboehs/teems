@@ -38,8 +38,8 @@ module Teems
         return skip_chat(chat, index, total) if skip_reason(chat.id)
 
         sync_chat_with_logging(chat, index, total)
-      rescue StandardError => err
-        handle_sync_error(chat, err)
+      rescue StandardError => e
+        handle_sync_error(chat, e)
       end
 
       def sync_chat_with_logging(chat, index, total)
@@ -104,9 +104,9 @@ module Teems
 
       def with_404_retry(chat, &)
         yield
-      rescue ApiError => err
+      rescue ApiError => e
         output.flush
-        return handle_non_404_error(chat, err) unless err.not_found?
+        return handle_non_404_error(chat, e) unless e.not_found?
 
         retry_after_not_found(chat, &)
       end
@@ -120,8 +120,8 @@ module Teems
         debug("  Got 404, retrying in #{RETRY_DELAY_SECONDS}s...")
         sleep(RETRY_DELAY_SECONDS)
         yield
-      rescue ApiError => err
-        handle_persistent_not_found(chat, err)
+      rescue ApiError => e
+        handle_persistent_not_found(chat, e)
       end
 
       def handle_persistent_not_found(chat, error)
@@ -144,8 +144,8 @@ module Teems
         return build_single_chat if @options[:chat_id]
 
         fetch_all_chats
-      rescue ApiError => err
-        error("Failed to fetch chats: #{err.message}")
+      rescue ApiError => e
+        error("Failed to fetch chats: #{e.message}")
         nil
       end
 
@@ -369,9 +369,9 @@ module Teems
 
       def save_state_safely
         @sync_store.save_state(@state)
-      rescue StandardError => err
+      rescue StandardError => e
         @stats[:errors] += 1
-        error("Warning: Failed to save sync state: #{err.message}")
+        error("Warning: Failed to save sync state: #{e.message}")
       end
 
       def since_time = Time.now - ((@options[:since_days] || DEFAULT_SINCE_DAYS) * 86_400)

@@ -43,8 +43,8 @@ module Teems
 
       def list_teams_and_channels
         display_teams_list(fetch_teams)
-      rescue ApiError => err
-        teams_fetch_error(err)
+      rescue ApiError => e
+        teams_fetch_error(e)
       end
 
       def display_teams_list(teams)
@@ -82,8 +82,8 @@ module Teems
       def display_team_channels(api, team_data)
         channels = api.list_channels(team_id: team_data['id'])['value'] || []
         channels.each { |channel_data| display_channel(channel_data, team_data) }
-      rescue ApiError => err
-        puts "  #{output.red('Error:')} #{err.message}"
+      rescue ApiError => e
+        puts "  #{output.red('Error:')} #{e.message}"
       end
 
       def display_channel(channel_data, team_data)

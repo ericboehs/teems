@@ -28,8 +28,8 @@ module Teems
       route_command(command_name, args)
     rescue Interrupt
       handle_interrupt
-    rescue StandardError => err
-      handle_error(err)
+    rescue StandardError => e
+      handle_error(e)
     end
 
     def route_command(command_name, args)
@@ -53,8 +53,8 @@ module Teems
 
     def dispatch_command(command_name, args)
       COMMANDS[command_name] ? run_command(command_name, args) : show_unknown_command(command_name)
-    rescue ConfigError, AuthError, ApiError => err
-      handle_known_error(err)
+    rescue ConfigError, AuthError, ApiError => e
+      handle_known_error(e)
     end
 
     def show_unknown_command(command_name)

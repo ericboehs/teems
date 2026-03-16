@@ -9,8 +9,8 @@ module Teems
       def log(error, paths: XdgPaths.new)
         log_file = prepare_log_file(paths)
         append_error_entry(log_file, error)
-      rescue SystemCallError, IOError => err
-        warn "teems: Could not write error log: #{err.message}"
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not write error log: #{e.message}"
         nil
       end
 

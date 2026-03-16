@@ -54,6 +54,7 @@ module Teems
 
       private
 
+      # :reek:TooManyStatements
       def paginate_messages(chat_id, start_time)
         messages = []
         backward_link = nil

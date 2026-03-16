@@ -2,6 +2,3 @@ AllCops:
   TargetRubyVersion: 3.2
   NewCops: enable
   SuggestExtensions: false
-
-Naming/RescuedExceptionsVariableName:
-  PreferredName: err

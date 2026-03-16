@@ -323,8 +323,8 @@ module HeadlessExtractTests
 
         log('Trying headless token extraction...')
         handle_helper_result(output, status.exitstatus)
-      rescue StandardError => err
-        log("Headless extraction error: #{err.message}")
+      rescue StandardError => e
+        log("Headless extraction error: #{e.message}")
         nil
       end
     end

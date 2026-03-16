@@ -79,8 +79,8 @@ module Teems
         return error("File not found: #{file_path}") unless File.exist?(file_path)
 
         read_and_save_token_file(file_path)
-      rescue Errno::EACCES => err
-        error("Cannot read file: #{err.message}")
+      rescue Errno::EACCES => e
+        error("Cannot read file: #{e.message}")
       rescue Errno::EISDIR
         error("Path is a directory, not a file: #{file_path}")
       end

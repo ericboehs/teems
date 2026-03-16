@@ -24,16 +24,16 @@ module Teems
 
       def fetch_my_manager(_user_id)
         with_token_refresh { runner.users_api.manager_me }
-      rescue ApiError => err
-        raise unless err.not_found?
+      rescue ApiError => e
+        raise unless e.not_found?
 
         nil
       end
 
       def fetch_user_manager(user_id)
         with_token_refresh { runner.users_api.manager(user_id) }
-      rescue ApiError => err
-        raise unless err.not_found?
+      rescue ApiError => e
+        raise unless e.not_found?
 
         nil
       end
@@ -48,14 +48,14 @@ module Teems
 
       def fetch_my_reports(_user_id)
         with_token_refresh { runner.users_api.direct_reports_me }
-      rescue ApiError => err
-        handle_reports_error(err, 'direct reports')
+      rescue ApiError => e
+        handle_reports_error(e, 'direct reports')
       end
 
       def fetch_user_reports(user_id)
         with_token_refresh { runner.users_api.direct_reports(user_id) }
-      rescue ApiError => err
-        handle_reports_error(err, "direct reports for #{user_id}")
+      rescue ApiError => e
+        handle_reports_error(e, "direct reports for #{user_id}")
       end
 
       def handle_reports_error(err, context)
@@ -186,8 +186,8 @@ module Teems
       def show_org_chart
         target = resolve_target
         target ? display_org(target) : 1
-      rescue ApiError => err
-        org_fetch_error(err)
+      rescue ApiError => e
+        org_fetch_error(e)
       end
 
       def org_fetch_error(err)

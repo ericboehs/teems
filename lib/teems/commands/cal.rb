@@ -204,8 +204,8 @@ module Teems
         return event_id if event_id.is_a?(Integer)
 
         render_single_event(event_id)
-      rescue ApiError => err
-        api_error_result('Failed to fetch event', err)
+      rescue ApiError => e
+        api_error_result('Failed to fetch event', e)
       end
 
       def validated_event_id
@@ -239,8 +239,8 @@ module Teems
         return event_id if event_id.is_a?(Integer)
 
         send_rsvp(event_id)
-      rescue ApiError => err
-        api_error_result('Failed to respond to event', err)
+      rescue ApiError => e
+        api_error_result('Failed to respond to event', e)
       end
 
       def send_rsvp(event_id)
@@ -281,8 +281,8 @@ module Teems
         event = fetch_and_delete(event_id)
         display_delete_result(event)
         0
-      rescue ApiError => err
-        api_error_result('Failed to delete event', err)
+      rescue ApiError => e
+        api_error_result('Failed to delete event', e)
       end
 
       def fetch_and_delete(event_id)
@@ -352,8 +352,8 @@ module Teems
         return missing_subject_error unless @create_subject
 
         validated_create_event
-      rescue ApiError => err
-        api_error_result('Failed to create event', err)
+      rescue ApiError => e
+        api_error_result('Failed to create event', e)
       end
 
       def validated_create_event
@@ -543,8 +543,8 @@ module Teems
         return error("Invalid date: #{@options[:date]}") && 1 unless range
 
         fetch_and_display_events(range)
-      rescue ApiError => err
-        api_error_result('Failed to fetch calendar', err)
+      rescue ApiError => e
+        api_error_result('Failed to fetch calendar', e)
       end
 
       def fetch_and_display_events(range)

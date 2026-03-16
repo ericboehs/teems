@@ -51,8 +51,8 @@ module Teems
           return {} unless query_string
 
           parse_context_param(extract_context_param(query_string))
-        rescue JSON::ParserError => err
-          log_context_parse_error(err)
+        rescue JSON::ParserError => e
+          log_context_parse_error(e)
         end
 
         def parse_context_param(context_json)
