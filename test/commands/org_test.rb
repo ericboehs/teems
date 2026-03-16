@@ -317,4 +317,29 @@ module OrgCommandTests
       assert_equal 'Worker', json['direct_reports'].first['display_name']
     end
   end
+
+  class SubReportErrorTest < Minitest::Test
+    include Helpers
+
+    def test_user_report_500_raises_through
+      user = profile_data(id: 'me-1', name: 'Boss')
+      rep = profile_data(id: 'rep-1', name: 'Worker')
+      result = run_org(['--depth', '2']) do |runner|
+        stub_boss_with_report(runner, user, rep)
+        runner.api_client.stub_error('users/rep-1/directReports',
+                                     Teems::ApiError.new('Server error', status_code: 500))
+      end
+
+      assert_equal 1, result[:exit_code]
+      assert_match(/Failed to fetch org chart/, result[:stderr])
+    end
+
+    private
+
+    def stub_boss_with_report(runner, user, rep)
+      runner.api_client.stub('/v1.0/me', user)
+      stub_not_found(runner, '/v1.0/me/manager')
+      runner.api_client.stub('/v1.0/me/directReports', { 'value' => [rep] })
+    end
+  end
 end
