@@ -22,7 +22,7 @@ Gem::Specification.new do |spec|
 
   # Specify which files should be added to the gem
   spec.files = Dir.chdir(__dir__) do
-    Dir['{bin,lib}/**/*', 'LICENSE', 'README.md', 'CHANGELOG.md'].reject do |f|
+    Dir['{bin,lib,support,docs}/**/*', 'LICENSE', 'README.md', 'CHANGELOG.md'].reject do |f|
       File.directory?(f) || f.end_with?('.bash')
     end
   end

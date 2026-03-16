@@ -236,7 +236,10 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
         let parts = token.split(separator: ".")
         guard parts.count >= 2 else { return nil }
 
+        // JWT uses base64url encoding — convert to standard base64
         var payload = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
         while payload.count % 4 != 0 { payload += "=" }
 
         guard let data = Data(base64Encoded: payload),
