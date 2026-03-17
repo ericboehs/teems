@@ -225,6 +225,8 @@ module Teems
 
       def fetch_current_events
         range = compute_date_range
+        return [] unless range
+
         fetch_events(range)
       end
     end
@@ -365,7 +367,7 @@ module Teems
       end
 
       def read_selection_input
-        output.print "\nEnter # for details (1-#{@interactive_events.length}) or q to quit: "
+        output.print "\nEnter # or hash for details (1-#{@interactive_events.length}) or q to quit: "
         output.flush
         @last_input = $stdin.gets&.strip.to_s
         @last_input unless @last_input.empty? || @last_input == 'q'
