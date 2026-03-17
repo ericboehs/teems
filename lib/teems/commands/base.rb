@@ -45,7 +45,6 @@ module Teems
       end
 
       COMMON_OPTIONS = {
-        '-n' => :limit, '--limit' => :limit,
         '-v' => :verbose, '--verbose' => :verbose,
         '-q' => :quiet, '--quiet' => :quiet,
         '--json' => :json, '-h' => :help, '--help' => :help
