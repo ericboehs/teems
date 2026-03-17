@@ -30,10 +30,6 @@ module CalCommandTests
       end
     end
 
-    def calendar_view_with_events(*events)
-      { 'calendarView' => { 'value' => events } }
-    end
-
     def run_cal_with_resolved_show(args, events_data)
       with_temp_config do
         return capture_output do |output|
