@@ -86,27 +86,6 @@ module EventTests
       assert event.cancelled?
     end
 
-    def test_recurring_occurrence
-      assert Teems::Models::Event.from_api(sample_event_data.merge('type' => 'occurrence')).recurring?
-    end
-
-    def test_recurring_exception
-      assert Teems::Models::Event.from_api(sample_event_data.merge('type' => 'exception')).recurring?
-    end
-
-    def test_not_recurring_single_instance
-      refute Teems::Models::Event.from_api(sample_event_data.merge('type' => 'singleInstance')).recurring?
-    end
-
-    def test_not_recurring_nil
-      refute Teems::Models::Event.from_api(sample_event_data).recurring?
-    end
-
-    def test_event_type_parsed
-      event = Teems::Models::Event.from_api(sample_event_data.merge('type' => 'occurrence'))
-      assert_equal 'occurrence', event.event_type
-    end
-
     def test_time_range_display_for_regular_event
       event = Teems::Models::Event.from_api(sample_event_data)
 
@@ -357,6 +336,29 @@ module EventTests
 
     def refute_line_includes(lines, text)
       refute(lines.any? { |line| line.include?(text) }, "Did not expect a line containing '#{text}'")
+    end
+  end
+
+  class RecurrenceTest < Minitest::Test
+    def test_recurring_occurrence
+      assert Teems::Models::Event.from_api(sample_event_data.merge('type' => 'occurrence')).recurring?
+    end
+
+    def test_recurring_exception
+      assert Teems::Models::Event.from_api(sample_event_data.merge('type' => 'exception')).recurring?
+    end
+
+    def test_not_recurring_single_instance
+      refute Teems::Models::Event.from_api(sample_event_data.merge('type' => 'singleInstance')).recurring?
+    end
+
+    def test_not_recurring_nil
+      refute Teems::Models::Event.from_api(sample_event_data).recurring?
+    end
+
+    def test_event_type_parsed
+      event = Teems::Models::Event.from_api(sample_event_data.merge('type' => 'occurrence'))
+      assert_equal 'occurrence', event.event_type
     end
   end
 end
