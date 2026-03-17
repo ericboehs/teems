@@ -141,5 +141,13 @@ module MessageFormatterTests
 
       assert_match(/\e\[1mJane Smith\e\[0m/, formatter.format(message))
     end
+
+    def test_format_includes_short_hash
+      formatter = Teems::Formatters::MessageFormatter.new(output: test_output)
+      message = build_message(id: 'msg-123')
+      expected_hash = Digest::SHA256.hexdigest('msg-123')[0, 6]
+
+      assert_includes formatter.format(message), expected_hash
+    end
   end
 end

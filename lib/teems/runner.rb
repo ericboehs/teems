@@ -1,8 +1,20 @@
 # frozen_string_literal: true
 
 module Teems
+  # API factory methods for Runner, extracted to keep method count manageable
+  module ApiFactories
+    def channels_api = Api::Channels.new(api_client, account)
+    def chats_api = Api::Chats.new(api_client, account)
+    def messages_api = Api::Messages.new(api_client, account)
+    def calendar_api = Api::Calendar.new(api_client, account)
+    def users_api = Api::Users.new(api_client, account)
+    def files_api = Api::Files.new(api_client, account)
+  end
+
   # Dependency injection container providing services to commands
   class Runner
+    include ApiFactories
+
     attr_reader :output, :config, :token_store, :api_client, :cache_store
 
     def initialize(
@@ -28,27 +40,6 @@ module Teems
 
     def configured?
       @token_store.configured?
-    end
-
-    # API helpers - create fresh instances to get latest account/tokens
-    def channels_api
-      Api::Channels.new(@api_client, account)
-    end
-
-    def chats_api
-      Api::Chats.new(@api_client, account)
-    end
-
-    def messages_api
-      Api::Messages.new(@api_client, account)
-    end
-
-    def calendar_api
-      Api::Calendar.new(@api_client, account)
-    end
-
-    def users_api
-      Api::Users.new(@api_client, account)
     end
 
     # Clear any cached API instances after token refresh

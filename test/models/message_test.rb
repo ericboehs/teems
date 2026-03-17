@@ -263,4 +263,29 @@ module MessageTests
       assert_equal [], Teems::Models::Message.from_api(sample_graph_message).mentions
     end
   end
+
+  # Tests for short_hash method
+  class ShortHashTest < Minitest::Test
+    def test_short_hash_returns_six_characters
+      message = Teems::Models::Message.from_api(sample_graph_message)
+      assert_equal 6, message.short_hash.length
+    end
+
+    def test_short_hash_is_hex_string
+      message = Teems::Models::Message.from_api(sample_graph_message)
+      assert_match(/\A[0-9a-f]{6}\z/, message.short_hash)
+    end
+
+    def test_short_hash_is_deterministic
+      message = Teems::Models::Message.from_api(sample_graph_message)
+      first_call = message.short_hash
+      assert_equal first_call, message.short_hash
+    end
+
+    def test_short_hash_differs_for_different_ids
+      original = Teems::Models::Message.from_api(sample_graph_message)
+      different = Teems::Models::Message.from_api(sample_graph_message.merge('id' => 'different-id'))
+      refute_equal original.short_hash, different.short_hash
+    end
+  end
 end

@@ -101,6 +101,7 @@ module Teems
         reactions_data.map { |reaction| { type: reaction['reactionType'], count: reaction['user']&.length || 1 } }
       end
 
+      def short_hash = Digest::SHA256.hexdigest(id.to_s)[0, 6]
       def timestamp = created_at
       def reply? = !!reply_to_id
       def edited? = !!edited

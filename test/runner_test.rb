@@ -112,5 +112,12 @@ module RunnerTests
         assert_kind_of Teems::Api::Calendar, Teems::Runner.new.calendar_api
       end
     end
+
+    def test_files_api_returns_files_api
+      with_temp_config do |dir|
+        write_tokens_file(dir, { 'auth_token' => 'test-auth', 'skype_token' => 'test-skype' })
+        assert_kind_of Teems::Api::Files, Teems::Runner.new.files_api
+      end
+    end
   end
 end
