@@ -373,4 +373,226 @@ module MessagesCommandTests
       assert_includes result[:stdout], 'Jane Smith'
     end
   end
+
+  # Tests for short hash display in output and JSON
+  class ShortHashTest < Minitest::Test
+    include Helpers
+
+    def test_displays_short_hash_in_output
+      result = run_messages(['19:abc@thread.v2'],
+                            stubs: { 'messages' => { 'messages' => [sample_ng_msg_message] } })
+      expected_hash = Digest::SHA256.hexdigest('1768935087318')[0, 6]
+      assert_includes result[:stdout], expected_hash
+    end
+
+    def test_json_output_includes_short_hash
+      result = run_messages(['--json', '19:abc@thread.v2'],
+                            stubs: { 'messages' => { 'messages' => [sample_ng_msg_message] } })
+      json = JSON.parse(result[:stdout])
+      expected_hash = Digest::SHA256.hexdigest('1768935087318')[0, 6]
+      assert_equal expected_hash, json.first['short_hash']
+    end
+  end
+
+  # Shared download test setup helpers
+  module DownloadHelpers
+    include Helpers
+
+    DRIVE_ITEM_STUB = { '@microsoft.graph.downloadUrl' => 'https://cdn.example.com/report.pdf' }.freeze
+
+    private
+
+    def msg_with_sharepoint_attachment
+      msg_with_filename('report.pdf')
+    end
+
+    def msg_with_filename(name)
+      files = [{
+        'fileName' => name,
+        'sharepointIds' => { 'siteId' => 's1', 'listId' => 'l1', 'listItemUniqueId' => 'i1' }
+      }]
+      sample_ng_msg_message.merge('properties' => { 'files' => JSON.generate(files) })
+    end
+
+    def mock_file_downloader_bytes(bytes)
+      downloader = Object.new
+      downloader.define_singleton_method(:download) do |_url, path|
+        File.write(path, 'x' * [bytes, 100].min)
+        bytes
+      end
+      downloader
+    end
+
+    def run_download(tmpdir, output:, downloader: nil, msg: nil)
+      runner = configured_runner(output: output)
+      runner.api_client.stub('messages', { 'messages' => [msg || msg_with_sharepoint_attachment] })
+      runner.api_client.stub('driveItem', DRIVE_ITEM_STUB)
+      cmd = Teems::Commands::Messages.new(['--download', '-o', tmpdir, '19:abc@thread.v2'], runner: runner)
+      cmd.instance_variable_set(:@file_downloader, downloader) if downloader
+      cmd.execute
+      runner
+    end
+  end
+
+  # Tests for download flag parsing and no-attachment handling
+  class DownloadOptionsTest < Minitest::Test
+    include DownloadHelpers
+
+    def test_parses_download_flag
+      with_temp_config do
+        cmd = Teems::Commands::Messages.new(['--download', '19:abc@thread.v2'], runner: configured_runner)
+        assert cmd.options[:download]
+      end
+    end
+
+    def test_parses_output_dir_short
+      with_temp_config do
+        cmd = Teems::Commands::Messages.new(['-o', '/tmp/out', '19:abc@thread.v2'], runner: configured_runner)
+        assert_equal '/tmp/out', cmd.options[:output_dir]
+      end
+    end
+
+    def test_parses_output_dir_long
+      with_temp_config do
+        cmd = Teems::Commands::Messages.new(['--output-dir', '/tmp/out', '19:abc@thread.v2'], runner: configured_runner)
+        assert_equal '/tmp/out', cmd.options[:output_dir]
+      end
+    end
+
+    def test_download_with_no_attachments
+      with_temp_config do
+        result = capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', { 'messages' => [sample_ng_msg_message] })
+          Teems::Commands::Messages.new(['--download', '19:abc@thread.v2'], runner: runner).execute
+        end
+        assert_includes result[:stdout], 'No downloadable attachments found'
+      end
+    end
+
+    def test_download_skips_attachments_without_sharepoint_ids
+      with_temp_config do
+        msg = sample_ng_msg_message.merge('properties' => { 'files' => '[{"fileName":"inline.png"}]' })
+        result = capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', { 'messages' => [msg] })
+          Teems::Commands::Messages.new(['--download', '19:abc@thread.v2'], runner: runner).execute
+        end
+        assert_includes result[:stdout], 'No downloadable attachments found'
+      end
+    end
+  end
+
+  # Tests for download execution, size formatting, collisions, and error handling
+  class DownloadExecutionTest < Minitest::Test
+    include DownloadHelpers
+
+    def test_download_resolves_and_downloads
+      Dir.mktmpdir('teems-dl-test') do |tmpdir|
+        with_temp_config do
+          dl = mock_file_downloader_bytes(12)
+          result = capture_output { |out| run_download(tmpdir, output: out, downloader: dl) }
+          assert_includes result[:stdout], 'Downloading report.pdf'
+          assert_includes result[:stdout], 'done'
+        end
+      end
+    end
+
+    def test_download_shows_kb_size
+      Dir.mktmpdir('teems-dl-test') do |tmpdir|
+        with_temp_config do
+          dl = mock_file_downloader_bytes(1536)
+          result = capture_output { |out| run_download(tmpdir, output: out, downloader: dl) }
+          assert_includes result[:stdout], '1.5 KB'
+        end
+      end
+    end
+
+    def test_download_shows_mb_size
+      Dir.mktmpdir('teems-dl-test') do |tmpdir|
+        with_temp_config do
+          result = capture_output do |out|
+            run_download(tmpdir, output: out, downloader: mock_file_downloader_bytes(2_097_152))
+          end
+          assert_includes result[:stdout], '2.0 MB'
+        end
+      end
+    end
+
+    def test_download_handles_file_collision
+      Dir.mktmpdir('teems-dl-test') do |tmpdir|
+        File.write(File.join(tmpdir, 'report.pdf'), 'existing')
+        with_temp_config do
+          capture_output { |out| run_download(tmpdir, output: out, downloader: mock_file_downloader_bytes(12)) }
+          assert File.exist?(File.join(tmpdir, 'report-1.pdf'))
+        end
+      end
+    end
+
+    def test_download_handles_multiple_collisions
+      Dir.mktmpdir('teems-dl-test') do |tmpdir|
+        File.write(File.join(tmpdir, 'report.pdf'), 'existing')
+        File.write(File.join(tmpdir, 'report-1.pdf'), 'existing')
+        with_temp_config do
+          capture_output { |out| run_download(tmpdir, output: out, downloader: mock_file_downloader_bytes(12)) }
+          assert File.exist?(File.join(tmpdir, 'report-2.pdf'))
+        end
+      end
+    end
+
+    def test_download_sanitizes_path_traversal
+      Dir.mktmpdir('teems-dl-test') do |tmpdir|
+        with_temp_config do
+          dl = mock_file_downloader_bytes(12)
+          evil = msg_with_filename('../../etc/evil.txt')
+          capture_output { |out| run_download(tmpdir, output: out, downloader: dl, msg: evil) }
+          assert File.exist?(File.join(tmpdir, 'evil.txt'))
+          refute File.exist?(File.join(tmpdir, '..', '..', 'etc', 'evil.txt'))
+        end
+      end
+    end
+
+    def test_download_handles_api_error
+      result = run_download_with_error('driveItem', Teems::ApiError.new('Not found', status_code: 404))
+      assert_includes result[:stderr], 'failed'
+    end
+
+    def test_download_no_summary_when_all_fail
+      result = run_download_with_error('driveItem', Teems::ApiError.new('Gone', status_code: 410))
+      refute_includes result[:stdout], 'Downloaded'
+    end
+
+    def test_download_missing_download_url
+      result = run_download_with_stub('driveItem', { 'name' => 'report.pdf' })
+      assert_includes result[:stderr], 'failed'
+    end
+
+    private
+
+    def run_download_with_error(path, error)
+      Dir.mktmpdir('teems-dl-test') do |tmpdir|
+        with_temp_config do
+          capture_output do |out|
+            runner = configured_runner(output: out)
+            runner.api_client.stub('messages', { 'messages' => [msg_with_sharepoint_attachment] })
+            runner.api_client.stub_error(path, error)
+            Teems::Commands::Messages.new(['--download', '-o', tmpdir, '19:abc@thread.v2'], runner: runner).execute
+          end
+        end
+      end
+    end
+
+    def run_download_with_stub(path, response)
+      Dir.mktmpdir('teems-dl-test') do |tmpdir|
+        with_temp_config do
+          capture_output do |out|
+            runner = configured_runner(output: out)
+            runner.api_client.stub('messages', { 'messages' => [msg_with_sharepoint_attachment] })
+            runner.api_client.stub(path, response)
+            Teems::Commands::Messages.new(['--download', '-o', tmpdir, '19:abc@thread.v2'], runner: runner).execute
+          end
+        end
+      end
+    end
+  end
 end

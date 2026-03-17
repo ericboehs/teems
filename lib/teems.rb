@@ -62,6 +62,7 @@ module Teems
     autoload :TokenExtractor, 'teems/services/token_extractor'
     autoload :TokenRefresher, 'teems/services/token_refresher'
     autoload :CacheStore, 'teems/services/cache_store'
+    autoload :FileDownloader, 'teems/services/file_downloader'
     autoload :TeamsUrlParser, 'teems/services/teams_url_parser'
     autoload :SyncStore, 'teems/services/sync_store'
     autoload :SyncDirNaming, 'teems/services/sync_dir_naming'
@@ -97,6 +98,7 @@ module Teems
     autoload :Calendar, 'teems/api/calendar'
     autoload :Channels, 'teems/api/channels'
     autoload :Chats, 'teems/api/chats'
+    autoload :Files, 'teems/api/files'
     autoload :Messages, 'teems/api/messages'
     autoload :Users, 'teems/api/users'
   end

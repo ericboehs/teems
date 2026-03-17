@@ -84,8 +84,15 @@ module Teems
       end
 
       def format_attachment(att)
-        name = att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
-        "\u{1F4CE} #{name}"
+        return "\u{1F4CE} #{att}" unless att.is_a?(Hash)
+
+        format_file_attachment(att)
+      end
+
+      def format_file_attachment(att)
+        name = att['fileName'] || att['name'] || 'file'
+        url = att['siteUrl']
+        url&.start_with?('https://') ? "\u{1F4CE} [#{name}](#{url})" : "\u{1F4CE} #{name}"
       end
 
       def format_message_reactions(msg)

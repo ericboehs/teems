@@ -29,7 +29,8 @@ module Teems
 
       def format_header(message)
         importance = message.important? ? @output.red('!') : ''
-        "#{format_timestamp(message)} #{importance}#{@output.bold(message.sender_name)}:#{edited_tag(message)}"
+        hash = @output.gray(message.short_hash)
+        "#{format_timestamp(message)} #{hash} #{importance}#{@output.bold(message.sender_name)}:#{edited_tag(message)}"
       end
 
       def format_timestamp(message) = @output.blue("[#{message.created_at&.strftime('%Y-%m-%d %H:%M')}]")

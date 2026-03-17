@@ -14,6 +14,8 @@ module Teems
       OPTIONS:
         -t, --team ID    Team ID (required for channel messages)
         -n, --limit N    Number of messages (default: 20)
+        --download       Download file attachments
+        -o, --output-dir Directory for downloads (default: ~/.local/share/teems/downloads)
         -v, --verbose    Show debug output
         -q, --quiet      Suppress output
         --json           Output as JSON
@@ -49,7 +51,8 @@ module Teems
       def format_message_header(message)
         importance = message.important? ? output.red('!') : ''
         time = output.blue("[#{message.created_at&.strftime('%Y-%m-%d %H:%M')}]")
-        "#{time} #{importance}#{output.bold(message.sender_name)}:#{edited_tag(message)}"
+        hash = output.gray(message.short_hash)
+        "#{time} #{hash} #{importance}#{output.bold(message.sender_name)}:#{edited_tag(message)}"
       end
 
       def edited_tag(message) = message.edited? ? " #{output.gray('(edited)')}" : ''
@@ -82,7 +85,8 @@ module Teems
       end
 
       def message_to_hash(message)
-        { id: message.id, sender_id: message.sender_id,
+        { id: message.id, short_hash: message.short_hash,
+          sender_id: message.sender_id,
           sender_name: message.sender_name, content: message.content,
           created_at: message.created_at&.iso8601,
           importance: message.importance, reactions: message.reactions,
@@ -91,9 +95,99 @@ module Teems
       end
     end
 
+    # Download logic for file attachments in messages
+    module AttachmentDownload
+      private
+
+      def download_attachments(messages)
+        attachments = find_downloadable(messages)
+        return puts('No downloadable attachments found') if attachments.empty?
+
+        execute_downloads(attachments)
+      end
+
+      def execute_downloads(attachments)
+        dir = prepare_output_dir
+        count = attachments.sum { |att| download_one(att, dir) }
+        puts "Downloaded #{count} file#{'s' if count != 1} to #{dir}" if count.positive?
+      end
+
+      def find_downloadable(messages)
+        messages.flat_map { |msg| downloadable_from(msg) }
+      end
+
+      def downloadable_from(msg)
+        Array(msg.attachments).select { |att| att.is_a?(Hash) && att['sharepointIds'] }
+      end
+
+      def download_one(att, dir)
+        name = safe_filename(att['fileName'] || att['name'] || 'file')
+        print "\u{1F4CE} Downloading #{name}..."
+        perform_download(att, dir, name)
+      rescue StandardError => e
+        warn " failed (#{e.message})"
+        0
+      end
+
+      def perform_download(att, dir, name)
+        url = resolve_download_url(att['sharepointIds'])
+        bytes = file_downloader.download(url, unique_path(dir, name))
+        puts " done (#{format_bytes(bytes)})"
+        1
+      end
+
+      def resolve_download_url(sp_ids)
+        result = with_token_refresh do
+          runner.files_api.drive_item(
+            site_id: sp_ids['siteId'], list_id: sp_ids['listId'],
+            item_id: sp_ids['listItemUniqueId']
+          )
+        end
+        result['@microsoft.graph.downloadUrl'] or raise Error, 'No download URL in response'
+      end
+
+      def file_downloader
+        @file_downloader ||= Services::FileDownloader.new
+      end
+
+      def prepare_output_dir
+        dir = @options[:output_dir] || default_download_dir
+        FileUtils.mkdir_p(dir)
+        dir
+      end
+
+      def default_download_dir
+        File.join(Support::XdgPaths.new.data_dir, 'downloads')
+      end
+
+      def safe_filename(name)
+        base = File.basename(name)
+        base.empty? ? 'file' : base
+      end
+
+      def unique_path(dir, name)
+        path = File.join(dir, name)
+        return path unless File.exist?(path)
+
+        ext = File.extname(name)
+        base = File.basename(name, ext)
+        counter = 1
+        counter += 1 while File.exist?(path = File.join(dir, "#{base}-#{counter}#{ext}"))
+        path
+      end
+
+      def format_bytes(bytes)
+        if bytes >= 1_048_576 then "#{(bytes / 1_048_576.0).round(1)} MB"
+        elsif bytes >= 1024 then "#{(bytes / 1024.0).round(1)} KB"
+        else "#{bytes} B"
+        end
+      end
+    end
+
     # Read messages from a channel or chat
     class Messages < Base
       include MessagesDisplay
+      include AttachmentDownload
 
       def initialize(args, runner:)
         @options = {}
@@ -112,7 +206,10 @@ module Teems
 
       MESSAGES_OPTIONS = {
         '-t' => ->(opts, args) { opts[:team_id] = args.shift },
-        '--team' => ->(opts, args) { opts[:team_id] = args.shift }
+        '--team' => ->(opts, args) { opts[:team_id] = args.shift },
+        '--download' => ->(opts, _args) { opts[:download] = true },
+        '-o' => ->(opts, args) { opts[:output_dir] = args.shift },
+        '--output-dir' => ->(opts, args) { opts[:output_dir] = args.shift }
       }.freeze
 
       def handle_option(arg, pending)
@@ -194,6 +291,7 @@ module Teems
         return output_json(messages.map { |msg| message_to_hash(msg) }) if @options[:json]
 
         messages.each { |msg| display_message(msg) }
+        download_attachments(messages) if @options[:download]
       end
     end
   end
