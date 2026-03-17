@@ -54,4 +54,49 @@ class ParsingTest < Minitest::Test
   def test_parse_files_json_returns_empty_for_invalid_json
     assert_equal [], parse_files_json('not json')
   end
+
+  def test_parse_mentions_groups_by_mri
+    data = [
+      { 'mri' => '8:orgid:abc', 'displayName' => 'Jane' },
+      { 'mri' => '8:orgid:abc', 'displayName' => 'Smith' }
+    ]
+    assert_equal ['Jane Smith'], parse_mentions(JSON.generate(data))
+  end
+
+  def test_parse_mentions_multiple_mris
+    data = [
+      { 'mri' => '8:orgid:abc', 'displayName' => 'Jane' },
+      { 'mri' => '8:orgid:def', 'displayName' => 'Bob' }
+    ]
+    result = parse_mentions(JSON.generate(data))
+    assert_includes result, 'Jane'
+    assert_includes result, 'Bob'
+  end
+
+  def test_parse_mentions_returns_empty_for_nil
+    assert_equal [], parse_mentions(nil)
+  end
+
+  def test_parse_mentions_returns_empty_for_invalid_json
+    assert_equal [], parse_mentions('not json')
+  end
+
+  def test_parse_mentions_handles_array_input
+    data = [{ 'mri' => '8:orgid:abc', 'displayName' => 'Jane' }]
+    assert_equal ['Jane'], parse_mentions(data)
+  end
+
+  def test_parse_mentions_returns_empty_for_non_array
+    assert_equal [], parse_mentions('{"not": "array"}')
+  end
+
+  def test_parse_mentions_skips_entries_without_mri
+    data = [{ 'displayName' => 'Jane' }]
+    assert_equal [], parse_mentions(data)
+  end
+
+  def test_parse_mentions_skips_empty_display_names
+    data = [{ 'mri' => '8:orgid:abc', 'displayName' => nil }]
+    assert_equal [], parse_mentions(data)
+  end
 end

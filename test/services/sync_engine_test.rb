@@ -76,7 +76,8 @@ module SyncEngineTests
     def build_message(**overrides)
       attrs = { id: 'x', sender_id: 'u1', sender_name: 'User', content: 'Hello',
                 created_at: Time.now, message_type: 'RichText/Html',
-                reply_to_id: nil, reactions: [], attachments: [], importance: nil }.merge(overrides)
+                reply_to_id: nil, reactions: [], attachments: [], importance: nil,
+                edited: false, mentions: [] }.merge(overrides)
       Teems::Models::Message.new(**attrs)
     end
 
@@ -85,7 +86,8 @@ module SyncEngineTests
         'content' => overrides.fetch(:content, 'Hello'), 'created_at' => created_at,
         'message_type' => 'RichText/Html', 'reply_to_id' => nil,
         'reactions' => overrides.fetch(:reactions, []),
-        'attachments' => overrides.fetch(:attachments, []), 'importance' => nil }
+        'attachments' => overrides.fetch(:attachments, []), 'importance' => nil,
+        'edited' => false, 'mentions' => [] }
     end
   end
 

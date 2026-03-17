@@ -6,12 +6,13 @@ module Teems
     # Groups messages by date with human-readable formatting.
     class MarkdownFormatter
       REACTION_EMOJI = {
-        'like' => "\u{1F44D}",
-        'heart' => "\u{2764}\u{FE0F}",
-        'laugh' => "\u{1F602}",
-        'surprised' => "\u{1F62E}",
-        'sad' => "\u{1F622}",
-        'angry' => "\u{1F620}"
+        'like' => "\u{1F44D}", 'heart' => "\u{2764}\u{FE0F}",
+        'laugh' => "\u{1F602}", 'surprised' => "\u{1F62E}",
+        'sad' => "\u{1F622}", 'angry' => "\u{1F620}",
+        'yes-tone1' => "\u{1F44D}\u{1F3FB}", 'yes-tone2' => "\u{1F44D}\u{1F3FC}",
+        'support' => "\u{1F91D}", 'heartblue' => "\u{1F499}",
+        'computer' => "\u{1F4BB}", '1f37f_popcorn' => "\u{1F37F}",
+        '1f440_eyes' => "\u{1F440}", 'thumbsdown' => "\u{1F44E}"
       }.freeze
 
       def initialize(chat_name:, chat_type: nil, synced_at: nil)
@@ -73,10 +74,9 @@ module Teems
       end
 
       def format_message_header(msg)
-        time_str = msg.created_at&.strftime('%H:%M') || '??:??'
-        sender = msg.sender_name || 'Unknown'
         prefix = msg.important? ? '**[!]** ' : ''
-        "### #{time_str} — #{prefix}#{sender}"
+        edited = msg.edited? ? ' _(edited)_' : ''
+        "### #{msg.created_at&.strftime('%H:%M') || '??:??'} — #{prefix}#{msg.sender_name || 'Unknown'}#{edited}"
       end
 
       def format_message_attachments(msg)

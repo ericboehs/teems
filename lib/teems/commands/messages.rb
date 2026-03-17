@@ -26,33 +26,68 @@ module Teems
 
     # Display formatting for messages command
     module MessagesDisplay
+      REACTION_EMOJI = {
+        'like' => "\u{1F44D}", 'heart' => "\u{2764}\u{FE0F}",
+        'laugh' => "\u{1F602}", 'surprised' => "\u{1F62E}",
+        'sad' => "\u{1F622}", 'angry' => "\u{1F620}",
+        'yes-tone1' => "\u{1F44D}\u{1F3FB}", 'yes-tone2' => "\u{1F44D}\u{1F3FC}",
+        'support' => "\u{1F91D}", 'heartblue' => "\u{1F499}",
+        'computer' => "\u{1F4BB}", '1f37f_popcorn' => "\u{1F37F}",
+        '1f440_eyes' => "\u{1F440}", 'thumbsdown' => "\u{1F44E}"
+      }.freeze
+
       private
 
       def display_message(message)
         puts format_message_header(message)
-        puts "  #{message.content}"
+        puts "  #{highlight_mentions(message.content, message.mentions)}"
+        display_attachments(message)
         display_reactions(message)
         puts
       end
 
       def format_message_header(message)
-        time = message.created_at&.strftime('%Y-%m-%d %H:%M')
         importance = message.important? ? output.red('!') : ''
-        "#{output.blue("[#{time}]")} #{importance}#{output.bold(message.sender_name)}:"
+        time = output.blue("[#{message.created_at&.strftime('%Y-%m-%d %H:%M')}]")
+        "#{time} #{importance}#{output.bold(message.sender_name)}:#{edited_tag(message)}"
+      end
+
+      def edited_tag(message) = message.edited? ? " #{output.gray('(edited)')}" : ''
+
+      def display_attachments(message)
+        attachments = message.attachments
+        return unless attachments.any?
+
+        names = attachments.map do |att|
+          att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
+        end
+        puts "  #{output.gray("\u{1F4CE} #{names.join(', ')}")}"
       end
 
       def display_reactions(message)
         reactions = message.reactions
         return unless reactions.any?
 
-        puts "  #{output.gray(reactions.map { |reaction| "#{reaction[:type]}(#{reaction[:count]})" }.join(' '))}"
+        summary = reactions.map do |reaction|
+          type = reaction[:type]
+          "#{REACTION_EMOJI[type] || type}(#{reaction[:count]})"
+        end.join(' ')
+        puts "  #{output.gray(summary)}"
+      end
+
+      def highlight_mentions(content, mentions)
+        return content if mentions.empty?
+
+        mentions.inject(content) { |text, name| text.gsub(name, output.bold(name)) }
       end
 
       def message_to_hash(message)
         { id: message.id, sender_id: message.sender_id,
           sender_name: message.sender_name, content: message.content,
           created_at: message.created_at&.iso8601,
-          importance: message.importance, reactions: message.reactions }
+          importance: message.importance, reactions: message.reactions,
+          attachments: message.attachments, edited: message.edited,
+          mentions: message.mentions }
       end
     end
 

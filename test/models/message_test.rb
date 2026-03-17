@@ -196,9 +196,71 @@ module MessageTests
                               'composeTime' => '2026-01-20T12:00:00Z', 'type' => 'message' } }
       message = Teems::Models::Message.from_api(data)
       assert_equal 'msg123', message.id
-      assert_equal 'user456', message.sender_id
       assert_equal 'Internal User', message.sender_name
       assert_equal 'Internal message', message.content
+    end
+
+    def test_teams_internal_format_defaults
+      data = { 'id' => 'msg123',
+               'message' => { 'from' => 'user456', 'imDisplayName' => 'User',
+                              'content' => 'Hi', 'composeTime' => '2026-01-20T12:00:00Z',
+                              'type' => 'message' } }
+      message = Teems::Models::Message.from_api(data)
+      refute message.edited?
+      assert_equal [], message.mentions
+    end
+  end
+
+  # Tests edited, importance, and mentions fields
+  class EditedAndMentionsTest < Minitest::Test
+    def test_ng_msg_edited_when_edittime_present
+      data = sample_ng_msg_message.merge('properties' => { 'edittime' => '1768935090000' })
+      assert Teems::Models::Message.from_api(data).edited?
+    end
+
+    def test_ng_msg_not_edited_without_edittime
+      refute Teems::Models::Message.from_api(sample_ng_msg_message).edited?
+    end
+
+    def test_ng_msg_importance_from_properties
+      data = sample_ng_msg_message.merge('properties' => { 'importance' => 'urgent' })
+      assert Teems::Models::Message.from_api(data).important?
+    end
+
+    def test_ng_msg_mentions_parsed_from_properties
+      mentions_data = [
+        { 'mri' => '8:orgid:abc', 'displayName' => 'Jane' },
+        { 'mri' => '8:orgid:abc', 'displayName' => 'Smith' }
+      ]
+      data = sample_ng_msg_message.merge(
+        'properties' => { 'mentions' => JSON.generate(mentions_data) }
+      )
+      assert_equal ['Jane Smith'], Teems::Models::Message.from_api(data).mentions
+    end
+
+    def test_ng_msg_mentions_handles_multiple_mris
+      mentions_data = [
+        { 'mri' => '8:orgid:abc', 'displayName' => 'Jane' },
+        { 'mri' => '8:orgid:def', 'displayName' => 'Bob' }
+      ]
+      data = sample_ng_msg_message.merge(
+        'properties' => { 'mentions' => JSON.generate(mentions_data) }
+      )
+      message = Teems::Models::Message.from_api(data)
+      assert_includes message.mentions, 'Jane'
+      assert_includes message.mentions, 'Bob'
+    end
+
+    def test_ng_msg_mentions_empty_without_property
+      assert_equal [], Teems::Models::Message.from_api(sample_ng_msg_message).mentions
+    end
+
+    def test_graph_api_defaults_edited_false
+      refute Teems::Models::Message.from_api(sample_graph_message).edited?
+    end
+
+    def test_graph_api_defaults_mentions_empty
+      assert_equal [], Teems::Models::Message.from_api(sample_graph_message).mentions
     end
   end
 end

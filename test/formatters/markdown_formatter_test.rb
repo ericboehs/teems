@@ -17,7 +17,8 @@ module MarkdownFormatterTests
         id: 'msg-1', sender_id: 'user-1', sender_name: 'Test User',
         content: 'Test message', created_at: Time.new(2026, 1, 20, 10, 0, 0),
         message_type: 'RichText/Html', reply_to_id: nil,
-        reactions: [], attachments: [], importance: nil
+        reactions: [], attachments: [], importance: nil,
+        edited: false, mentions: []
       }.merge(overrides)
       Teems::Models::Message.new(**attrs)
     end
@@ -161,6 +162,29 @@ module MarkdownFormatterTests
       assert_equal "\u{1F62E}", mapping['surprised']
       assert_equal "\u{1F622}", mapping['sad']
       assert_equal "\u{1F620}", mapping['angry']
+    end
+
+    def test_reaction_emoji_mapping_teams_specific
+      mapping = Teems::Formatters::MarkdownFormatter::REACTION_EMOJI
+      assert_equal "\u{1F44D}\u{1F3FB}", mapping['yes-tone1']
+      assert_equal "\u{1F44D}\u{1F3FC}", mapping['yes-tone2']
+      assert_equal "\u{1F91D}", mapping['support']
+      assert_equal "\u{1F499}", mapping['heartblue']
+      assert_equal "\u{1F4BB}", mapping['computer']
+      assert_equal "\u{1F37F}", mapping['1f37f_popcorn']
+      assert_equal "\u{1F440}", mapping['1f440_eyes']
+      assert_equal "\u{1F44E}", mapping['thumbsdown']
+    end
+
+    def test_format_edited_message
+      msg = build_message(sender_name: 'Jane', content: 'Updated text', edited: true)
+      result = build_formatter.format([msg])
+      assert_includes result, '_(edited)_'
+    end
+
+    def test_format_unedited_message_no_marker
+      msg = build_message(sender_name: 'Jane', content: 'Original text', edited: false)
+      refute_includes build_formatter.format([msg]), '_(edited)_'
     end
   end
 end
