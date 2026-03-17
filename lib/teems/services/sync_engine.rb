@@ -22,7 +22,8 @@ module Teems
           'reactions' => message.reactions.map do |reaction|
             { 'type' => reaction[:type], 'count' => reaction[:count] }
           end,
-          'attachments' => message.attachments, 'importance' => message.importance
+          'attachments' => message.attachments, 'importance' => message.importance,
+          'edited' => message.edited, 'mentions' => message.mentions
         }
       end
 
@@ -43,7 +44,8 @@ module Teems
 
       def stored_msg_extras(data)
         { reply_to_id: data['reply_to_id'], reactions: parse_stored_reactions(data['reactions']),
-          attachments: data['attachments'] || [], importance: data['importance'] }
+          attachments: data['attachments'] || [], importance: data['importance'],
+          edited: data['edited'] || false, mentions: data['mentions'] || [] }
       end
     end
 

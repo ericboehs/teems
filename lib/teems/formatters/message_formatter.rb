@@ -4,31 +4,58 @@ module Teems
   module Formatters
     # Formats messages for terminal display
     class MessageFormatter
+      REACTION_EMOJI = {
+        'like' => "\u{1F44D}", 'heart' => "\u{2764}\u{FE0F}",
+        'laugh' => "\u{1F602}", 'surprised' => "\u{1F62E}",
+        'sad' => "\u{1F622}", 'angry' => "\u{1F620}",
+        'yes-tone1' => "\u{1F44D}\u{1F3FB}", 'yes-tone2' => "\u{1F44D}\u{1F3FC}",
+        'support' => "\u{1F91D}", 'heartblue' => "\u{1F499}",
+        'computer' => "\u{1F4BB}", '1f37f_popcorn' => "\u{1F37F}",
+        '1f440_eyes' => "\u{1F440}", 'thumbsdown' => "\u{1F44E}"
+      }.freeze
+
       def initialize(output:, cache_store: nil)
         @output = output
         @cache_store = cache_store
       end
 
       def format(message)
-        [format_header(message), "  #{message.content}", format_reactions(message)].compact.join("\n")
+        content = highlight_mentions(message.content, message.mentions)
+        [format_header(message), "  #{content}", format_attachments(message), format_reactions(message)]
+          .compact.join("\n")
       end
 
       private
 
       def format_header(message)
-        time_str = message.created_at&.strftime('%Y-%m-%d %H:%M') || ''
         importance = message.important? ? @output.red('!') : ''
-        "#{@output.blue("[#{time_str}]")} #{importance}#{@output.bold(message.sender_name)}:"
+        "#{format_timestamp(message)} #{importance}#{@output.bold(message.sender_name)}:#{edited_tag(message)}"
+      end
+
+      def format_timestamp(message) = @output.blue("[#{message.created_at&.strftime('%Y-%m-%d %H:%M')}]")
+
+      def edited_tag(message) = message.edited? ? " #{@output.gray('(edited)')}" : ''
+
+      def format_attachments(message)
+        attachments = message.attachments
+        return unless attachments.any?
+
+        names = attachments.map { |att| att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s }
+        "  #{@output.gray("\u{1F4CE} #{names.join(', ')}")}"
       end
 
       def format_reactions(message)
         return unless message.reactions.any?
 
-        "  #{@output.gray(reaction_summary(message))}"
+        summary = message.reactions.map do |reaction|
+          type = reaction[:type]
+          "#{REACTION_EMOJI[type] || type}(#{reaction[:count]})"
+        end.join(' ')
+        "  #{@output.gray(summary)}"
       end
 
-      def reaction_summary(message)
-        message.reactions.map { |reaction| "#{reaction[:type]}(#{reaction[:count]})" }.join(' ')
+      def highlight_mentions(content, mentions)
+        mentions.inject(content) { |text, name| text.gsub(name, @output.bold(name)) }
       end
     end
   end

@@ -6,7 +6,8 @@ module Teems
     # Handles both Graph API and Teams internal API response formats
     Message = Data.define(
       :id, :sender_id, :sender_name, :content, :created_at,
-      :message_type, :reply_to_id, :reactions, :attachments, :importance
+      :message_type, :reply_to_id, :reactions, :attachments, :importance,
+      :edited, :mentions
     ) do
       extend Parsing
 
@@ -39,7 +40,9 @@ module Teems
           reply_to_id: root_message_id == data['id'] ? nil : root_message_id,
           reactions: parse_ng_msg_reactions(props['emotions']),
           attachments: parse_files_json(props['files']),
-          importance: nil
+          importance: props['importance'],
+          edited: props.key?('edittime'),
+          mentions: parse_mentions(props['mentions'])
         }
       end
 
@@ -58,7 +61,7 @@ module Teems
           created_at: parse_time(msg['composeTime'] || data['latestMessageTime']),
           message_type: msg['type'], reply_to_id: nil, reactions: [],
           attachments: parse_files_json(msg.dig('properties', 'files')),
-          importance: nil
+          importance: nil, edited: false, mentions: []
         )
       end
 
@@ -82,7 +85,8 @@ module Teems
           message_type: data['messageType'], reply_to_id: data['replyToId'],
           reactions: parse_reactions(data['reactions']),
           attachments: data['attachments'] || [],
-          importance: data['importance']
+          importance: data['importance'],
+          edited: false, mentions: []
         }
       end
 
@@ -99,6 +103,7 @@ module Teems
 
       def timestamp = created_at
       def reply? = !!reply_to_id
+      def edited? = !!edited
       def important? = %w[urgent high].include?(importance)
 
       def system_message?

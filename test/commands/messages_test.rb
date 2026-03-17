@@ -181,14 +181,33 @@ module MessagesCommandTests
       assert_equal 'Jane Smith', json.first['sender_name']
     end
 
-    def test_displays_reactions
+    def test_json_output_includes_attachments
+      msg = sample_ng_msg_message.merge(
+        'properties' => { 'files' => '[{"fileName":"report.pdf"}]' }
+      )
+      result = run_messages(['--json', '19:abc@thread.v2'],
+                            stubs: { 'messages' => { 'messages' => [msg] } })
+      json = JSON.parse(result[:stdout])
+      assert_equal 'report.pdf', json.first['attachments'].first['fileName']
+    end
+
+    def test_json_output_includes_edited_and_mentions
+      result = run_messages(['--json', '19:abc@thread.v2'],
+                            stubs: { 'messages' => { 'messages' => [sample_ng_msg_message] } })
+      json = JSON.parse(result[:stdout])
+      entry = json.first
+      assert_equal false, entry['edited']
+      assert_equal [], entry['mentions']
+    end
+
+    def test_displays_reactions_with_emoji
       with_temp_config do
         result = capture_output do |output|
           runner = configured_runner(output: output)
           runner.api_client.stub('messages', { 'messages' => [sample_ng_msg_message] })
           Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner).execute
         end
-        assert_match(/like/, result[:stdout])
+        assert_includes result[:stdout], "\u{1F44D}"
       end
     end
 
@@ -327,6 +346,31 @@ module MessagesCommandTests
       result = run_messages(['--json', '19:abc@thread.v2'], stubs: { 'messages' => { 'messages' => [msg] } })
       json = JSON.parse(result[:stdout])
       assert_nil json.first['created_at']
+    end
+
+    def test_displays_edited_indicator
+      msg = sample_ng_msg_message.merge('properties' => { 'edittime' => '1768935090000' })
+      result = run_messages(['19:abc@thread.v2'], stubs: { 'messages' => { 'messages' => [msg] } })
+      assert_includes result[:stdout], '(edited)'
+    end
+
+    def test_displays_attachments
+      msg = sample_ng_msg_message.merge(
+        'properties' => { 'files' => '[{"fileName":"report.pdf"}]' }
+      )
+      result = run_messages(['19:abc@thread.v2'], stubs: { 'messages' => { 'messages' => [msg] } })
+      assert_includes result[:stdout], 'report.pdf'
+      assert_includes result[:stdout], "\u{1F4CE}"
+    end
+
+    def test_displays_mentions_highlighted
+      mentions = [{ 'mri' => '8:orgid:abc', 'displayName' => 'Jane' },
+                  { 'mri' => '8:orgid:abc', 'displayName' => 'Smith' }]
+      msg = sample_ng_msg_message.merge(
+        'properties' => { 'mentions' => JSON.generate(mentions) }
+      )
+      result = run_messages(['19:abc@thread.v2'], stubs: { 'messages' => { 'messages' => [msg] } })
+      assert_includes result[:stdout], 'Jane Smith'
     end
   end
 end
