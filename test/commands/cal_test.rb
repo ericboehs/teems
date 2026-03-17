@@ -101,7 +101,7 @@ module CalCommandTests
         location: nil, is_all_day: false, organizer: nil, attendees: [],
         body_preview: nil, online_meeting_url: nil, show_as: nil,
         importance: nil, is_cancelled: false, response_status: nil,
-        sensitivity: nil
+        sensitivity: nil, event_type: nil
       )
     end
 

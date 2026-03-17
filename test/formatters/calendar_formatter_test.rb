@@ -23,7 +23,8 @@ module CalendarFormatterTests
         location: nil, is_all_day: false,
         organizer: { name: 'Alice Manager', email: 'alice@example.com' }, attendees: [],
         body_preview: nil, online_meeting_url: nil, show_as: 'busy', importance: 'normal',
-        is_cancelled: false, response_status: 'accepted', sensitivity: 'normal' }
+        is_cancelled: false, response_status: 'accepted', sensitivity: 'normal',
+        event_type: 'singleInstance' }
     end
 
     def response_symbol_attendees
@@ -63,6 +64,36 @@ module CalendarFormatterTests
 
     def test_format_event_list_cancelled
       assert_includes @formatter.format_event_list_compact([build_event(is_cancelled: true)]), 'cancelled'
+    end
+
+    def test_format_event_list_shows_accepted_rsvp
+      result = @formatter.format_event_list_compact([build_event(response_status: 'accepted')])
+      assert_includes result, "\u{2713}"
+    end
+
+    def test_format_event_list_shows_declined_rsvp
+      result = @formatter.format_event_list_compact([build_event(response_status: 'declined')])
+      assert_includes result, "\u{2717}"
+    end
+
+    def test_format_event_list_shows_tentative_rsvp
+      result = @formatter.format_event_list_compact([build_event(response_status: 'tentativelyAccepted')])
+      assert_includes result, '?'
+    end
+
+    def test_format_event_list_shows_pending_rsvp
+      result = @formatter.format_event_list_compact([build_event(response_status: 'none')])
+      assert_includes result, "\u{B7}"
+    end
+
+    def test_format_event_list_shows_recurring
+      result = @formatter.format_event_list_compact([build_event(event_type: 'occurrence')])
+      assert_includes result, '(recurring)'
+    end
+
+    def test_format_event_list_no_recurring_for_single
+      result = @formatter.format_event_list_compact([build_event(event_type: 'singleInstance')])
+      refute_includes result, '(recurring)'
     end
 
     def test_format_event_list_verbose_shows_organizer
@@ -162,6 +193,35 @@ module CalendarFormatterTests
 
     def test_format_event_detail_all_day
       assert_includes @formatter.format_event_detail(build_event(is_all_day: true)), 'ALL DAY'
+    end
+
+    def test_format_event_detail_rsvp_accepted
+      result = @formatter.format_event_detail(build_event(response_status: 'accepted'))
+      assert_includes result, 'RSVP:'
+      assert_includes result, 'Accepted'
+    end
+
+    def test_format_event_detail_rsvp_declined
+      result = @formatter.format_event_detail(build_event(response_status: 'declined'))
+      assert_includes result, 'Declined'
+    end
+
+    def test_format_event_detail_rsvp_tentative
+      result = @formatter.format_event_detail(build_event(response_status: 'tentativelyAccepted'))
+      assert_includes result, 'Tentative'
+    end
+
+    def test_format_event_detail_no_rsvp_when_nil
+      refute_includes @formatter.format_event_detail(build_event(response_status: nil)), 'RSVP:'
+    end
+
+    def test_format_event_detail_recurring
+      result = @formatter.format_event_detail(build_event(event_type: 'occurrence'))
+      assert_includes result, 'Recurring: Yes'
+    end
+
+    def test_format_event_detail_not_recurring
+      refute_includes @formatter.format_event_detail(build_event(event_type: 'singleInstance')), 'Recurring'
     end
 
     def test_format_event_detail_nil_organizer

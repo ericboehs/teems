@@ -12,7 +12,7 @@ module Teems
       }.freeze
 
       RESPONSE_SYMBOLS = {
-        'accepted' => [:green, '✓'], 'declined' => [:red, '✗'],
+        'accepted' => [:green, "\u{2713}"], 'declined' => [:red, "\u{2717}"],
         'tentativelyAccepted' => [:yellow, '?']
       }.freeze
 
@@ -47,7 +47,7 @@ module Teems
       end
 
       def response_symbol(att, event)
-        organizer?(att, event) ? @output.cyan('★') : response_to_symbol(att[:response])
+        organizer?(att, event) ? @output.cyan("\u{2605}") : response_to_symbol(att[:response])
       end
 
       def organizer?(att, event)
@@ -56,16 +56,80 @@ module Teems
       end
 
       def response_to_symbol(response)
-        color, symbol = RESPONSE_SYMBOLS.fetch(response, [:gray, '·'])
+        color, symbol = RESPONSE_SYMBOLS.fetch(response, [:gray, "\u{B7}"])
         @output.public_send(color, symbol)
       end
 
       def response_label(response) = RESPONSE_LABELS[response] || response&.capitalize || 'Pending'
     end
 
+    # Detail view formatting for calendar events
+    module CalendarDetailFormatter
+      private
+
+      def detail_metadata_lines(event)
+        lines = [@output.bold(event.subject), format_detail_time(event)]
+        lines.concat(detail_field_lines(event))
+      end
+
+      def detail_field_lines(event)
+        [detail_location(event), detail_organizer(event), detail_link(event),
+         detail_status(event), detail_response(event), detail_recurrence(event),
+         detail_show_as(event)].compact
+      end
+
+      def detail_location(event)
+        loc = event.location
+        "  Location:  #{loc}" if loc && !loc.empty?
+      end
+
+      def detail_organizer(event)
+        org = event.organizer
+        "  Organizer: #{org[:name]} (#{org[:email]})" if org
+      end
+
+      def detail_link(event)
+        url = event.online_meeting_url
+        url && "  Link:      #{url}"
+      end
+
+      def detail_status(event) = event.cancelled? ? "  Status:    #{@output.red('CANCELLED')}" : nil
+
+      def detail_response(event)
+        response = event.response_status
+        return nil unless response
+
+        "  RSVP:      #{response_to_symbol(response)} #{response_label(response)}"
+      end
+
+      def detail_recurrence(event) = event.recurring? ? '  Recurring: Yes' : nil
+
+      def detail_show_as(event)
+        show_as = event.show_as
+        show_as && "  Show as:   #{show_as}"
+      end
+
+      def detail_body_section(event)
+        preview = event.body_preview.to_s.strip
+        return [] if preview.empty?
+
+        [@output.bold('Description:'), "  #{preview}", '']
+      end
+
+      def format_detail_time(event)
+        return '  Time:      ALL DAY' if event.all_day?
+
+        start_time = event.start_time
+        return '  Time:      (unknown)' unless start_time && event.end_time
+
+        "  Time:      #{start_time.strftime('%A, %B %-d, %Y')}  #{event.time_range_display}"
+      end
+    end
+
     # Formats calendar events for terminal display
     class CalendarFormatter
       include CalendarAttendeeFormatter
+      include CalendarDetailFormatter
 
       RSVP_COUNTS = %i[accepted declined tentative pending].freeze
 
@@ -92,9 +156,7 @@ module Teems
 
       private
 
-      def format_list_item(event, number)
-        build_list_item_line(event, number)
-      end
+      def format_list_item(event, number) = build_list_item_line(event, number)
 
       def format_list_item_verbose(event, number)
         build_list_item_line(event, number) + list_item_verbose_suffix(event)
@@ -102,18 +164,22 @@ module Teems
 
       def build_list_item_line(event, number)
         time = event.all_day? ? 'ALL DAY   ' : event.time_range_display.ljust(11)
-        subject = format_event_subject(event)
-        hash = @output.gray("[#{event.short_hash}]")
-        "  #{@output.cyan("[#{number}]")} #{hash} #{time} #{subject}#{list_item_location(event)}"
+        rsvp = response_to_symbol(event.response_status)
+        prefix = "  #{@output.cyan("[#{number}]")} #{@output.gray("[#{event.short_hash}]")} #{time} #{rsvp}"
+        "#{prefix} #{format_event_subject(event)}#{list_item_location(event)}"
       end
 
-      # :reek:FeatureEnvy
       def format_event_subject(event)
         title = event.subject
-        event.cancelled? ? gray_text("#{title} (cancelled)") : title
+        suffix = subject_suffix(event)
+        suffix ? "#{title} #{suffix}" : title
       end
 
-      def gray_text(text) = @output.gray(text)
+      def subject_suffix(event)
+        return @output.gray('(cancelled)') if event.cancelled?
+
+        @output.gray('(recurring)') if event.recurring?
+      end
 
       def list_item_location(event) = (loc = event.location) && !loc.empty? ? "  #{@output.gray("(#{loc})")}" : ''
 
@@ -121,7 +187,7 @@ module Teems
         items = verbose_suffix_parts(event)
         return '' if items.empty?
 
-        "\n      #{items.join("  #{gray_text('|')}  ")}"
+        "\n      #{items.join("  #{@output.gray('|')}  ")}"
       end
 
       def verbose_suffix_parts(event)
@@ -132,64 +198,7 @@ module Teems
         organizer = event.organizer
         return unless organizer
 
-        "#{gray_text('Organizer:')} #{organizer[:name]}"
-      end
-
-      def detail_metadata_lines(event)
-        lines = [@output.bold(event.subject), format_detail_time(event)]
-        append_detail_fields(lines, event)
-        lines
-      end
-
-      def append_detail_fields(lines, event)
-        lines.concat(detail_field_lines(event))
-      end
-
-      def detail_field_lines(event)
-        [detail_location(event), detail_organizer(event), detail_link(event),
-         detail_status(event), detail_show_as(event)].compact
-      end
-
-      def detail_location(event)
-        loc = event.location
-        "  Location:  #{loc}" if loc && !loc.empty?
-      end
-
-      def detail_organizer(event)
-        org = event.organizer
-        "  Organizer: #{org[:name]} (#{org[:email]})" if org
-      end
-
-      def detail_link(event)
-        url = event.online_meeting_url
-        url && "  Link:      #{url}"
-      end
-
-      def detail_status(event) = event.cancelled? ? "  Status:    #{@output.red('CANCELLED')}" : nil
-
-      def detail_show_as(event)
-        show_as = event.show_as
-        show_as && "  Show as:   #{show_as}"
-      end
-
-      def detail_body_section(event)
-        preview = event.body_preview.to_s.strip
-        return [] if preview.empty?
-
-        description_lines(preview)
-      end
-
-      def description_lines(text) = [bold_text('Description:'), "  #{text}", '']
-
-      def bold_text(text) = @output.bold(text)
-
-      def format_detail_time(event)
-        return '  Time:      ALL DAY' if event.all_day?
-
-        start_time = event.start_time
-        return '  Time:      (unknown)' unless start_time && event.end_time
-
-        "  Time:      #{start_time.strftime('%A, %B %-d, %Y')}  #{event.time_range_display}"
+        "#{@output.gray('Organizer:')} #{organizer[:name]}"
       end
 
       def attendee_rsvp_summary(event)

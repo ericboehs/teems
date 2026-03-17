@@ -20,7 +20,8 @@ module Teems
       :importance,
       :is_cancelled,
       :response_status,
-      :sensitivity
+      :sensitivity,
+      :event_type
     ) do
       extend Parsing
 
@@ -53,7 +54,8 @@ module Teems
           importance: data['importance'],
           is_cancelled: data['isCancelled'] || false,
           response_status: data.dig('responseStatus', 'response'),
-          sensitivity: data['sensitivity']
+          sensitivity: data['sensitivity'],
+          event_type: data['type']
         }
       end
 
@@ -80,13 +82,9 @@ module Teems
 
       def short_hash = Digest::SHA256.hexdigest(id.to_s)[0, 6]
 
-      def all_day?
-        is_all_day
-      end
-
-      def cancelled?
-        is_cancelled
-      end
+      def all_day? = is_all_day
+      def cancelled? = is_cancelled
+      def recurring? = %w[occurrence exception].include?(event_type)
 
       def time_range_display
         return 'ALL DAY' if all_day?
