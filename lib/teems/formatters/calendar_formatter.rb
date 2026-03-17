@@ -102,7 +102,7 @@ module Teems
         "  RSVP:      #{response_to_symbol(response)} #{response_label(response)}"
       end
 
-      def detail_recurrence(event) = event.recurring? ? '  Recurrence: Yes' : nil
+      def detail_recurrence(event) = event.recurring? ? '  Recurring: Yes' : nil
 
       def detail_show_as(event)
         show_as = event.show_as
@@ -164,10 +164,9 @@ module Teems
 
       def build_list_item_line(event, number)
         time = event.all_day? ? 'ALL DAY   ' : event.time_range_display.ljust(11)
-        subject = format_event_subject(event)
-        hash = @output.gray("[#{event.short_hash}]")
         rsvp = response_to_symbol(event.response_status)
-        "  #{@output.cyan("[#{number}]")} #{hash} #{time} #{rsvp} #{subject}#{list_item_location(event)}"
+        prefix = "  #{@output.cyan("[#{number}]")} #{@output.gray("[#{event.short_hash}]")} #{time} #{rsvp}"
+        "#{prefix} #{format_event_subject(event)}#{list_item_location(event)}"
       end
 
       def format_event_subject(event)

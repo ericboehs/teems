@@ -217,11 +217,11 @@ module CalendarFormatterTests
 
     def test_format_event_detail_recurring
       result = @formatter.format_event_detail(build_event(event_type: 'occurrence'))
-      assert_includes result, 'Recurrence: Yes'
+      assert_includes result, 'Recurring: Yes'
     end
 
     def test_format_event_detail_not_recurring
-      refute_includes @formatter.format_event_detail(build_event(event_type: 'singleInstance')), 'Recurrence'
+      refute_includes @formatter.format_event_detail(build_event(event_type: 'singleInstance')), 'Recurring'
     end
 
     def test_format_event_detail_nil_organizer
