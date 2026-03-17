@@ -56,42 +56,13 @@ class CacheStoreTest < Minitest::Test
     end
   end
 
-  def test_save_and_get_calendar_ids
+  def test_clear_resets_user_cache
     with_temp_config do
       store = Teems::Services::CacheStore.new
-      store.save_calendar_ids({ '1' => 'event-abc', '2' => 'event-def' })
-
-      assert_equal 'event-abc', store.get_calendar_id(1)
-      assert_equal 'event-def', store.get_calendar_id(2)
-    end
-  end
-
-  def test_get_calendar_id_returns_nil_when_no_file
-    with_temp_config do
-      store = Teems::Services::CacheStore.new
-
-      assert_nil store.get_calendar_id(1)
-    end
-  end
-
-  def test_get_calendar_id_returns_nil_on_corrupt_json
-    with_temp_config do |dir|
-      cache_dir = "#{dir}/cache/teems"
-      FileUtils.mkdir_p(cache_dir)
-      File.write("#{cache_dir}/calendar_ids.json", 'not valid json{{{')
-      store = Teems::Services::CacheStore.new
-
-      assert_nil store.get_calendar_id(1)
-    end
-  end
-
-  def test_clear_removes_calendar_ids_file
-    with_temp_config do
-      store = Teems::Services::CacheStore.new
-      store.save_calendar_ids({ '1' => 'event-abc' })
+      store.set_user('user-1', 'Alice')
       store.clear
 
-      assert_nil store.get_calendar_id(1)
+      assert_nil store.get_user('user-1')
     end
   end
 end

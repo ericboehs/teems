@@ -27,6 +27,7 @@ module Teems
 
       def verbose? = @mode == :verbose
       def quiet? = @mode == :quiet
+      def tty? = @io.tty?
 
       def puts(message = '')
         @io.puts(message) unless quiet?

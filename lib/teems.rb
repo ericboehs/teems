@@ -7,6 +7,7 @@ require 'fileutils'
 require 'optparse'
 require 'time'
 require 'io/console'
+require 'digest'
 
 # Microsoft Teams CLI - A command-line interface for Microsoft Teams
 module Teems

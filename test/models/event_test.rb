@@ -134,6 +134,25 @@ module EventTests
     end
   end
 
+  # Tests short hash generation for event identification
+  class ShortHashTest < Minitest::Test
+    def test_short_hash_is_six_hex_chars
+      event = Teems::Models::Event.from_api(sample_event_data)
+      assert_match(/\A[0-9a-f]{6}\z/, event.short_hash)
+    end
+
+    def test_short_hash_is_deterministic
+      event = Teems::Models::Event.from_api(sample_event_data)
+      assert_equal event.short_hash, event.short_hash
+    end
+
+    def test_short_hash_differs_for_different_ids
+      event1 = Teems::Models::Event.from_api(sample_event_data)
+      event2 = Teems::Models::Event.from_api(sample_event_data.merge('id' => 'different-id'))
+      refute_equal event1.short_hash, event2.short_hash
+    end
+  end
+
   # Tests attendee filtering by type and response status, and body preview extraction
   class AttendeesAndBodyTest < Minitest::Test
     def test_required_attendees
