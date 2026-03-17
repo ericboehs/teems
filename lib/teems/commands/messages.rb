@@ -15,7 +15,7 @@ module Teems
         -t, --team ID    Team ID (required for channel messages)
         -n, --limit N    Number of messages (default: 20)
         --download       Download file attachments
-        -o, --output-dir Directory for downloads (default: ./teems-downloads)
+        -o, --output-dir Directory for downloads (default: ~/.local/share/teems/downloads)
         -v, --verbose    Show debug output
         -q, --quiet      Suppress output
         --json           Output as JSON
@@ -151,9 +151,13 @@ module Teems
       end
 
       def prepare_output_dir
-        dir = @options[:output_dir] || './teems-downloads'
+        dir = @options[:output_dir] || default_download_dir
         FileUtils.mkdir_p(dir)
         dir
+      end
+
+      def default_download_dir
+        File.join(Support::XdgPaths.new.data_dir, 'downloads')
       end
 
       def safe_filename(name)
