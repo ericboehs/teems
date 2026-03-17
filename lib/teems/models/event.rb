@@ -78,6 +78,8 @@ module Teems
         end
       end
 
+      def short_hash = Digest::SHA256.hexdigest(id.to_s)[0, 6]
+
       def all_day?
         is_all_day
       end

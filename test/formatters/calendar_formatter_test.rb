@@ -44,8 +44,10 @@ module CalendarFormatterTests
     end
 
     def test_format_event_list_compact
-      result = @formatter.format_event_list_compact([build_event])
+      event = build_event
+      result = @formatter.format_event_list_compact([event])
       assert_includes result, '[1]'
+      assert_includes result, "[#{event.short_hash}]"
       assert_includes result, '09:00-10:00'
       assert_includes result, 'Weekly Standup'
     end

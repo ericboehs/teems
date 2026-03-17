@@ -103,7 +103,8 @@ module Teems
       def build_list_item_line(event, number)
         time = event.all_day? ? 'ALL DAY   ' : event.time_range_display.ljust(11)
         subject = format_event_subject(event)
-        "  #{@output.cyan("[#{number}]")} #{time} #{subject}#{list_item_location(event)}"
+        hash = @output.gray("[#{event.short_hash}]")
+        "  #{@output.cyan("[#{number}]")} #{hash} #{time} #{subject}#{list_item_location(event)}"
       end
 
       # :reek:FeatureEnvy

@@ -6,20 +6,21 @@ module Teems
       teems cal - List calendar events and view details
 
       USAGE:
-        teems cal [options]              List today's events
+        teems cal [options]              List today's events (interactive when TTY)
         teems cal today                  List today's events (alias)
         teems cal tomorrow               List tomorrow's events
-        teems cal show <N>               Show details for event #N
-        teems cal accept <N>             Accept event #N
-        teems cal decline <N>            Decline event #N
-        teems cal tentative <N>          Tentatively accept event #N
+        teems cal show <N|hash>          Show details for event by # or hash
+        teems cal accept <N|hash>        Accept event by # or hash
+        teems cal decline <N|hash>       Decline event by # or hash
+        teems cal tentative <N|hash>     Tentatively accept event by # or hash
         teems cal create "Title" [opts]  Create a new event
-        teems cal delete <N>             Delete event #N
+        teems cal delete <N|hash>        Delete event by # or hash
 
       OPTIONS:
         --days N             Show events for the next N days (default: 1)
         --week               Show events for the current week (Mon-Fri)
         --date YYYY-MM-DD    Show events for a specific date
+        --no-interactive     Disable interactive mode (list and exit)
         --comment TEXT        Add a comment to RSVP response
         --no-send            Don't send response to organizer
         -n, --limit N        Maximum number of events to show
@@ -40,19 +41,23 @@ module Teems
         --teams              Add a Teams online meeting link
 
       EXAMPLES:
-        teems cal                # Today's agenda
-        teems cal today          # Same as above
-        teems cal tomorrow       # Tomorrow's events
-        teems cal --days 3       # Next 3 days
-        teems cal --week         # This work week
-        teems cal --date 2026-01-20   # Specific date
-        teems cal show 3         # Details for event #3
-        teems cal accept 3       # Accept event #3
+        teems cal                        # Interactive agenda (TTY)
+        teems cal --no-interactive       # List and exit
+        teems cal today                  # Same as above
+        teems cal tomorrow               # Tomorrow's events
+        teems cal --days 3               # Next 3 days
+        teems cal --week                 # This work week
+        teems cal --date 2026-01-20      # Specific date
+        teems cal show 3                 # Details for event #3
+        teems cal show a3f2b1            # Details by short hash
+        teems cal accept 3               # Accept event #3
+        teems cal accept a3f2            # Accept by hash prefix
         teems cal decline 3 --comment "Out of office"
         teems cal create "Standup" --start "tomorrow 09:00" --duration 15
         teems cal create "Review" --start "2026-03-20 14:00" --teams \
           --attendees alice@example.com,bob@example.com
-        teems cal delete 3       # Delete event #3
+        teems cal delete 3               # Delete event #3
+        teems cal --json | jq ...        # JSON output, no prompt
     HELP
 
     # Date range computation for calendar queries
@@ -158,7 +163,7 @@ module Teems
       def parse_show_subcommand(remaining)
         @subcommand = 'show'
         _, event_arg = remaining.shift(2)
-        @event_number = event_arg&.to_i
+        @event_ref = event_arg
       end
 
       def parse_today_subcommand(remaining)
@@ -175,7 +180,7 @@ module Teems
       def parse_rsvp_subcommand(remaining)
         action, event_arg = remaining.shift(2)
         @subcommand = action
-        @event_number = event_arg&.to_i
+        @event_ref = event_arg
       end
 
       def parse_create_subcommand(remaining)
@@ -187,7 +192,42 @@ module Teems
       def parse_delete_subcommand(remaining)
         @subcommand = 'delete'
         _, event_arg = remaining.shift(2)
-        @event_number = event_arg&.to_i
+        @event_ref = event_arg
+      end
+    end
+
+    # Event resolution by number or short hash
+    module CalEventResolver
+      private
+
+      def resolve_event_id
+        @resolve_events = fetch_current_events
+        event = resolve_by_ref(@event_ref)
+        return event.id if event
+
+        error("Event '#{@event_ref}' not found")
+        nil
+      end
+
+      def resolve_by_ref(ref)
+        ref.match?(/\A\d+\z/) ? event_by_number(ref) : event_by_hash_prefix(ref)
+      end
+
+      def event_by_number(ref)
+        index = ref.to_i - 1
+        index >= 0 ? @resolve_events[index] : nil
+      end
+
+      def event_by_hash_prefix(ref)
+        @hash_matches = @resolve_events.select { |evt| evt.short_hash.start_with?(ref.downcase) }
+        @hash_matches.first if @hash_matches.one?
+      end
+
+      def fetch_current_events
+        range = compute_date_range
+        return [] unless range
+
+        fetch_events(range)
       end
     end
 
@@ -209,9 +249,9 @@ module Teems
       end
 
       def validated_event_id
-        return missing_event_number unless @event_number&.positive?
+        return missing_event_ref unless @event_ref && !@event_ref.empty?
 
-        lookup_event_id || 1
+        resolve_event_id || 1
       end
 
       def api_error_result(prefix, err)
@@ -252,22 +292,14 @@ module Teems
           )
         end
 
-        success("Event ##{@event_number} #{RSVP_ACTION_LABELS[@subcommand]}")
+        success("Event #{@event_ref} #{RSVP_ACTION_LABELS[@subcommand]}")
         0
       end
 
-      def missing_event_number
+      def missing_event_ref
         action = @subcommand == 'show' ? 'show' : @subcommand
-        error("Event number required. Usage: teems cal #{action} <N>")
+        error("Event reference required. Usage: teems cal #{action} <N|hash>")
         1
-      end
-
-      def lookup_event_id
-        event_id = cache_store.get_calendar_id(@event_number)
-        return event_id if event_id
-
-        error("Event ##{@event_number} not found. Run 'teems cal' first to list events.")
-        nil
       end
 
       def delete_event
@@ -302,6 +334,118 @@ module Teems
 
       def event_to_hash(event)
         event.to_h.merge(start_time: event.start_time&.iso8601, end_time: event.end_time&.iso8601)
+      end
+    end
+
+    # Interactive event selection and action loop for TTY mode
+    module CalInteractiveMode
+      RSVP_KEYS = { 'a' => 'accept', 'd' => 'decline', 't' => 'tentative' }.freeze
+
+      private
+
+      def interactive?
+        !@options[:json] && !@options[:no_interactive] && !@options[:quiet] && output.tty?
+      end
+
+      def interactive_event_loop(events)
+        setup_interactive_state(events)
+        run_selection_loop
+      end
+
+      def setup_interactive_state(events)
+        @interactive_events = events
+        @resolve_events = events
+      end
+
+      def run_selection_loop
+        loop do
+          input = read_selection_input
+          return unless input
+
+          handle_selection(input)
+        end
+      end
+
+      def read_selection_input
+        output.print "\nEnter # or hash for details (1-#{@interactive_events.length}) or q to quit: "
+        output.flush
+        @last_input = $stdin.gets&.strip.to_s
+        @last_input unless @last_input.empty? || @last_input == 'q'
+      end
+
+      def handle_selection(input)
+        event = resolve_by_ref(input)
+        event ? show_detail_and_act(event) : output.puts("Invalid selection: #{input}")
+      end
+
+      def show_detail_and_act(event)
+        render_event_detail_text(event)
+        action_loop(event)
+      end
+
+      def render_event_detail_text(event)
+        formatter = Formatters::CalendarFormatter.new(output: output)
+        output.puts ''
+        output.puts formatter.format_event_detail(event)
+      end
+
+      def action_loop(event)
+        loop do
+          input = read_action_input
+          result = dispatch_action(input, event)
+          return result unless result == :continue
+        end
+      end
+
+      def read_action_input
+        output.print "\n[a]ccept  [d]ecline  [t]entative  [D]elete  [b]ack  [q]uit: "
+        output.flush
+        $stdin.gets&.strip
+      end
+
+      def dispatch_action(input, event)
+        return send_interactive_rsvp(RSVP_KEYS[input], event) if RSVP_KEYS.key?(input)
+
+        dispatch_non_rsvp_action(input, event)
+      end
+
+      def dispatch_non_rsvp_action(input, event)
+        case input.to_s
+        when 'D' then send_interactive_delete(event)
+        when 'b' then redisplay_list
+        when 'q', '' then throw(:interactive_quit)
+        else output.puts("Unknown action: #{input}") || :continue
+        end
+      end
+
+      def send_interactive_rsvp(action, event)
+        with_token_refresh { runner.calendar_api.rsvp_event(event_id: event.id, action: action, notify: :send) }
+        display_rsvp_result(action, event)
+      rescue ApiError => e
+        error("Failed to respond: #{e.message}") && :continue
+      end
+
+      def display_rsvp_result(action, event)
+        success("Event #{CalEventActions::RSVP_ACTION_LABELS[action]}: \"#{event.subject}\"")
+        :continue
+      end
+
+      def send_interactive_delete(event)
+        perform_delete(event)
+        throw(:interactive_quit)
+      rescue ApiError => e
+        error("Failed to delete: #{e.message}") && :continue
+      end
+
+      def perform_delete(event)
+        with_token_refresh { runner.calendar_api.delete_event(event_id: event.id) }
+        success("Deleted: \"#{event.subject}\"")
+      end
+
+      def redisplay_list
+        output.puts ''
+        render_events_text(@interactive_events)
+        nil
       end
     end
 
@@ -478,13 +622,15 @@ module Teems
     class Cal < Base
       include CalDateRange
       include CalSubcommandParser
+      include CalEventResolver
       include CalEventActions
       include CalCreateActions
+      include CalInteractiveMode
 
       def initialize(args, runner:)
         @options = {}
         @subcommand = nil
-        @event_number = nil
+        @event_ref = nil
         @create_subject = nil
         super
       end
@@ -505,6 +651,7 @@ module Teems
         '--days' => ->(opts, args) { opts[:days] = args.shift.to_i },
         '--week' => ->(opts, _args) { opts[:week] = true },
         '--date' => ->(opts, args) { opts[:date] = args.shift },
+        '--no-interactive' => ->(opts, _args) { opts[:no_interactive] = true },
         '--comment' => ->(opts, args) { opts[:comment] = args.shift },
         '--no-send' => ->(opts, _args) { opts[:no_send] = true },
         '--start' => ->(opts, args) { opts[:start] = args.shift },
@@ -551,9 +698,13 @@ module Teems
         events = fetch_events(range)
         return 0 if events.empty? && (puts('No events found') || true)
 
-        cache_event_ids(events)
         render_events(events)
+        run_interactive_loop(events) if interactive?
         0
+      end
+
+      def run_interactive_loop(events)
+        catch(:interactive_quit) { interactive_event_loop(events) }
       end
 
       def fetch_events(range)
@@ -564,12 +715,6 @@ module Teems
             timezone: detect_timezone, top: @options[:limit]
           )
         end
-      end
-
-      def cache_event_ids(events)
-        ids_hash = {}
-        events.each_with_index { |event, index| ids_hash[(index + 1).to_s] = event.id }
-        cache_store.save_calendar_ids(ids_hash)
       end
 
       def render_events(events)
