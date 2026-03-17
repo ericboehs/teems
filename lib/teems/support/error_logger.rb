@@ -8,11 +8,15 @@ module Teems
 
       def log(error, paths: XdgPaths.new)
         log_file = prepare_log_file(paths)
-        File.open(log_file, 'a') { |file| write_entry(file, error) }
-        log_file
+        append_error_entry(log_file, error)
       rescue SystemCallError, IOError => e
         warn "teems: Could not write error log: #{e.message}"
         nil
+      end
+
+      def append_error_entry(log_file, error)
+        File.open(log_file, 'a') { |file| write_entry(file, error) }
+        log_file
       end
 
       def prepare_log_file(paths)
@@ -22,7 +26,8 @@ module Teems
 
       def write_entry(file, error)
         file.puts "#{Time.now.iso8601} - #{error.class}: #{error.message}"
-        file.puts error.backtrace.first(10).map { |line| "  #{line}" }.join("\n") if error.backtrace
+        backtrace = error.backtrace
+        file.puts backtrace.first(10).map { |line| "  #{line}" }.join("\n") if backtrace
         file.puts
       end
     end

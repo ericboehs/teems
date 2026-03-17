@@ -2,6 +2,11 @@
 
 module Teems
   module Models
+    CHAT_TYPE_LABELS = {
+      'oneOnOne' => '1:1 Chat', 'group' => 'Group Chat', 'meeting' => 'Meeting Chat',
+      'channel' => 'Channel', 'space' => 'Space'
+    }.freeze
+
     # Represents a chat (1:1, group, or meeting chat)
     Chat = Data.define(:id, :topic, :chat_type, :created_at, :last_updated, :unread, :favorite, :pinned) do
       def self.from_api(data)
@@ -72,16 +77,7 @@ module Teems
         topic.to_s.empty? ? chat_type_label : topic
       end
 
-      def chat_type_label
-        case chat_type
-        when 'oneOnOne' then '1:1 Chat'
-        when 'group' then 'Group Chat'
-        when 'meeting' then 'Meeting Chat'
-        when 'channel' then 'Channel'
-        when 'space' then 'Space'
-        else chat_type
-        end
-      end
+      def chat_type_label = CHAT_TYPE_LABELS.fetch(chat_type, chat_type)
 
       def unread? = unread
       def favorite? = favorite

@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for the Calendar API wrapper
 module CalendarApiTests
+  # Shared setup and helpers for calendar API tests
   module Helpers
     def setup
       @api_client = Teems::TestHelpers::MockApiClient.new
@@ -20,8 +22,15 @@ module CalendarApiTests
     end
   end
 
+  # Tests for listing calendar events with filtering and pagination
   class ListEventsTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @calendar_api = nil
+      super
+    end
 
     def test_list_events_calls_correct_endpoint
       @api_client.stub('calendarView', { 'value' => [] })
@@ -38,9 +47,9 @@ module CalendarApiTests
       @calendar_api.list_events(
         start_dt: '2026-01-20T00:00:00', end_dt: '2026-01-20T23:59:59', timezone: 'America/Chicago'
       )
-      call = @api_client.calls.first
-      assert_equal '2026-01-20T00:00:00', call[:params]['startDateTime']
-      assert_equal '2026-01-20T23:59:59', call[:params]['endDateTime']
+      params = @api_client.calls.first[:params]
+      assert_equal '2026-01-20T00:00:00', params['startDateTime']
+      assert_equal '2026-01-20T23:59:59', params['endDateTime']
     end
 
     def test_list_events_passes_timezone_header
@@ -57,8 +66,9 @@ module CalendarApiTests
         start_dt: '2026-01-20T00:00:00', end_dt: '2026-01-20T23:59:59', timezone: 'America/Chicago'
       )
       params = @api_client.calls.first[:params]
-      assert_includes params['$select'], 'subject'
-      assert_includes params['$select'], 'attendees'
+      select_fields = params['$select']
+      assert_includes select_fields, 'subject'
+      assert_includes select_fields, 'attendees'
       assert_equal 'start/dateTime', params['$orderby']
     end
 
@@ -74,16 +84,17 @@ module CalendarApiTests
       @api_client.stub('calendarView', { 'value' => [sample_event_data] })
       events = list_events_chicago
       assert_equal 1, events.length
-      assert_instance_of Teems::Models::Event, events.first
-      assert_equal 'Weekly Standup', events.first.subject
+      first_event = events.first
+      assert_instance_of Teems::Models::Event, first_event
+      assert_equal 'Weekly Standup', first_event.subject
     end
 
     def test_list_events_handles_pagination
       next_link = 'https://graph.microsoft.com/v1.0/me/calendarView?$skiptoken=abc'
-      page1 = { 'value' => [sample_event_data], '@odata.nextLink' => next_link }
-      page2 = { 'value' => [sample_event_data.merge('id' => 'event-2', 'subject' => 'Lunch')] }
-      @api_client.stub('/v1.0/me/calendarView', page1)
-      @api_client.stub(next_link, page2)
+      first_page = { 'value' => [sample_event_data], '@odata.nextLink' => next_link }
+      second_page = { 'value' => [sample_event_data.merge('id' => 'event-2', 'subject' => 'Lunch')] }
+      @api_client.stub('/v1.0/me/calendarView', first_page)
+      @api_client.stub(next_link, second_page)
       events = list_events_chicago
       assert_equal 2, events.length
       assert_equal 'Weekly Standup', events[0].subject
@@ -91,16 +102,24 @@ module CalendarApiTests
     end
   end
 
+  # Tests for fetching a single event and sending RSVP responses
   class GetEventAndRsvpTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @calendar_api = nil
+      super
+    end
 
     def test_get_event_calls_correct_endpoint
       @api_client.stub('events', sample_event_data)
       @calendar_api.get_event(event_id: 'AAMkAGVmMDEzMTM4LTZmYWUtNDdkNC1hMDZe', timezone: 'America/Chicago')
       call = @api_client.calls.first
       assert_equal :get, call[:method]
-      assert_includes call[:path], '/v1.0/me/events/'
-      assert_includes call[:path], 'AAMkAGVmMDEzMTM4LTZmYWUtNDdkNC1hMDZe'
+      call_path = call[:path]
+      assert_includes call_path, '/v1.0/me/events/'
+      assert_includes call_path, 'AAMkAGVmMDEzMTM4LTZmYWUtNDdkNC1hMDZe'
     end
 
     def test_get_event_passes_timezone_header
@@ -119,9 +138,9 @@ module CalendarApiTests
     def test_get_event_passes_select_param
       @api_client.stub('events', sample_event_data)
       @calendar_api.get_event(event_id: 'event-123', timezone: 'UTC')
-      call = @api_client.calls.first
-      assert_includes call[:params]['$select'], 'subject'
-      assert_includes call[:params]['$select'], 'body'
+      select_param = @api_client.calls.first[:params]['$select']
+      assert_includes select_param, 'subject'
+      assert_includes select_param, 'body'
     end
 
     def test_rsvp_accept_calls_correct_endpoint
@@ -175,8 +194,15 @@ module CalendarApiTests
     end
   end
 
+  # Tests for creating new calendar events
   class CreateEventTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @calendar_api = nil
+      super
+    end
 
     def test_create_event_posts_to_correct_endpoint
       @api_client.stub('/v1.0/me/events', sample_event_data)
@@ -200,8 +226,15 @@ module CalendarApiTests
     end
   end
 
+  # Tests for deleting calendar events
   class DeleteEventTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @calendar_api = nil
+      super
+    end
 
     def test_delete_event_calls_correct_endpoint
       @calendar_api.delete_event(event_id: 'event-123')

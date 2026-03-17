@@ -3,6 +3,7 @@
 require 'test_helper'
 require 'teems/services/headless_extract'
 
+# Tests for headless token extraction, helper binary compilation, and HTTP skype exchange
 module HeadlessExtractTests
   # Testable class that includes all three modules, stubbing out
   # filesystem and system calls for safe unit testing.
@@ -48,6 +49,7 @@ module HeadlessExtractTests
     end
   end
 
+  # Tests helper binary existence checks, recompilation triggers, and missing source handling
   class HelperBinaryEnsureTest < Minitest::Test
     def test_ensure_helper_binary_returns_nil_when_no_source
       obj = TestableHeadless.new
@@ -96,7 +98,9 @@ module HeadlessExtractTests
         source = helper_source_path
         binary = helper_binary_path
         return nil unless exist_map[source]
-        return binary if exist_map[binary] && obj.file_mtime_map[binary] >= obj.file_mtime_map[source]
+
+        mtime_map = obj.file_mtime_map
+        return binary if exist_map[binary] && mtime_map[binary] >= mtime_map[source]
 
         compile_helper(source, binary)
       end
@@ -114,6 +118,7 @@ module HeadlessExtractTests
     end
   end
 
+  # Tests Swift compilation success, failure, and missing swiftc handling
   class HelperBinaryCompileTest < Minitest::Test
     def test_compile_helper_returns_nil_on_failure
       obj = TestableHeadless.new
@@ -160,6 +165,7 @@ module HeadlessExtractTests
     end
   end
 
+  # Tests swiftc command construction and helper source/binary path resolution
   class HelperBinaryPathsTest < Minitest::Test
     def test_swiftc_command_includes_frameworks
       cmd = TestableHeadless.new.swiftc_command('source.swift', 'output_binary')
@@ -182,6 +188,7 @@ module HeadlessExtractTests
     end
   end
 
+  # Tests HTTP-based skype token exchange with success, error, and exception paths
   class HttpSkypeExchangeTest < Minitest::Test
     include ResponseHelper
 
@@ -235,6 +242,7 @@ module HeadlessExtractTests
     end
   end
 
+  # Tests headless extraction with missing binary, error catching, and result parsing
   class HeadlessExtractBasicTest < Minitest::Test
     def test_try_headless_returns_nil_when_no_binary
       obj = TestableHeadless.new
@@ -263,6 +271,7 @@ module HeadlessExtractTests
     end
   end
 
+  # Tests successful headless token extraction and exit code handling
   class HeadlessExtractSuccessTest < Minitest::Test
     def test_try_headless_returns_tokens_on_success
       obj = build_headless_with_binary
@@ -325,6 +334,7 @@ module HeadlessExtractTests
     end
   end
 
+  # Tests helper argument construction with and without login hint and tenant
   class HeadlessExtractArgsTest < Minitest::Test
     def test_build_helper_args_with_no_hint
       obj = TestableHeadless.new
@@ -346,6 +356,7 @@ module HeadlessExtractTests
     end
   end
 
+  # Tests UPN extraction from JWT tokens with valid, invalid, and nil inputs
   class HeadlessExtractUpnTest < Minitest::Test
     include JwtHelper
 
@@ -365,6 +376,7 @@ module HeadlessExtractTests
     end
   end
 
+  # Tests headless result JSON parsing, missing auth token, and parse error handling
   class HeadlessExtractParseTest < Minitest::Test
     def test_parse_headless_result_returns_tokens
       result = parse_sample_result
@@ -399,6 +411,7 @@ module HeadlessExtractTests
     end
   end
 
+  # Tests stored login hint reading from token store with UPN and tenant extraction
   class HeadlessExtractLoginHintTest < Minitest::Test
     include JwtHelper
 

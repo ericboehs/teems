@@ -10,7 +10,10 @@ module Teems
         managers = []
         current_id = target_id
         fetch = method(target_is_me? ? :fetch_my_manager : :fetch_user_manager)
+        collect_managers(managers, current_id, fetch)
+      end
 
+      def collect_managers(managers, current_id, fetch)
         while (mgr = fetch.call(current_id))
           managers.unshift(mgr)
           current_id = mgr.id
@@ -46,20 +49,23 @@ module Teems
       def fetch_my_reports(_user_id)
         with_token_refresh { runner.users_api.direct_reports_me }
       rescue ApiError => e
-        debug("Could not fetch direct reports: #{e.message}")
-        raise unless e.not_found? || e.forbidden?
-
-        []
+        handle_reports_error(e, 'direct reports')
       end
 
       def fetch_user_reports(user_id)
         with_token_refresh { runner.users_api.direct_reports(user_id) }
       rescue ApiError => e
-        debug("Could not fetch direct reports for #{user_id}: #{e.message}")
-        raise unless e.not_found? || e.forbidden?
+        handle_reports_error(e, "direct reports for #{user_id}")
+      end
+
+      def handle_reports_error(err, context)
+        debug("Could not fetch #{context}: #{err.message}")
+        raise unless recoverable_reports_error?(err)
 
         []
       end
+
+      def recoverable_reports_error?(err) = err.not_found? || err.forbidden?
 
       def target_is_me?
         positional_args.empty?
@@ -79,9 +85,10 @@ module Teems
       end
 
       def render_tree(managers, target, reports)
+        depth = managers.length
         managers.each_with_index { |mgr, index| puts "#{'  ' * index}#{format_person(mgr)}" }
-        puts "#{'  ' * managers.length}--> #{format_person(target)}"
-        render_reports(reports[:reports], managers.length + 1)
+        puts "#{'  ' * depth}--> #{format_person(target)}"
+        render_reports(reports[:reports], depth + 1)
       end
 
       def render_reports(reports, level)
@@ -93,7 +100,8 @@ module Teems
 
       def format_person(profile)
         title = profile.job_title
-        title && !title.empty? ? "#{profile.best_name} (#{title})" : profile.best_name.to_s
+        name = profile.best_name
+        title && !title.empty? ? "#{name} (#{title})" : name.to_s
       end
 
       def build_json(managers, target, reports)
@@ -177,13 +185,19 @@ module Teems
 
       def show_org_chart
         target = resolve_target
-        return 1 unless target
+        target ? display_org(target) : 1
+      rescue ApiError => e
+        org_fetch_error(e)
+      end
 
+      def org_fetch_error(err)
+        error("Failed to fetch org chart: #{err.message}")
+        1
+      end
+
+      def display_org(target)
         render_org(*fetch_org_data(target))
         0
-      rescue ApiError => e
-        error("Failed to fetch org chart: #{e.message}")
-        1
       end
 
       def fetch_org_data(target)

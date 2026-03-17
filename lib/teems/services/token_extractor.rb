@@ -95,10 +95,7 @@ module Teems
       private
 
       def extract_tokens_v2
-        status = kick_off_decryption
-        return nil if status == 'no_key'
-
-        poll_decrypt_result
+        poll_decrypt_result unless kick_off_decryption == 'no_key'
       rescue JSON::ParserError => e
         log("Failed to parse v2 token decryption result: #{e.message}")
         nil
@@ -113,11 +110,19 @@ module Teems
 
       def poll_decrypt_result
         read_js = READ_DECRYPT_RESULT_JS.gsub('{{result_key}}', DECRYPT_RESULT_KEY)
+        poll_decrypt_attempts(read_js) || log_and_return_nil('Timed out waiting for v2 token decryption')
+      end
+
+      def poll_decrypt_attempts(read_js)
         10.times do |attempt|
           result = check_decrypt_result(read_js, attempt)
           return result if result
         end
-        log('Timed out waiting for v2 token decryption')
+        nil
+      end
+
+      def log_and_return_nil(message)
+        log(message)
         nil
       end
 
@@ -131,13 +136,17 @@ module Teems
 
       def parse_decrypt_result(result, attempt)
         parsed = JSON.parse(result)
-        return log_decrypt_error(parsed['error']) if parsed['error']
+        decrypt_error = parsed['error']
+        return log_decrypt_error(decrypt_error) if decrypt_error
 
-        auth_token = parsed['auth_token']
-        return nil unless auth_token
+        finalize_decrypted_tokens(parsed, attempt)
+      end
+
+      def finalize_decrypted_tokens(parsed, attempt)
+        return nil unless parsed['auth_token']
 
         log("V2 tokens decrypted after #{attempt + 1}s")
-        finalize_tokens(auth_token, parsed['skype_spaces_token'], **extract_v1_refresh_data)
+        finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'], **extract_v1_refresh_data)
       end
 
       def log_decrypt_error(message)
@@ -161,13 +170,16 @@ module Teems
       end
 
       def exchange_skype_token(skype_spaces_token)
-        result = run_safari_js(build_exchange_script(skype_spaces_token))
-        return nil if result.to_s.empty?
-
-        parse_exchange_result(result)
+        parse_exchange_result_safe(run_safari_js(build_exchange_script(skype_spaces_token)))
       rescue JSON::ParserError => e
         log("Failed to parse token exchange result: #{e.message}")
         nil
+      end
+
+      def parse_exchange_result_safe(result)
+        return nil if result.to_s.empty?
+
+        parse_exchange_result(result)
       end
 
       def parse_exchange_result(result)
@@ -195,13 +207,19 @@ module Teems
       def wait_for_tokens
         v2_attempted = false
         TOKEN_POLL_MAX_SECONDS.times do |attempt|
-          tokens, v2_attempted = poll_once(attempt, v2_attempted)
-          return tokens if tokens&.dig(:auth_token)
-
-          log_poll_progress(attempt)
-          sleep TOKEN_POLL_INTERVAL
+          tokens, v2_attempted = poll_iteration(attempt, v2_attempted)
+          return tokens if tokens
         end
         nil
+      end
+
+      def poll_iteration(attempt, v2_attempted)
+        tokens, v2_attempted = poll_once(attempt, v2_attempted)
+        return [tokens, v2_attempted] if tokens&.dig(:auth_token)
+
+        log_poll_progress(attempt)
+        sleep TOKEN_POLL_INTERVAL
+        [nil, v2_attempted]
       end
 
       def poll_once(attempt, v2_attempted)
@@ -224,14 +242,16 @@ module Teems
       end
 
       def extract_tokens_v1
-        parsed = parse_safari_json(EXTRACT_TOKENS_JS)
-        return nil unless parsed&.dig('auth_token')
-
-        finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'],
-                        **v1_extras(parsed))
+        build_v1_tokens(parse_safari_json(EXTRACT_TOKENS_JS))
       rescue JSON::ParserError => e
         log("Failed to parse v1 token extraction result: #{e.message}")
         nil
+      end
+
+      def build_v1_tokens(parsed)
+        return nil unless parsed&.dig('auth_token')
+
+        finalize_tokens(parsed['auth_token'], parsed['skype_spaces_token'], **v1_extras(parsed))
       end
 
       def parse_safari_json(js_code)
@@ -357,12 +377,20 @@ module Teems
       def wait_for_login
         consecutive_ready = 0
         60.times do |second|
-          sleep 1
-          consecutive_ready = page_ready? ? consecutive_ready + 1 : 0
+          consecutive_ready = check_login_readiness(consecutive_ready, second)
           break if consecutive_ready >= 3
-
-          log("Waiting... (#{second + 1}s)") if ((second + 1) % 10).zero?
         end
+      end
+
+      def check_login_readiness(consecutive_ready, second)
+        sleep 1
+        consecutive_ready = page_ready? ? consecutive_ready + 1 : 0
+        log_login_wait(second + 1)
+        consecutive_ready
+      end
+
+      def log_login_wait(elapsed)
+        log("Waiting... (#{elapsed}s)") if (elapsed % 10).zero?
       end
 
       def page_ready?

@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for Event model parsing, attendee filtering, and date display
 module EventTests
+  # Tests basic Event field parsing from API data including status and time
   class BasicParsingTest < Minitest::Test
     def test_from_api_parses_basic_fields
       event = Teems::Models::Event.from_api(sample_event_data)
@@ -118,8 +120,9 @@ module EventTests
     def test_organizer_parsing
       event = Teems::Models::Event.from_api(sample_event_data)
 
-      assert_equal 'Alice Manager', event.organizer[:name]
-      assert_equal 'alice@example.com', event.organizer[:email]
+      organizer = event.organizer
+      assert_equal 'Alice Manager', organizer[:name]
+      assert_equal 'alice@example.com', organizer[:email]
     end
 
     def test_nil_organizer
@@ -131,6 +134,7 @@ module EventTests
     end
   end
 
+  # Tests attendee filtering by type and response status, and body preview extraction
   class AttendeesAndBodyTest < Minitest::Test
     def test_required_attendees
       event = Teems::Models::Event.from_api(sample_event_data)
@@ -253,6 +257,7 @@ module EventTests
     end
   end
 
+  # Tests event date display formatting for all-day, timed, and missing-time events
   class DateDisplayTest < Minitest::Test
     def test_date_display_all_day
       event = Teems::Models::Event.from_api(sample_event_data.merge('isAllDay' => true))
@@ -275,6 +280,7 @@ module EventTests
     end
   end
 
+  # Tests summary line generation for event list display with location and meeting links
   class CreateSummaryLinesTest < Minitest::Test
     def test_summary_lines_with_all_fields
       data = sample_event_data.merge('onlineMeeting' => { 'joinUrl' => 'https://teams.example.com/join' })

@@ -14,7 +14,9 @@ require 'tmpdir'
 require 'json'
 require 'fileutils'
 
+# Root namespace for all teems test support code
 module Teems
+  # Sample API response data used across test suites
   module SampleData
     def sample_graph_message
       { 'id' => '1234567890', 'body' => { 'content' => '<p>Hello world</p>' },
@@ -88,6 +90,7 @@ module Teems
     end
   end
 
+  # Shared test utilities for temp config dirs, mock objects, and output capture
   module TestHelpers
     include SampleData
 
@@ -219,28 +222,28 @@ module Teems
 
     # Mock API client for testing
     class MockApiClient
-      attr_reader :calls, :call_count
       attr_accessor :on_request, :on_response
+      attr_reader :calls, :call_count
 
       def initialize
         @calls = []
         @call_count = 0
-        @responses = {}
-        @errors = {}
-        @transient_errors = {}
+        @stubs = { responses: {}, errors: {}, transient: {} }
+        @on_request = nil
+        @on_response = nil
       end
 
       def stub(path, response)
-        @responses[path] = response
+        @stubs[:responses][path] = response
       end
 
       def stub_error(path, error)
-        @errors[path] = error
+        @stubs[:errors][path] = error
       end
 
       # Raise error only for the first N calls matching this path, then succeed
       def stub_transient_error(path, error, times: 1)
-        @transient_errors[path] = { error: error, remaining: times }
+        @stubs[:transient][path] = { error: error, remaining: times }
       end
 
       def get(_endpoint, path, account:, **)
@@ -276,27 +279,35 @@ module Teems
       end
 
       def check_errors(path)
-        # Check transient errors first (they expire after N calls)
-        @transient_errors.each do |pattern, info|
-          next unless path.include?(pattern)
-          next unless info[:remaining].positive?
+        check_transient_errors(path)
+        check_permanent_errors(path)
+      end
 
-          info[:remaining] -= 1
+      def check_transient_errors(path)
+        @stubs[:transient].each do |pattern, info|
+          next unless path.include?(pattern)
+
+          remaining = info[:remaining]
+          next unless remaining.positive?
+
+          info[:remaining] = remaining - 1
           raise info[:error]
         end
+      end
 
-        # Permanent errors
-        @errors.each do |pattern, error|
+      def check_permanent_errors(path)
+        @stubs[:errors].each do |pattern, error|
           raise error if path.include?(pattern)
         end
       end
 
       def find_response(path)
+        responses = @stubs[:responses]
         # Try exact match first
-        return @responses[path] if @responses.key?(path)
+        return responses[path] if responses.key?(path)
 
         # Try partial match
-        @responses.each do |pattern, response|
+        responses.each do |pattern, response|
           return response if path.include?(pattern)
         end
         nil

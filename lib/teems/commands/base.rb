@@ -44,17 +44,21 @@ module Teems
         @positional_args
       end
 
+      COMMON_OPTIONS = {
+        '-v' => :verbose, '--verbose' => :verbose,
+        '-q' => :quiet, '--quiet' => :quiet,
+        '--json' => :json, '-h' => :help, '--help' => :help
+      }.freeze
+
+      LIMIT_FLAGS = %w[-n --limit].freeze
+
       private
 
       def parse_single_option(arg, pending)
-        case arg
-        when '-n', '--limit' then @options[:limit] = pending.shift.to_i
-        when '-v', '--verbose' then @options[:verbose] = true
-        when '-q', '--quiet' then @options[:quiet] = true
-        when '--json' then @options[:json] = true
-        when '-h', '--help' then @options[:help] = true
-        else handle_option(arg, pending)
-        end
+        return @options[:limit] = pending.shift.to_i if LIMIT_FLAGS.include?(arg)
+        return @options[COMMON_OPTIONS[arg]] = true if COMMON_OPTIONS.key?(arg)
+
+        handle_option(arg, pending)
       end
 
       protected
@@ -96,22 +100,15 @@ module Teems
         'No help available for this command.'
       end
 
-      # Output helpers
       def success(msg) = @options[:quiet] || output.success(msg)
       def info(msg) = @options[:quiet] || output.info(msg)
       def warn(message) = output.warn(message)
-
-      def error(message)
-        output.error(message)
-        1
-      end
-
+      def error(message) = output.error(message) || 1
       def debug(msg) = @options[:verbose] && output.debug(msg)
       def puts(message = '') = @options[:quiet] || output.puts(message)
       def print(msg) = @options[:quiet] || output.print(msg)
       def output_json(data) = output.puts(JSON.pretty_generate(data))
 
-      # Check if account is configured, show error if not
       def require_auth
         return nil if runner.configured?
 
@@ -126,11 +123,15 @@ module Teems
       rescue ApiError => e
         raise unless e.unauthorized? || e.message.include?('expired')
 
+        attempt_token_refresh
+        yield
+      end
+
+      def attempt_token_refresh
         debug('Token expired, attempting refresh...')
-        raise unless runner.refresh_tokens
+        raise ApiError, 'Token refresh failed' unless runner.refresh_tokens
 
         debug('Token refreshed, retrying request...')
-        yield
       end
     end
   end

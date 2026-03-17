@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests shared Parsing module methods for HTML stripping, time parsing, and JSON file parsing
 class ParsingTest < Minitest::Test
   include Teems::Models::Parsing
 

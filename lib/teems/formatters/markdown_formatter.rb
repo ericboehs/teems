@@ -48,8 +48,7 @@ module Teems
         return current_date if msg_date == current_date
 
         lines << '' if current_date
-        lines << "## #{msg_date || 'Unknown Date'}"
-        lines << ''
+        lines.push("## #{msg_date || 'Unknown Date'}", '')
         msg_date
       end
 
@@ -81,13 +80,12 @@ module Teems
       end
 
       def format_message_attachments(msg)
-        attachments = msg.attachments
-        return [] unless attachments.is_a?(Array) && attachments.any?
+        Array(msg.attachments).map { |att| format_attachment(att) }
+      end
 
-        attachments.map do |att|
-          name = att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
-          "\u{1F4CE} #{name}"
-        end
+      def format_attachment(att)
+        name = att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
+        "\u{1F4CE} #{name}"
       end
 
       def format_message_reactions(msg)
@@ -102,7 +100,8 @@ module Teems
       end
 
       def format_single_reaction(reaction)
-        emoji = REACTION_EMOJI[reaction[:type]] || reaction[:type]
+        type = reaction[:type]
+        emoji = REACTION_EMOJI[type] || type
         count = reaction[:count] || 1
         count > 1 ? "#{emoji} \u00d7#{count}" : emoji.to_s
       end

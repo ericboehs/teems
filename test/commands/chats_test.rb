@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for the chats command
 module ChatsCommandTests
+  # Shared helpers for running chats commands and building test data
   module Helpers
     private
 
@@ -92,6 +94,7 @@ module ChatsCommandTests
     end
   end
 
+  # Tests for help, auth, listing, and error handling
   class BasicTest < Minitest::Test
     include Helpers
 
@@ -117,8 +120,9 @@ module ChatsCommandTests
       with_temp_config do
         result = run_chats_with_data('conversations' => [ngmsg_chat_data])
         assert_equal 0, result[:exit_code]
-        assert_match(/Test Group/, result[:stdout])
-        assert_match(/19:chat123@thread.v2/, result[:stdout])
+        stdout = result[:stdout]
+        assert_match(/Test Group/, stdout)
+        assert_match(/19:chat123@thread.v2/, stdout)
       end
     end
 
@@ -147,6 +151,7 @@ module ChatsCommandTests
     end
   end
 
+  # Tests for chat type icons, timestamps, and unread markers
   class DisplayTest < Minitest::Test
     include Helpers
 
@@ -209,20 +214,23 @@ module ChatsCommandTests
     def test_read_chat_has_no_asterisk
       with_temp_config do
         result = run_chats_with_data('conversations' => [read_chat_data])
-        refute_match(/\* .*Read Chat/, result[:stdout])
-        assert_match(/Read Chat/, result[:stdout])
+        stdout = result[:stdout]
+        refute_match(/\* .*Read Chat/, stdout)
+        assert_match(/Read Chat/, stdout)
       end
     end
   end
 
+  # Tests for unread, favorites, pinned filters and channel display
   class FilterTest < Minitest::Test
     include Helpers
 
     def test_unread_filter_shows_only_unread
       with_temp_config do
         result = run_chats_with_filter(['--unread'], [unread_chat_data, read_chat_data])
-        assert_match(/Unread Chat/, result[:stdout])
-        refute_match(/Read Chat/, result[:stdout])
+        stdout = result[:stdout]
+        assert_match(/Unread Chat/, stdout)
+        refute_match(/Read Chat/, stdout)
       end
     end
 
@@ -236,43 +244,45 @@ module ChatsCommandTests
     def test_favorites_filter_shows_only_favorites
       with_temp_config do
         result = run_chats_with_filter(['--favorites'], [favorite_chat_data, ngmsg_chat_data])
-        assert_match(/Fav Chat/, result[:stdout])
-        refute_match(/Test Group/, result[:stdout])
+        stdout = result[:stdout]
+        assert_match(/Fav Chat/, stdout)
+        refute_match(/Test Group/, stdout)
       end
     end
 
     def test_pinned_filter_shows_only_pinned
       with_temp_config do
         result = run_chats_with_filter(['--pinned'], [pinned_chat_data, ngmsg_chat_data])
-        assert_match(/Pinned Chat/, result[:stdout])
-        refute_match(/Test Group/, result[:stdout])
+        stdout = result[:stdout]
+        assert_match(/Pinned Chat/, stdout)
+        refute_match(/Test Group/, stdout)
       end
     end
 
     def test_json_includes_unread_favorite_pinned
       with_temp_config do
-        result = run_chats_with_filter(['--json'], [unread_chat_data, favorite_chat_data])
-        json = JSON.parse(result[:stdout])
-        unread_item = json.find { |c| c['id'] == '19:unread@thread.v2' }
-        fav_item = json.find { |c| c['id'] == '19:fav@thread.v2' }
-        assert unread_item['unread']
-        assert fav_item['favorite']
+        json = parse_chats_json([unread_chat_data, favorite_chat_data])
+        unread_entry = json.find { |chat| chat['id'].include?('unread') }
+        favorite_entry = json.find { |chat| chat['id'].include?('fav') }
+        assert unread_entry['unread']
+        assert favorite_entry['favorite']
       end
     end
 
     def test_help_shows_filter_options
-      result = run_chats(['--help'])
-      assert_match(/--unread/, result[:stdout])
-      assert_match(/--favorites/, result[:stdout])
-      assert_match(/--pinned/, result[:stdout])
+      stdout = run_chats(['--help'])[:stdout]
+      assert_match(/--unread/, stdout)
+      assert_match(/--favorites/, stdout)
+      assert_match(/--pinned/, stdout)
     end
 
     def test_filters_out_48_notifications_stream
       with_temp_config do
         notifications = { 'id' => '48:notifications', 'threadProperties' => { 'threadType' => 'chat' } }
         result = run_chats_with_filter([], [notifications, ngmsg_chat_data])
-        refute_match(/48:notifications/, result[:stdout])
-        assert_match(/Test Group/, result[:stdout])
+        stdout = result[:stdout]
+        refute_match(/48:notifications/, stdout)
+        assert_match(/Test Group/, stdout)
       end
     end
 
@@ -294,12 +304,18 @@ module ChatsCommandTests
         space = { 'id' => '19:space1@thread.tacv2',
                   'threadProperties' => { 'threadType' => 'space', 'spaceThreadTopic' => 'My Team' } }
         result = run_chats_with_filter([], [space])
-        assert_match(/My Team/, result[:stdout])
-        refute_match(/\bSpace\b/, result[:stdout])
+        stdout = result[:stdout]
+        assert_match(/My Team/, stdout)
+        refute_match(/\bSpace\b/, stdout)
       end
     end
 
     private
+
+    def parse_chats_json(conversations)
+      result = run_chats_with_filter(['--json'], conversations)
+      JSON.parse(result[:stdout])
+    end
 
     def run_chats_with_filter(args, conversations)
       exit_code = nil

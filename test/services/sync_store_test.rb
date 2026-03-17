@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for SyncStore state persistence, directory naming, message storage, and corruption handling
 module SyncStoreTests
+  # Tests sync directory paths, state save/load, chat state updates, and atomic writes
   class BasicTest < Minitest::Test
     def test_sync_dir_uses_xdg_data_home
       with_temp_config do |dir|
@@ -29,8 +31,9 @@ module SyncStoreTests
     def test_load_state_handles_corrupt_json
       with_temp_config do
         store = Teems::Services::SyncStore.new
-        FileUtils.mkdir_p(store.sync_dir)
-        File.write(File.join(store.sync_dir, 'sync_state.json'), 'not json{{{')
+        sync_dir = store.sync_dir
+        FileUtils.mkdir_p(sync_dir)
+        File.write(File.join(sync_dir, 'sync_state.json'), 'not json{{{')
         assert_equal({}, store.load_state)
       end
     end
@@ -83,6 +86,7 @@ module SyncStoreTests
     end
   end
 
+  # Tests message file writing, reading, metadata persistence, and corrupt JSON recovery
   class MessagesTest < Minitest::Test
     def test_write_messages_creates_files
       with_temp_config do
@@ -90,10 +94,7 @@ module SyncStoreTests
         chat_id = '19:test@thread.v2'
         store.write_messages(chat_id, messages_md: '# Test\n\nHello world',
                                       messages_json: '[{"id":"1","content":"hello"}]')
-        dir = store.chat_dir(chat_id)
-        assert File.exist?(File.join(dir, 'messages.md'))
-        assert File.exist?(File.join(dir, 'messages.json'))
-        assert_equal '# Test\n\nHello world', File.read(File.join(dir, 'messages.md'))
+        assert_messages_files_exist(store, chat_id)
       end
     end
 
@@ -132,8 +133,19 @@ module SyncStoreTests
         assert_equal [], store.read_messages_json(chat_id)
       end
     end
+
+    private
+
+    def assert_messages_files_exist(store, chat_id)
+      dir = store.chat_dir(chat_id)
+      messages_md_path = File.join(dir, 'messages.md')
+      assert File.exist?(messages_md_path)
+      assert File.exist?(File.join(dir, 'messages.json'))
+      assert_equal '# Test\n\nHello world', File.read(messages_md_path)
+    end
   end
 
+  # Tests marking chats as unavailable and checking unavailability status
   class UnavailableTest < Minitest::Test
     def test_mark_unavailable_sets_flag
       with_temp_config do
@@ -178,6 +190,7 @@ module SyncStoreTests
     end
   end
 
+  # Tests directory name sanitization, generic label suffixes, truncation, and fallback naming
   class DirNamingTest < Minitest::Test
     def test_build_dir_name_sanitizes_unsafe_chars
       with_temp_config do
@@ -254,15 +267,17 @@ module SyncStoreTests
     end
   end
 
+  # Tests directory renaming on topic or type change and collision avoidance
   class DirRenamingTest < Minitest::Test
     def test_ensure_dir_name_renames_on_topic_change
       with_temp_config do
         chat_id = '19:abc@thread.v2'
         store, state = build_store_with_state(chat_id, dir_name: 'Old Topic', chat_type: 'group')
         make_chat_dir(store, 'groups', 'Old Topic')
+        sync_dir = store.sync_dir
         assert_equal 'New Topic', store.ensure_dir_name(state, chat_id, 'New Topic', chat_type: 'group')
-        assert File.directory?(File.join(store.sync_dir, 'chats', 'groups', 'New Topic'))
-        refute File.directory?(File.join(store.sync_dir, 'chats', 'groups', 'Old Topic'))
+        assert File.directory?(File.join(sync_dir, 'chats', 'groups', 'New Topic'))
+        refute File.directory?(File.join(sync_dir, 'chats', 'groups', 'Old Topic'))
       end
     end
 
@@ -281,14 +296,10 @@ module SyncStoreTests
 
     def test_update_chat_state_stores_dir_name
       with_temp_config do
-        store = Teems::Services::SyncStore.new
-        state = {}
-        now = Time.now
-        store.update_chat_state(state, 'chat1',
-                                attrs: { last_synced_at: now, message_count: 42,
-                                         display_name: 'My Project Chat', chat_type: 'group' })
-        assert_equal 'My Project Chat', state['chats']['chat1']['dir_name']
-        assert_equal 'group', state['chats']['chat1']['chat_type']
+        chat_state = update_and_load_chat_state('chat1',
+                                                display_name: 'My Project Chat', chat_type: 'group')
+        assert_equal 'My Project Chat', chat_state['dir_name']
+        assert_equal 'group', chat_state['chat_type']
       end
     end
 
@@ -317,6 +328,15 @@ module SyncStoreTests
 
     private
 
+    def update_and_load_chat_state(chat_id, display_name:, chat_type:)
+      store = Teems::Services::SyncStore.new
+      state = {}
+      store.update_chat_state(state, chat_id,
+                              attrs: { last_synced_at: Time.now, message_count: 42,
+                                       display_name: display_name, chat_type: chat_type })
+      state['chats'][chat_id]
+    end
+
     def build_store_with_state(chat_id, dir_name:, chat_type:)
       store = Teems::Services::SyncStore.new
       state = { 'chats' => { chat_id => { 'dir_name' => dir_name, 'chat_type' => chat_type } } }
@@ -331,8 +351,9 @@ module SyncStoreTests
     end
 
     def setup_collision_dirs(store)
-      old_dir = File.join(store.sync_dir, 'chats', 'groups', 'Old Name')
-      new_dir = File.join(store.sync_dir, 'chats', 'groups', 'New Name')
+      sync_dir = store.sync_dir
+      old_dir = File.join(sync_dir, 'chats', 'groups', 'Old Name')
+      new_dir = File.join(sync_dir, 'chats', 'groups', 'New Name')
       FileUtils.mkdir_p(old_dir)
       FileUtils.mkdir_p(new_dir)
       File.write(File.join(old_dir, 'messages.md'), '# Old content')
@@ -341,6 +362,7 @@ module SyncStoreTests
     end
   end
 
+  # Tests corrupt JSON backup and recovery for state and message files
   class CorruptDataTest < Minitest::Test
     def test_corrupt_state_backs_up_file
       with_temp_config do
@@ -380,6 +402,7 @@ module SyncStoreTests
     end
   end
 
+  # Tests chat type to subdirectory mapping and type storage in state
   class TypeSubdirectoryTest < Minitest::Test
     TYPE_TO_SUBDIR = {
       'group' => 'groups', 'oneOnOne' => 'dms', 'meeting' => 'meetings',
@@ -466,6 +489,7 @@ module SyncStoreTests
     end
   end
 
+  # Tests SyncDirNaming module methods for sanitization, generic labels, and type mapping
   class SyncDirNamingModuleTest < Minitest::Test
     include Teems::Services::SyncDirNaming
 
@@ -498,6 +522,7 @@ module SyncStoreTests
     end
   end
 
+  # Tests bad timestamp handling and corrupt state file backup with rename errors
   class TimestampAndBackupTest < Minitest::Test
     def test_last_synced_time_returns_nil_on_bad_timestamp
       with_temp_config do

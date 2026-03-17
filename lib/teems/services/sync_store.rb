@@ -106,9 +106,10 @@ module Teems
 
       def maybe_rename(entry, new_dir_name, chat_type)
         current = entry['dir_name']
-        return unless current && (current != new_dir_name || entry['chat_type'] != chat_type)
+        current_type = entry['chat_type']
+        return unless current && (current != new_dir_name || current_type != chat_type)
 
-        perform_rename(entry['chat_type'], current, chat_type, new_dir_name)
+        perform_rename(current_type, current, chat_type, new_dir_name)
       end
 
       def perform_rename(old_type, old_name, new_type, new_name)
@@ -116,8 +117,7 @@ module Teems
         new_path = chat_type_path(new_type, new_name)
         return if old_path == new_path || !File.directory?(old_path) || File.exist?(new_path)
 
-        FileUtils.mkdir_p(File.dirname(new_path))
-        File.rename(old_path, new_path)
+        FileUtils.mkdir_p(File.dirname(new_path)) && File.rename(old_path, new_path)
       end
 
       def chat_type_path(type, name) = File.join(sync_dir, CHATS_DIR, type_dir(type), name)

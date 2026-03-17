@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests User model field extraction, email fallback logic, and best_name resolution
 class UserTest < Minitest::Test
   def test_from_api_extracts_fields
     user = Teems::Models::User.from_api(sample_user_data)

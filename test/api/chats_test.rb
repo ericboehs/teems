@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests for the Chats API wrapper (conversations and members)
 class ApiChatsTest < Minitest::Test
   def test_list_calls_correct_endpoint
     api_client = Teems::TestHelpers::MockApiClient.new
@@ -74,9 +75,10 @@ class ApiChatsTest < Minitest::Test
     chats.members(chat_id: '19:abc@thread.v2')
 
     call = api_client.calls.last
+    call_path = call[:path]
     assert_equal :get, call[:method]
-    assert_includes call[:path], '/v1/threads/'
-    assert_includes call[:path], '/members'
+    assert_includes call_path, '/v1/threads/'
+    assert_includes call_path, '/members'
   end
 
   def test_members_url_encodes_id

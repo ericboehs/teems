@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests error logging to file with timestamps, appending, and IO failure handling
 class ErrorLoggerTest < Minitest::Test
   def test_log_writes_error_to_file
     with_temp_config do
@@ -16,8 +17,8 @@ class ErrorLoggerTest < Minitest::Test
   end
 
   def error_with_backtrace
-    RuntimeError.new('test error').tap do |e|
-      e.set_backtrace(['file.rb:1:in `method`', 'file.rb:2:in `other`'])
+    RuntimeError.new('test error').tap do |err|
+      err.set_backtrace(['file.rb:1:in `method`', 'file.rb:2:in `other`'])
     end
   end
   private :error_with_backtrace

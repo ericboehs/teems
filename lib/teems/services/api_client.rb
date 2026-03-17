@@ -40,9 +40,46 @@ module Teems
       end
     end
 
+    # HTTP response handling for API client
+    module ResponseHandler
+      private
+
+      def handle_response(response)
+        return parse_json_body(response) if response.is_a?(Net::HTTPSuccess)
+
+        raise_http_error(response)
+      end
+
+      def raise_http_error(response)
+        case response
+        when Net::HTTPUnauthorized   then raise ApiError.new('Invalid token or session expired', status_code: 401)
+        when Net::HTTPForbidden      then raise ApiError.new('Access forbidden', status_code: 403)
+        when Net::HTTPTooManyRequests then raise_rate_limit(response)
+        else raise ApiError.new("HTTP #{response.code}: #{response.message}", status_code: response.code.to_i)
+        end
+      end
+
+      def raise_rate_limit(response)
+        retry_after = response['Retry-After']
+        suffix = retry_after ? "retry after #{retry_after} seconds" : 'please wait and try again'
+        raise ApiError.new("Rate limited - #{suffix}", status_code: 429)
+      end
+
+      def parse_json_body(response)
+        body = response.body
+        return {} if body.to_s.empty?
+
+        JSON.parse(body)
+      rescue JSON::ParserError
+        raise ApiError, 'Invalid JSON response from Teams API'
+      end
+    end
+
     # HTTP client for Teams API with connection pooling and multi-endpoint support
+    # :reek:DataClump
     class ApiClient
       include ConnectionPool
+      include ResponseHandler
 
       NETWORK_ERRORS = [
         SocketError, Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ETIMEDOUT,
@@ -75,21 +112,16 @@ module Teems
       end
 
       def get(endpoint_key, path, account:, **options)
-        uri = resolve_uri(endpoint_key, path, options.fetch(:params, {}))
-        req = Net::HTTP::Get.new(uri)
+        req = build_get_request(endpoint_key, path, options)
         apply_auth(req, account, endpoint_key)
-        apply_headers(req, options.fetch(:headers, {}))
         run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
       end
 
       def post(endpoint_key, path, account:, body: nil)
-        uri = URI("#{resolve_endpoint(endpoint_key)}#{path}")
-        run_request(path, get_http_for_endpoint(endpoint_key)) do |http|
-          req = Net::HTTP::Post.new(uri)
-          apply_auth(req, account, endpoint_key)
-          req.body = JSON.generate(body) if body
-          http.request(req)
-        end
+        req = Net::HTTP::Post.new(URI("#{resolve_endpoint(endpoint_key)}#{path}"))
+        apply_auth(req, account, endpoint_key)
+        req.body = JSON.generate(body) if body
+        run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
       end
 
       def delete(endpoint_key, path, account:)
@@ -103,9 +135,13 @@ module Teems
 
       private
 
-      def apply_headers(request, headers)
-        headers.each { |key, value| request[key] = value }
+      def build_get_request(endpoint_key, path, options)
+        req = Net::HTTP::Get.new(resolve_uri(endpoint_key, path, options.fetch(:params, {})))
+        apply_headers(req, options.fetch(:headers, {}))
+        req
       end
+
+      def apply_headers(request, headers) = headers.each { |key, value| request[key] = value }
 
       def resolve_uri(endpoint_key, path, params)
         URI(path.start_with?('http') ? path : "#{resolve_endpoint(endpoint_key)}#{path}").tap do |uri|
@@ -122,38 +158,21 @@ module Teems
       end
 
       def run_request(path, http)
-        @call_count += 1
-        @on_request&.call(path, @call_count)
+        track_request(path)
         response = yield(http)
-        @on_response&.call(path, response.code)
-        handle_response(response)
+        process_response(path, response)
       rescue *NETWORK_ERRORS => e
         raise ApiError, "Network error: #{e.message}"
       end
 
-      def handle_response(response)
-        case response
-        when Net::HTTPSuccess        then parse_json_body(response)
-        when Net::HTTPUnauthorized   then raise ApiError.new('Invalid token or session expired', status_code: 401)
-        when Net::HTTPForbidden      then raise ApiError.new('Access forbidden', status_code: 403)
-        when Net::HTTPTooManyRequests then raise_rate_limit(response)
-        else raise ApiError.new("HTTP #{response.code}: #{response.message}", status_code: response.code.to_i)
-        end
+      def track_request(path)
+        @call_count += 1
+        @on_request&.call(path, @call_count)
       end
 
-      def raise_rate_limit(response)
-        retry_after = response['Retry-After']
-        suffix = retry_after ? "retry after #{retry_after} seconds" : 'please wait and try again'
-        raise ApiError.new("Rate limited - #{suffix}", status_code: 429)
-      end
-
-      def parse_json_body(response)
-        body = response.body
-        return {} if body.to_s.empty?
-
-        JSON.parse(body)
-      rescue JSON::ParserError
-        raise ApiError, 'Invalid JSON response from Teams API'
+      def process_response(path, response)
+        @on_response&.call(path, response.code)
+        handle_response(response)
       end
     end
   end

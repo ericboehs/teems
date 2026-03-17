@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for TokenStore persistence, token updates, OIDC fields, and error handling
 module TokenStoreTests
+  # Tests token configuration detection, account loading, and corrupt file handling
   class BasicTest < Minitest::Test
     def test_configured_returns_false_when_no_tokens
       with_temp_config do
@@ -57,6 +59,7 @@ module TokenStoreTests
     end
   end
 
+  # Tests token saving, clearing, age calculation, and directory creation
   class SaveTest < Minitest::Test
     def test_save_persists_tokens
       with_temp_config do
@@ -90,7 +93,7 @@ module TokenStoreTests
         store = Teems::Services::TokenStore.new
         assert store.configured?
         store.clear
-        refute store.configured?
+        refute_predicate store, :configured?
       end
     end
 
@@ -117,8 +120,9 @@ module TokenStoreTests
 
     def test_token_age_prefers_tokens_refreshed_at_over_saved_at
       with_temp_config do |dir|
-        saved_at = (Time.now - 7200).iso8601
-        refreshed_at = (Time.now - 600).iso8601
+        now = Time.now
+        saved_at = (now - 7200).iso8601
+        refreshed_at = (now - 600).iso8601
         write_tokens_file(dir, { 'auth_token' => 'auth', 'skype_token' => 'skype',
                                  'saved_at' => saved_at, 'tokens_refreshed_at' => refreshed_at })
         assert_in_delta 600, Teems::Services::TokenStore.new.token_age, 5
@@ -135,6 +139,7 @@ module TokenStoreTests
     end
   end
 
+  # Tests file permissions, skype token updates, spaces token access, and refresh timestamps
   class SaveAndUpdateTest < Minitest::Test
     def test_save_creates_file_with_restricted_permissions
       with_temp_config do |dir|
@@ -202,8 +207,9 @@ module TokenStoreTests
         write_tokens_file(dir, { 'auth_token' => 'auth', 'skype_token' => 'old-skype' })
         Teems::Services::TokenStore.new.update_skype_token('new-skype')
         data = JSON.parse(File.read("#{dir}/teems/tokens.json"))
-        assert data['skype_token_refreshed_at']
-        assert_match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, data['skype_token_refreshed_at'])
+        refreshed_at = data['skype_token_refreshed_at']
+        assert refreshed_at
+        assert_match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, refreshed_at)
       end
     end
 
@@ -224,6 +230,7 @@ module TokenStoreTests
     end
   end
 
+  # Tests OIDC field accessors for refresh_token, client_id, and tenant_id
   class OidcFieldsTest < Minitest::Test
     def test_refresh_token_returns_stored_value
       with_temp_config do |dir|
@@ -269,14 +276,16 @@ module TokenStoreTests
     end
   end
 
+  # Tests bulk token update with field preservation and nil optional field handling
   class UpdateAllTokensTest < Minitest::Test
     def test_updates_auth_and_skype_tokens
       with_temp_config do |dir|
         store = build_store_with_all_fields(dir)
         store.update_all_tokens(auth_token: 'new-auth', skype_token: 'new-skype',
                                 skype_spaces_token: 'new-spaces', refresh_token: 'new-rt')
-        assert_equal 'new-auth', store.account.auth_token
-        assert_equal 'new-skype', store.account.skype_token
+        account = store.account
+        assert_equal 'new-auth', account.auth_token
+        assert_equal 'new-skype', account.skype_token
       end
     end
 
@@ -338,6 +347,7 @@ module TokenStoreTests
     def read_tokens(dir) = JSON.parse(File.read("#{dir}/teems/tokens.json"))
   end
 
+  # Tests IO error recovery for save, update, and bad timestamp handling
   class ErrorHandlingTest < Minitest::Test
     def test_save_returns_false_on_io_error
       with_temp_config do |dir|

@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for the ApiClient service
 module ApiClientTests
+  # Tests basic ApiClient initialization, constants, and callbacks
   class BasicTest < Minitest::Test
     def test_endpoints_constant_defined
       endpoints = Teems::Services::ApiClient::ENDPOINTS
@@ -74,7 +76,9 @@ module ApiClientTests
     end
   end
 
+  # Tests HTTP response handling, auth application, and endpoint resolution
   class HandleResponseTest < Minitest::Test
+    # Exposes private response handling and auth methods for testing
     class ExposedApiClient < Teems::Services::ApiClient
       public :handle_response, :apply_auth, :resolve_endpoint
     end
@@ -175,15 +179,17 @@ module ApiClientTests
     end
   end
 
+  # Tests on_request and on_response callback invocation
   class CallbacksTest < Minitest::Test
     def test_on_request_callback_receives_path_and_count
       calls = []
       client = build_mock_client_with_callback(:on_request) { |path, count| calls << [path, count] }
       Teems::Api::Channels.new(client, mock_account).list_teams
 
+      first_call = calls.first
       assert_equal 1, calls.length
-      assert_includes calls.first[0], 'joinedTeams'
-      assert_equal 1, calls.first[1]
+      assert_includes first_call[0], 'joinedTeams'
+      assert_equal 1, first_call[1]
     end
 
     def test_on_response_callback_receives_path_and_status
@@ -205,7 +211,9 @@ module ApiClientTests
     end
   end
 
+  # Tests JSON body parsing and rate-limit error raising
   class ResponseHandlingTest < Minitest::Test
+    # Exposes private parse and rate-limit methods for testing
     class TestableApiClient < Teems::Services::ApiClient
       public :parse_json_body, :raise_rate_limit
     end
@@ -272,6 +280,7 @@ module ApiClientTests
       assert_equal 429, error.status_code
     end
 
+    # Mock HTTP response body for testing parse_json_body
     class MockBody
       attr_reader :body
 
@@ -280,6 +289,7 @@ module ApiClientTests
       end
     end
 
+    # Mock HTTP response with Retry-After header for rate-limit testing
     class MockRateLimit
       def initialize(retry_after)
         @headers = { 'Retry-After' => retry_after }.freeze
@@ -291,6 +301,7 @@ module ApiClientTests
     end
   end
 
+  # Tests ApiError status code predicates and message handling
   class ErrorTest < Minitest::Test
     def test_status_code_is_nil_by_default
       error = Teems::ApiError.new('Some error')
@@ -335,7 +346,9 @@ module ApiClientTests
     end
   end
 
+  # Tests HTTP connection pooling, SSL configuration, and caching
   class ConnectionPoolTest < Minitest::Test
+    # Exposes private connection pool and SSL methods for testing
     class ExposedPool < Teems::Services::ApiClient
       public :get_http_for_endpoint, :start_http, :configure_http, :configure_ssl
     end
@@ -413,6 +426,7 @@ module ApiClientTests
     end
   end
 
+  # Tests connection cleanup and error handling during close
   class CloseTest < Minitest::Test
     def test_close_handles_io_error_gracefully
       client, cache = build_client_with_cache
@@ -449,6 +463,7 @@ module ApiClientTests
     end
   end
 
+  # Tests the HTTP DELETE method on ApiClient
   class DeleteMethodTest < Minitest::Test
     def test_delete_raises_for_unknown_endpoint
       client = Teems::Services::ApiClient.new
@@ -472,7 +487,9 @@ module ApiClientTests
     end
   end
 
+  # Tests presence endpoint auth header formatting
   class PresenceAuthTest < Minitest::Test
+    # Exposes private apply_auth method for testing presence auth
     class ExposedAuth < Teems::Services::ApiClient
       public :apply_auth
     end
@@ -490,7 +507,9 @@ module ApiClientTests
     end
   end
 
+  # Tests URI resolution for relative paths, absolute URLs, and query params
   class ResolveUriTest < Minitest::Test
+    # Exposes private resolve_uri method for testing
     class ExposedUri < Teems::Services::ApiClient
       public :resolve_uri
     end
@@ -513,8 +532,9 @@ module ApiClientTests
       client = ExposedUri.new
       uri = client.resolve_uri(:graph, '/v1.0/me', { '$top' => '10', '$skip' => '0' })
 
-      assert_includes uri.to_s, '%24top=10'
-      assert_includes uri.to_s, '%24skip=0'
+      uri_string = uri.to_s
+      assert_includes uri_string, '%24top=10'
+      assert_includes uri_string, '%24skip=0'
     end
 
     def test_resolve_uri_skips_params_when_empty
@@ -525,6 +545,7 @@ module ApiClientTests
     end
   end
 
+  # Tests request execution, call counting, and network error wrapping
   class RunRequestTest < Minitest::Test
     def test_run_request_increments_call_count
       client = StubbedApiClient.new
@@ -543,9 +564,10 @@ module ApiClientTests
 
       client.get(:graph, '/v1.0/me', account: account)
 
+      first_received = received.first
       assert_equal 1, received.length
-      assert_equal '/v1.0/me', received.first[0]
-      assert_equal 1, received.first[1]
+      assert_equal '/v1.0/me', first_received[0]
+      assert_equal 1, first_received[1]
     end
 
     def test_run_request_calls_on_response_callback
@@ -556,9 +578,10 @@ module ApiClientTests
 
       client.get(:graph, '/v1.0/me', account: account)
 
+      first_received = received.first
       assert_equal 1, received.length
-      assert_equal '/v1.0/me', received.first[0]
-      assert_equal '200', received.first[1]
+      assert_equal '/v1.0/me', first_received[0]
+      assert_equal '200', first_received[1]
     end
 
     def test_run_request_wraps_network_error_as_api_error
@@ -573,7 +596,9 @@ module ApiClientTests
     end
   end
 
+  # Tests custom header application on HTTP requests
   class ApplyHeadersTest < Minitest::Test
+    # Exposes private apply_headers method for testing
     class ExposedHeaders < Teems::Services::ApiClient
       public :apply_headers
     end
@@ -589,6 +614,7 @@ module ApiClientTests
     end
   end
 
+  # Tests the HTTP POST method with JSON body serialization
   class PostMethodTest < Minitest::Test
     def test_post_sends_json_body
       client = StubbedApiClient.new
@@ -596,9 +622,10 @@ module ApiClientTests
 
       client.post(:graph, '/v1.0/me/sendMail', account: account, body: { key: 'value' })
 
+      last_request = client.last_request
       assert_equal 1, client.call_count
-      assert_instance_of Net::HTTP::Post, client.last_request
-      assert_equal '{"key":"value"}', client.last_request.body
+      assert_instance_of Net::HTTP::Post, last_request
+      assert_equal '{"key":"value"}', last_request.body
     end
 
     def test_post_sends_without_body_when_nil
@@ -611,6 +638,7 @@ module ApiClientTests
     end
   end
 
+  # Tests the HTTP GET method with headers and query params
   class GetMethodTest < Minitest::Test
     def test_get_sends_request_with_headers
       client = StubbedApiClient.new
@@ -665,6 +693,7 @@ module ApiClientTests
       FakeErrorHttp.new
     end
 
+    # Fake HTTP connection that raises SocketError on every request
     class FakeErrorHttp
       def request(_req)
         raise SocketError, 'getaddrinfo: Name or service not known'

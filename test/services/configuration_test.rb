@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests Configuration key-value storage, persistence, permissions, and corruption handling
 class ConfigurationTest < Minitest::Test
   def test_bracket_returns_nil_for_unknown_key
     with_temp_config do

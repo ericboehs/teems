@@ -42,13 +42,18 @@ module Teems
       private
 
       def list_teams_and_channels
-        teams = fetch_teams
-        return 0 if teams.empty? && (puts('No teams found') || true)
-
-        render_teams(teams)
-        0
+        display_teams_list(fetch_teams)
       rescue ApiError => e
-        error("Failed to fetch teams: #{e.message}")
+        teams_fetch_error(e)
+      end
+
+      def display_teams_list(teams)
+        teams.empty? ? puts('No teams found') : render_teams(teams)
+        0
+      end
+
+      def teams_fetch_error(err)
+        error("Failed to fetch teams: #{err.message}")
         1
       end
 
@@ -95,9 +100,10 @@ module Teems
       end
 
       def team_to_hash(api, team_data)
-        channels_response = api.list_channels(team_id: team_data['id'])
+        team_id = team_data['id']
+        channels_response = api.list_channels(team_id: team_id)
         {
-          id: team_data['id'],
+          id: team_id,
           name: team_data['displayName'],
           channels: (channels_response['value'] || []).map do |channel|
             { id: channel['id'], name: channel['displayName'], membership_type: channel['membershipType'] }

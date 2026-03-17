@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for the messages command
 module MessagesCommandTests
+  # Shared helpers for running message commands
   module Helpers
     def run_messages(args, stubs: {})
       out = StringIO.new
@@ -26,6 +28,7 @@ module MessagesCommandTests
     end
   end
 
+  # Tests for auth, target requirement, and help display
   class BasicTest < Minitest::Test
     def test_requires_auth
       with_temp_config do
@@ -54,8 +57,9 @@ module MessagesCommandTests
           runner = configured_runner(output: output)
           Teems::Commands::Messages.new(['--help'], runner: runner).execute
         end
-        assert_match(/teems messages/, result[:stdout])
-        assert_match(/USAGE:/, result[:stdout])
+        stdout = result[:stdout]
+        assert_match(/teems messages/, stdout)
+        assert_match(/USAGE:/, stdout)
       end
     end
 
@@ -96,6 +100,7 @@ module MessagesCommandTests
     end
   end
 
+  # Tests for parsing Teams URLs and extracting conversation IDs
   class UrlParsingTest < Minitest::Test
     include Helpers
 
@@ -164,6 +169,7 @@ module MessagesCommandTests
     end
   end
 
+  # Tests for message display formatting and JSON output
   class DisplayTest < Minitest::Test
     include Helpers
 
@@ -246,6 +252,7 @@ module MessagesCommandTests
     end
   end
 
+  # Tests for channel messages, API errors, system message filtering, and edge cases
   class DisplayExtendedTest < Minitest::Test
     include Helpers
 
@@ -292,8 +299,9 @@ module MessagesCommandTests
           runner.api_client.stub('messages', { 'messages' => [sample_system_message, sample_ng_msg_message] })
           Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner).execute
         end
-        refute_match(/AddMember/, result[:stdout])
-        assert_match(/Jane Smith/, result[:stdout])
+        stdout = result[:stdout]
+        refute_match(/AddMember/, stdout)
+        assert_match(/Jane Smith/, stdout)
       end
     end
 

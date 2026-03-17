@@ -28,8 +28,7 @@ module Teems
 
       def oidc_refresh
         log('Attempting OIDC token refresh...')
-        tokens = fetch_oidc_tokens
-        return nil unless tokens
+        return nil unless (tokens = fetch_oidc_tokens)
 
         @token_store.update_all_tokens(**tokens)
         log('OIDC token refresh successful')
@@ -47,20 +46,25 @@ module Teems
       end
 
       def build_oidc_result(graph, skype)
-        skype_token = exchange_token(skype['access_token'])
+        skype_access_token = skype['access_token']
+        skype_token = exchange_token(skype_access_token)
         return nil unless skype_token
 
-        { auth_token: graph['access_token'], skype_spaces_token: skype['access_token'],
+        { auth_token: graph['access_token'], skype_spaces_token: skype_access_token,
           skype_token: skype_token, refresh_token: skype['refresh_token'] }
       end
 
       def oidc_token_request(scope, refresh_token)
-        uri = oidc_token_uri
-        http = Net::HTTP.new(uri.host, uri.port).tap { |conn| configure_http(conn) }
-        response = http.request(build_oidc_request(uri, scope, refresh_token))
+        response = send_oidc_request(scope, refresh_token)
         return log_oidc_failure(response) unless response.is_a?(Net::HTTPSuccess)
 
         JSON.parse(response.body)
+      end
+
+      def send_oidc_request(scope, refresh_token)
+        uri = oidc_token_uri
+        http = Net::HTTP.new(uri.host, uri.port).tap { |conn| configure_http(conn) }
+        http.request(build_oidc_request(uri, scope, refresh_token))
       end
 
       def build_oidc_request(uri, scope, token)
@@ -106,10 +110,7 @@ module Teems
       end
 
       def refresh
-        result = try_oidc_refresh if oidc_capable?
-        return result if result
-
-        attempt_authsvc_refresh
+        (oidc_capable? && try_oidc_refresh) || attempt_authsvc_refresh
       rescue *RECOVERABLE_ERRORS => e
         log("Token exchange error: #{e.class}: #{e.message}")
         false
@@ -125,13 +126,17 @@ module Teems
       end
 
       def attempt_refresh(token)
-        log('Attempting to refresh skype_token...')
-        new_token = exchange_token(token)
+        new_token = exchange_and_log(token)
         return log_and_abandon('Token refresh failed - skype_spaces_token may be expired') unless new_token
 
         @token_store.update_skype_token(new_token)
         log('Token refresh successful')
         true
+      end
+
+      def exchange_and_log(token)
+        log('Attempting to refresh skype_token...')
+        exchange_token(token)
       end
 
       def exchange_token(skype_spaces_token)

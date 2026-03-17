@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for the org chart command
 module OrgCommandTests
+  # Shared helpers for building org chart API stubs and running commands
   module Helpers
     private
 
@@ -26,9 +28,10 @@ module OrgCommandTests
     end
 
     def stub_me_with_no_chain(runner, user)
-      runner.api_client.stub('/v1.0/me', user)
+      api = runner.api_client
+      api.stub('/v1.0/me', user)
       stub_not_found(runner, '/v1.0/me/manager')
-      runner.api_client.stub('/v1.0/me/directReports', { 'value' => [] })
+      api.stub('/v1.0/me/directReports', { 'value' => [] })
     end
 
     def stub_me_with_manager_chain(runner, user, chain)
@@ -47,9 +50,10 @@ module OrgCommandTests
     end
 
     def stub_me_with_reports(runner, user, reports)
-      runner.api_client.stub('/v1.0/me', user)
+      api = runner.api_client
+      api.stub('/v1.0/me', user)
       stub_not_found(runner, '/v1.0/me/manager')
-      runner.api_client.stub('/v1.0/me/directReports', { 'value' => reports })
+      api.stub('/v1.0/me/directReports', { 'value' => reports })
       stub_empty_subreports(runner, reports)
     end
 
@@ -60,14 +64,16 @@ module OrgCommandTests
     end
   end
 
+  # Tests for help, auth, and unknown option handling
   class BasicTest < Minitest::Test
     include Helpers
 
     def test_shows_help_with_help_flag
       result = run_org(['--help'])
 
-      assert_match(/teems org/, result[:stdout])
-      assert_match(/--depth/, result[:stdout])
+      stdout = result[:stdout]
+      assert_match(/teems org/, stdout)
+      assert_match(/--depth/, stdout)
     end
 
     def test_requires_auth
@@ -87,6 +93,7 @@ module OrgCommandTests
     end
   end
 
+  # Tests for displaying the current user's org chart position
   class CurrentUserOrgTest < Minitest::Test
     include Helpers
 
@@ -114,6 +121,7 @@ module OrgCommandTests
     end
   end
 
+  # Tests for displaying the manager chain hierarchy
   class ManagerChainTest < Minitest::Test
     include Helpers
 
@@ -150,15 +158,17 @@ module OrgCommandTests
     end
   end
 
+  # Tests for searching and displaying another user's org chart
   class SearchedUserOrgTest < Minitest::Test
     include Helpers
 
     def test_search_resolves_first_result
       target = profile_data(id: 'target-1', name: 'Jane', title: 'Lead')
       result = run_org(['jane']) do |runner|
-        runner.api_client.stub('/v1.0/users', { 'value' => [target] })
+        api = runner.api_client
+        api.stub('/v1.0/users', { 'value' => [target] })
         stub_not_found(runner, 'users/target-1/manager')
-        runner.api_client.stub('users/target-1/directReports', { 'value' => [] })
+        api.stub('users/target-1/directReports', { 'value' => [] })
       end
 
       assert_equal 0, result[:exit_code]
@@ -175,6 +185,7 @@ module OrgCommandTests
     end
   end
 
+  # Tests for the --depth option controlling report traversal
   class DepthTest < Minitest::Test
     include Helpers
 
@@ -199,6 +210,7 @@ module OrgCommandTests
     end
   end
 
+  # Tests for JSON output structure of org chart data
   class JsonOutputTest < Minitest::Test
     include Helpers
 
@@ -218,11 +230,13 @@ module OrgCommandTests
       result = run_org(['--json']) { |runner| stub_me_with_manager_chain(runner, user, [mgr]) }
       json = JSON.parse(result[:stdout])
 
-      assert_equal 1, json['managers'].length
-      assert_equal 'Boss', json['managers'].first['display_name']
+      managers = json['managers']
+      assert_equal 1, managers.length
+      assert_equal 'Boss', managers.first['display_name']
     end
   end
 
+  # Tests for API error handling including 403, 404, and 500 responses
   class ErrorHandlingTest < Minitest::Test
     include Helpers
 
@@ -238,10 +252,11 @@ module OrgCommandTests
     def test_report_403_returns_empty_gracefully
       user = profile_data(id: 'me-1', name: 'John')
       result = run_org do |runner|
-        runner.api_client.stub('/v1.0/me', user)
+        api = runner.api_client
+        api.stub('/v1.0/me', user)
         stub_not_found(runner, '/v1.0/me/manager')
-        runner.api_client.stub_error('/v1.0/me/directReports',
-                                     Teems::ApiError.new('Forbidden', status_code: 403))
+        api.stub_error('/v1.0/me/directReports',
+                       Teems::ApiError.new('Forbidden', status_code: 403))
       end
 
       assert_equal 0, result[:exit_code]
@@ -251,10 +266,11 @@ module OrgCommandTests
     def test_report_500_raises_to_top_level
       user = profile_data(id: 'me-1', name: 'John')
       result = run_org do |runner|
-        runner.api_client.stub('/v1.0/me', user)
+        api = runner.api_client
+        api.stub('/v1.0/me', user)
         stub_not_found(runner, '/v1.0/me/manager')
-        runner.api_client.stub_error('/v1.0/me/directReports',
-                                     Teems::ApiError.new('Server error', status_code: 500))
+        api.stub_error('/v1.0/me/directReports',
+                       Teems::ApiError.new('Server error', status_code: 500))
       end
 
       assert_equal 1, result[:exit_code]
@@ -280,9 +296,10 @@ module OrgCommandTests
     def test_manager_non_404_error_raises
       user = profile_data(id: 'me-1', name: 'John')
       result = run_org do |runner|
-        runner.api_client.stub('/v1.0/me', user)
-        runner.api_client.stub_error('/v1.0/me/manager',
-                                     Teems::ApiError.new('Server error', status_code: 500))
+        api = runner.api_client
+        api.stub('/v1.0/me', user)
+        api.stub_error('/v1.0/me/manager',
+                       Teems::ApiError.new('Server error', status_code: 500))
       end
 
       assert_equal 1, result[:exit_code]
@@ -292,9 +309,10 @@ module OrgCommandTests
     def test_searched_user_manager_500_raises
       target = profile_data(id: 'target-1', name: 'Jane')
       result = run_org(['jane']) do |runner|
-        runner.api_client.stub('/v1.0/users', { 'value' => [target] })
-        runner.api_client.stub_error('users/target-1/manager',
-                                     Teems::ApiError.new('Server error', status_code: 500))
+        api = runner.api_client
+        api.stub('/v1.0/users', { 'value' => [target] })
+        api.stub_error('users/target-1/manager',
+                       Teems::ApiError.new('Server error', status_code: 500))
       end
 
       assert_equal 1, result[:exit_code]
@@ -313,6 +331,7 @@ module OrgCommandTests
     end
   end
 
+  # Tests for JSON output including direct reports data
   class JsonWithReportsTest < Minitest::Test
     include Helpers
 
@@ -321,12 +340,14 @@ module OrgCommandTests
       rep = profile_data(id: 'rep-1', name: 'Worker')
       result = run_org(['--json']) { |runner| stub_me_with_reports(runner, user, [rep]) }
       json = JSON.parse(result[:stdout])
+      reports = json['direct_reports']
 
-      assert_equal 1, json['direct_reports'].length
-      assert_equal 'Worker', json['direct_reports'].first['display_name']
+      assert_equal 1, reports.length
+      assert_equal 'Worker', reports.first['display_name']
     end
   end
 
+  # Tests for server error propagation when fetching sub-reports
   class SubReportErrorTest < Minitest::Test
     include Helpers
 
@@ -346,9 +367,10 @@ module OrgCommandTests
     private
 
     def stub_boss_with_report(runner, user, rep)
-      runner.api_client.stub('/v1.0/me', user)
+      api = runner.api_client
+      api.stub('/v1.0/me', user)
       stub_not_found(runner, '/v1.0/me/manager')
-      runner.api_client.stub('/v1.0/me/directReports', { 'value' => [rep] })
+      api.stub('/v1.0/me/directReports', { 'value' => [rep] })
     end
   end
 end

@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests XDG base directory path resolution for config, cache, and data directories
 class XdgPathsTest < Minitest::Test
   def test_config_dir_uses_xdg_config_home
     with_temp_config do |dir|

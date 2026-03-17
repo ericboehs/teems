@@ -2,8 +2,11 @@
 
 require 'test_helper'
 
+# Tests for the base command class shared behavior
 module BaseCommandTests
+  # Tests for option parsing, positional args, and base execute behavior
   class BasicTest < Minitest::Test
+    # Minimal command subclass for testing base option parsing
     class TestCommand < Teems::Commands::Base
       def execute
         0
@@ -90,7 +93,9 @@ module BaseCommandTests
     end
   end
 
+  # Tests for output helper methods like success, info, warn, and error
   class OutputTest < Minitest::Test
+    # Command subclass that exercises all output helper methods
     class OutputTestCommand < Teems::Commands::Base
       def execute
         success('Success message')
@@ -154,7 +159,9 @@ module BaseCommandTests
     end
   end
 
+  # Tests for verbose, quiet, require_auth, and JSON output helpers
   class OutputExtendedTest < Minitest::Test
+    # Command subclass for testing extended output behaviors
     class OutputTestCommand < Teems::Commands::Base
       def execute
         0
@@ -209,13 +216,16 @@ module BaseCommandTests
           cmd = OutputTestCommand.new([], runner: test_runner(output: output))
           cmd.send(:output_json, { key: 'value' })
         end
-        assert_match(/"key"/, result[:stdout])
-        assert_match(/"value"/, result[:stdout])
+        stdout = result[:stdout]
+        assert_match(/"key"/, stdout)
+        assert_match(/"value"/, stdout)
       end
     end
   end
 
+  # Tests for automatic token refresh on 401 and expired token errors
   class TokenRefreshTest < Minitest::Test
+    # Command subclass that exposes with_token_refresh for testing
     class RefreshTestCommand < Teems::Commands::Base
       attr_accessor :call_count, :should_fail_first
 
@@ -285,7 +295,7 @@ module BaseCommandTests
         end
 
         assert_equal 'success after refresh', result
-        assert_equal 2, call_count_ref[:n]
+        assert_equal 2, call_count_ref.fetch(:n)
       end
     end
 
@@ -320,7 +330,9 @@ module BaseCommandTests
     end
   end
 
+  # Tests for default help text when a command does not override it
   class DefaultHelpTextTest < Minitest::Test
+    # Command subclass without custom help text
     class NoHelpCommand < Teems::Commands::Base
       def execute
         0

@@ -2,28 +2,32 @@
 
 require 'test_helper'
 
+# Tests for CLI argument parsing, command dispatch, and error handling
 module CLITests
+  # Shared helpers for capturing CLI output in tests
   module Helpers
     private
 
     def capture_cli_output(argv)
       out = StringIO.new
-      err = StringIO.new
-      output = Teems::Formatters::Output.new(io: out, err: err, color: false)
+      e = StringIO.new
+      output = Teems::Formatters::Output.new(io: out, err: e, color: false)
       exit_code = Teems::CLI.new(argv, output: output).run
-      { stdout: out.string, stderr: err.string, exit_code: exit_code }
+      { stdout: out.string, stderr: e.string, exit_code: exit_code }
     end
   end
 
+  # Tests for basic CLI flags like help, version, and unknown commands
   class BasicTest < Minitest::Test
     include Helpers
 
     def test_run_with_no_args_shows_help
       with_temp_config do
         result = capture_cli_output([])
+        stdout = result[:stdout]
         assert_equal 0, result[:exit_code]
-        assert_match(/teems/, result[:stdout])
-        assert_match(/COMMANDS:/, result[:stdout])
+        assert_match(/teems/, stdout)
+        assert_match(/COMMANDS:/, stdout)
       end
     end
 
@@ -77,6 +81,7 @@ module CLITests
     end
   end
 
+  # Tests for command dispatch routing and verbose mode detection
   class DispatchTest < Minitest::Test
     include Helpers
 
@@ -138,7 +143,9 @@ module CLITests
     end
   end
 
+  # Tests for unexpected error handling, known error labels, and interrupt signals
   class ErrorHandlingTest < Minitest::Test
+    # Mock CLI that raises StandardError for testing unexpected error handling
     class MockErrorCLI < Teems::CLI
       ERROR_TRIGGERS = { 'trigger-error' => StandardError }.freeze
 
@@ -152,6 +159,7 @@ module CLITests
       end
     end
 
+    # Mock CLI that raises known application errors for error label testing
     class MockKnownErrorCLI < Teems::CLI
       ERROR_MAP = {
         'auth-error' => Teems::AuthError,
@@ -171,6 +179,7 @@ module CLITests
       end
     end
 
+    # Mock CLI that raises Interrupt to test graceful shutdown handling
     class MockInterruptCLI < Teems::CLI
       private
 
@@ -179,6 +188,7 @@ module CLITests
       end
     end
 
+    # Mock CLI that suppresses error logging to test missing log path behavior
     class MockNoLogCLI < Teems::CLI
       private
 
@@ -253,15 +263,22 @@ module CLITests
 
     def run_mock_error_cli(klass, args = ['trigger-error'])
       out = StringIO.new
-      err = StringIO.new
-      output = Teems::Formatters::Output.new(io: out, err: err, color: false)
+      e = StringIO.new
+      output = Teems::Formatters::Output.new(io: out, err: e, color: false)
       exit_code = klass.new(args, output: output).run
-      { stdout: out.string, stderr: err.string, exit_code: exit_code }
+      { stdout: out.string, stderr: e.string, exit_code: exit_code }
     end
   end
 
+  # Tests for verbose mode API call logging and verbose flag variants
   class VerboseApiTest < Minitest::Test
+    # Mock CLI with a stubbed runner for testing verbose API call logging
     class MockVerboseApiCLI < Teems::CLI
+      def initialize(argv, output: Teems::Formatters::Output.new)
+        @output = nil
+        super
+      end
+
       private
 
       def build_runner(args)
@@ -320,18 +337,21 @@ module CLITests
 
     def run_verbose_cli(klass, args)
       out = StringIO.new
-      err = StringIO.new
-      output = Teems::Formatters::Output.new(io: out, err: err, color: false, mode: :verbose)
+      e = StringIO.new
+      output = Teems::Formatters::Output.new(io: out, err: e, color: false, mode: :verbose)
       exit_code = klass.new(args, output: output).run
-      { stdout: out.string, stderr: err.string, exit_code: exit_code }
+      { stdout: out.string, stderr: e.string, exit_code: exit_code }
     end
   end
 
+  # Tests that the API client is closed after CLI run completes
   class EnsureCloseTest < Minitest::Test
+    # Mock CLI that tracks API client close calls
     class MockCloseCLI < Teems::CLI
       attr_reader :mock_api
 
       def initialize(argv, output:)
+        @output = nil
         super
         @mock_api = Teems::TestHelpers::MockApiClient.new
         @mock_api.instance_variable_set(:@closed, false)
@@ -351,8 +371,8 @@ module CLITests
     def test_ensure_closes_api_client_after_command
       with_temp_config do
         out = StringIO.new
-        err = StringIO.new
-        output = Teems::Formatters::Output.new(io: out, err: err, color: false)
+        e = StringIO.new
+        output = Teems::Formatters::Output.new(io: out, err: e, color: false)
         cli = MockCloseCLI.new(%w[auth status], output: output)
         exit_code = cli.run
 
@@ -362,6 +382,7 @@ module CLITests
     end
   end
 
+  # Tests for dispatching commands that raise known errors and quiet mode
   class DispatchKnownErrorTest < Minitest::Test
     include Helpers
 

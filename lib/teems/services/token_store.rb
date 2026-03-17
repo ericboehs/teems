@@ -19,8 +19,7 @@ module Teems
 
       def save(name:, auth_token:, skype_token: nil, **extra_tokens)
         @paths.ensure_config_dir
-        data = build_save_data(name, auth_token, skype_token, extra_tokens)
-        write_token_file(data)
+        write_token_file(build_save_data(name, auth_token, skype_token, extra_tokens))
       rescue SystemCallError, IOError => e
         warn "teems: Could not save tokens: #{e.message}"
         false
@@ -28,19 +27,14 @@ module Teems
 
       # Update just the skype_token (used during refresh)
       def update_skype_token(skype_token)
-        data = load_tokens
-        return false if data.empty?
-
-        apply_skype_token(data, skype_token)
+        with_loaded_tokens { |data| apply_skype_token(data, skype_token) }
       rescue SystemCallError, IOError => e
         warn "teems: Could not update token file: #{e.message}"
         false
       end
 
       # Get the skype_spaces_token for refresh
-      def skype_spaces_token
-        load_tokens['skype_spaces_token']
-      end
+      def skype_spaces_token = load_tokens['skype_spaces_token']
 
       # Get OIDC refresh credentials
       def refresh_token = load_tokens['refresh_token']
@@ -48,21 +42,14 @@ module Teems
       def tenant_id = load_tokens['tenant_id']
 
       # Update all tokens at once (used by OIDC refresh)
-      def update_all_tokens(auth_token:, skype_token:, skype_spaces_token: nil, refresh_token: nil)
-        data = load_tokens
-        return false if data.empty?
-
-        apply_all_tokens(data,
-                         { auth_token: auth_token, skype_token: skype_token,
-                           skype_spaces_token: skype_spaces_token, refresh_token: refresh_token })
+      def update_all_tokens(**tokens)
+        with_loaded_tokens { |data| apply_all_tokens(data, tokens) }
       rescue SystemCallError, IOError => e
         warn "teems: Could not update token file: #{e.message}"
         false
       end
 
-      def clear
-        FileUtils.rm_f(tokens_file)
-      end
+      def clear = FileUtils.rm_f(tokens_file)
 
       def configured?
         File.exist?(tokens_file) && !load_tokens.empty?
@@ -71,27 +58,39 @@ module Teems
       def token_age
         return nil unless File.exist?(tokens_file)
 
-        data = load_tokens
-        timestamp = data['tokens_refreshed_at'] || data['saved_at']
-        return nil unless timestamp
-
-        Time.now - Time.parse(timestamp)
+        parse_token_timestamp(load_tokens)
       rescue ArgumentError
         nil
       end
 
       private
 
+      def with_loaded_tokens
+        data = load_tokens
+        return false if data.empty?
+
+        yield data
+      end
+
+      def parse_token_timestamp(data)
+        timestamp = data['tokens_refreshed_at'] || data['saved_at']
+        return nil unless timestamp
+
+        Time.now - Time.parse(timestamp)
+      end
+
       def tokens_file
         @paths.config_file(TOKENS_FILE)
       end
 
       def build_account(data)
-        return nil unless data['auth_token'] && data['skype_token']
+        auth_token = data['auth_token']
+        skype_token = data['skype_token']
+        return nil unless auth_token && skype_token
 
         Models::Account.new(
-          name: data['name'] || 'default', auth_token: data['auth_token'],
-          skype_token: data['skype_token'], chatsvc_token: data['chatsvc_token'],
+          name: data['name'] || 'default', auth_token: auth_token,
+          skype_token: skype_token, chatsvc_token: data['chatsvc_token'],
           presence_token: data['skype_spaces_token']
         )
       end
@@ -102,12 +101,16 @@ module Teems
       end
 
       def apply_all_tokens(data, tokens)
-        updates = { 'auth_token' => tokens[:auth_token], 'skype_token' => tokens[:skype_token],
-                    'tokens_refreshed_at' => Time.now.iso8601 }
-        updates['skype_spaces_token'] = tokens[:skype_spaces_token] if tokens[:skype_spaces_token]
-        updates['refresh_token'] = tokens[:refresh_token] if tokens[:refresh_token]
-        data.merge!(updates)
+        data.merge!(build_token_updates(tokens))
         write_token_file(data)
+      end
+
+      def build_token_updates(tokens)
+        { 'auth_token' => tokens[:auth_token], 'skype_token' => tokens[:skype_token],
+          'tokens_refreshed_at' => Time.now.iso8601 }.tap do |updates|
+          updates['skype_spaces_token'] = tokens[:skype_spaces_token] if tokens[:skype_spaces_token]
+          updates['refresh_token'] = tokens[:refresh_token] if tokens[:refresh_token]
+        end
       end
 
       def build_save_data(name, auth_token, skype_token, extra_tokens)

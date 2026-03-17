@@ -26,11 +26,16 @@ module Teems
       end
 
       def render
+        lines = build_help_lines
+        @notes.each { |note| lines << "Note: #{note}" }
+        lines.join("\n")
+      end
+
+      def build_help_lines
         lines = [@usage, '']
         lines.push(@description, '') if @description
         @sections.each { |section| lines.push(section.render, '') }
-        @notes.each { |note| lines << "Note: #{note}" }
-        lines.join("\n")
+        lines
       end
 
       # Section within help text

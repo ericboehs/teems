@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for Output class methods including writing, mode switching, and color helpers
 module OutputTests
+  # Tests basic output operations: puts, print, error, warn, debug, and quiet mode
   class BasicOutputTest < Minitest::Test
     def test_puts_writes_to_io
       io = StringIO.new
@@ -84,6 +86,7 @@ module OutputTests
     end
   end
 
+  # Tests ANSI color helper methods and verbose/quiet mode switching
   class ColorAndModeTest < Minitest::Test
     def test_color_helpers_without_color_basic
       output = Teems::Formatters::Output.new(color: false)

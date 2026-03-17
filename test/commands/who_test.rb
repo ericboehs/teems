@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests for the who command
 module WhoCommandTests
   PROFILE_DATA = {
     'id' => 'user-uuid-123', 'displayName' => 'John Doe',
@@ -26,6 +27,7 @@ module WhoCommandTests
 
   NOON_TODAY = Time.new(2026, 3, 16, 12, 0, 0).freeze
 
+  # Shared helpers for running who commands and stubbing API responses
   module Helpers
     private
 
@@ -71,14 +73,16 @@ module WhoCommandTests
     end
   end
 
+  # Tests for help, auth, and unknown option handling
   class BasicTest < Minitest::Test
     include Helpers
 
     def test_shows_help_with_help_flag
       result = run_who(['--help'])
+      stdout = result[:stdout]
 
-      assert_match(/teems who/, result[:stdout])
-      assert_match(/USAGE:/, result[:stdout])
+      assert_match(/teems who/, stdout)
+      assert_match(/USAGE:/, stdout)
     end
 
     def test_requires_auth
@@ -98,22 +102,25 @@ module WhoCommandTests
     end
   end
 
+  # Tests for displaying current user identity fields
   class CurrentUserIdentityTest < Minitest::Test
     include Helpers
 
     def test_shows_name_and_email
       result = run_who_with_stub([], full_stubs)
+      stdout = result[:stdout]
 
       assert_equal 0, result[:exit_code]
-      assert_match(/John Doe/, result[:stdout])
-      assert_match(/john\.doe@example\.com/, result[:stdout])
+      assert_match(/John Doe/, stdout)
+      assert_match(/john\.doe@example\.com/, stdout)
     end
 
     def test_shows_title_and_department
       result = run_who_with_stub([], full_stubs)
+      stdout = result[:stdout]
 
-      assert_match(/Senior Engineer/, result[:stdout])
-      assert_match(/Engineering/, result[:stdout])
+      assert_match(/Senior Engineer/, stdout)
+      assert_match(/Engineering/, stdout)
     end
 
     def test_shows_office_and_phones
@@ -125,6 +132,7 @@ module WhoCommandTests
     end
   end
 
+  # Tests for presence status display including DND, OOF, and expiry
   class PresenceDisplayTest < Minitest::Test
     include Helpers
 
@@ -161,10 +169,10 @@ module WhoCommandTests
           'forcedAvailability' => { 'expiry' => '2026-03-20T23:00:00Z' }
         }
       }]
-      result = run_who_with_stub([], full_stubs.merge('presence' => presence))
+      stdout = run_who_with_stub([], full_stubs.merge('presence' => presence))[:stdout]
 
-      assert_match(/Status\s+Do Not Disturb/, result[:stdout])
-      assert_match(/OOF\s+Out of office/, result[:stdout])
+      assert_match(/Status\s+Do Not Disturb/, stdout)
+      assert_match(/OOF\s+Out of office/, stdout)
     end
 
     def test_hides_presence_on_api_error
@@ -202,6 +210,7 @@ module WhoCommandTests
     end
   end
 
+  # Tests for calendar schedule bitmap and hour label rendering
   class ScheduleDisplayTest < Minitest::Test
     include Helpers
 
@@ -213,9 +222,10 @@ module WhoCommandTests
 
     def test_shows_bitmap_with_block_chars
       result = run_who_with_stub([], full_stubs)
+      stdout = result[:stdout]
 
-      assert_match(/Today/, result[:stdout])
-      assert_match(/[\u2591\u2592\u2588\u2593]/, result[:stdout])
+      assert_match(/Today/, stdout)
+      assert_match(/[\u2591\u2592\u2588\u2593]/, stdout)
     end
 
     def test_shows_hour_labels
@@ -237,10 +247,11 @@ module WhoCommandTests
         api.stub('presence', PRESENCE_AVAILABLE)
         api.stub_error('calendar/getSchedule', Teems::ApiError.new('Error'))
       end
+      stdout = result[:stdout]
 
       assert_equal 0, result[:exit_code]
-      refute_match(/Today/, result[:stdout])
-      refute_match(/Calendar/, result[:stdout])
+      refute_match(/Today/, stdout)
+      refute_match(/Calendar/, stdout)
     end
 
     def test_refetches_with_actual_work_hours
@@ -270,13 +281,15 @@ module WhoCommandTests
       second = PROFILE_DATA.merge('id' => 'u2', 'displayName' => 'Jane')
       result = run_who_with_stub(['--json', 'john'], '/v1.0/users' => search_results([PROFILE_DATA, second]))
       json = JSON.parse(result[:stdout])
+      first_result = json.first
 
       assert_equal 2, json.length
-      refute json.first.key?('presence')
-      refute json.first.key?('availability_view')
+      refute first_result.key?('presence')
+      refute first_result.key?('availability_view')
     end
   end
 
+  # Tests for presence edge cases like nil user IDs and missing fields
   class PresenceEdgeCasesTest < Minitest::Test
     include Helpers
 
@@ -303,9 +316,10 @@ module WhoCommandTests
       no_title = PROFILE_DATA.merge('jobTitle' => nil)
       second = PROFILE_DATA.merge('id' => 'u2', 'displayName' => 'Jane')
       result = run_who_with_stub(['john'], '/v1.0/users' => search_results([no_title, second]))
+      stdout = result[:stdout]
 
-      assert_match(/1\. John Doe\n/, result[:stdout])
-      refute_match(/1\. John Doe \(/, result[:stdout])
+      assert_match(/1\. John Doe\n/, stdout)
+      refute_match(/1\. John Doe \(/, stdout)
     end
 
     def test_search_result_without_email
@@ -317,6 +331,7 @@ module WhoCommandTests
     end
   end
 
+  # Tests for schedule edge cases like all-busy, empty views, and missing email
   class ScheduleEdgeCasesTest < Minitest::Test
     include Helpers
 
@@ -343,9 +358,10 @@ module WhoCommandTests
     def test_phone_field_hidden_when_empty
       data = PROFILE_DATA.merge('businessPhones' => [], 'mobilePhone' => nil)
       result = run_who_with_stub([], full_stubs.merge('/v1.0/me' => data))
+      stdout = result[:stdout]
 
-      refute_match(/Phone/, result[:stdout])
-      refute_match(/Mobile/, result[:stdout])
+      refute_match(/Phone/, stdout)
+      refute_match(/Mobile/, stdout)
     end
 
     def test_no_email_skips_schedule
@@ -377,6 +393,7 @@ module WhoCommandTests
     end
   end
 
+  # Tests for user search with single and multiple results
   class SearchTest < Minitest::Test
     include Helpers
 
@@ -392,10 +409,11 @@ module WhoCommandTests
     def test_multiple_results_shows_numbered_list
       second = PROFILE_DATA.merge('id' => 'u2', 'displayName' => 'Jane', 'jobTitle' => 'Staff')
       result = run_who_with_stub(['john'], '/v1.0/users' => search_results([PROFILE_DATA, second]))
+      stdout = result[:stdout]
 
       assert_equal 0, result[:exit_code]
-      assert_match(/1\. John Doe \(Senior Engineer\)/, result[:stdout])
-      assert_match(/2\. Jane \(Staff\)/, result[:stdout])
+      assert_match(/1\. John Doe \(Senior Engineer\)/, stdout)
+      assert_match(/2\. Jane \(Staff\)/, stdout)
     end
 
     def test_no_results
@@ -406,6 +424,7 @@ module WhoCommandTests
     end
   end
 
+  # Tests for API error handling in profile and search lookups
   class ErrorHandlingTest < Minitest::Test
     include Helpers
 
@@ -427,6 +446,7 @@ module WhoCommandTests
     end
   end
 
+  # Tests for OOF with expiry, enriched search profiles, and presence without calendar data
   class MoreEdgeCasesTest < Minitest::Test
     include Helpers
 
@@ -463,9 +483,10 @@ module WhoCommandTests
     def test_presence_without_calendar_data_skips_oof
       presence = [{ 'presence' => { 'availability' => 'Busy' } }]
       result = run_who_with_stub([], full_stubs.merge('presence' => presence))
+      stdout = result[:stdout]
 
-      assert_match(/Status\s+Busy/, result[:stdout])
-      refute_match(/OOF/, result[:stdout])
+      assert_match(/Status\s+Busy/, stdout)
+      refute_match(/OOF/, stdout)
     end
   end
 end

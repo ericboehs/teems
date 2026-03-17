@@ -7,10 +7,13 @@ module Teems
       private
 
       def render_chats(chats)
-        space_names = build_space_names(chats)
-        parsed = chats.filter_map { |chat_data| parse_chat(chat_data, space_names) }
-        filtered = apply_filters(parsed)
+        filtered = apply_filters(parse_all_chats(chats))
         @options[:json] ? output_json(filtered.map { |chat| chat_to_hash(chat) }) : display_chats(filtered)
+      end
+
+      def parse_all_chats(chats)
+        space_names = build_space_names(chats)
+        chats.filter_map { |chat_data| parse_chat(chat_data, space_names) }
       end
 
       def build_space_names(chats)
@@ -63,11 +66,16 @@ module Teems
       end
 
       def display_single_chat(chat)
-        time_str = chat.last_updated&.strftime('%Y-%m-%d %H:%M') || ''
-        unread_marker = chat.unread? ? output.bold('* ') : '  '
-        puts "#{unread_marker}#{CHAT_TYPE_ICONS.fetch(chat.chat_type, "\u{1F4AC}")} #{output.bold(chat.display_name)}"
+        marker = chat.unread? ? output.bold('* ') : '  '
+        icon = CHAT_TYPE_ICONS.fetch(chat.chat_type, "\u{1F4AC}")
+        puts "#{marker}#{icon} #{output.bold(chat.display_name)}"
+        print_chat_details(chat)
+      end
+
+      def print_chat_details(chat)
         puts "      ID: #{chat.id}"
-        puts "      Last updated: #{time_str}" unless time_str.empty?
+        time_str = chat.last_updated&.strftime('%Y-%m-%d %H:%M')
+        puts "      Last updated: #{time_str}" if time_str
         puts
       end
     end
@@ -135,8 +143,7 @@ module Teems
       private
 
       def list_chats
-        chats = fetch_chats
-        render_chats(chats)
+        render_chats(fetch_chats)
         0
       rescue ApiError => e
         error("Failed to fetch chats: #{e.message}")

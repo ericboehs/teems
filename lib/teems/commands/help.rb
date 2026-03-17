@@ -87,16 +87,16 @@ module Teems
 
       def show_command_help(topic)
         command_class = CLI::COMMANDS[topic]
+        command_class ? execute_help_for(command_class) : unknown_command_help(topic)
+      end
 
-        if command_class
-          runner_stub = Runner.new(output: output)
-          cmd = command_class.new(['--help'], runner: runner_stub)
-          cmd.execute
-        else
-          error("Unknown command: #{topic}")
-          puts
-          puts "Available commands: #{CLI::COMMANDS.keys.join(', ')}"
-        end
+      def execute_help_for(command_class)
+        command_class.new(['--help'], runner: Runner.new(output: output)).execute
+      end
+
+      def unknown_command_help(topic)
+        error("Unknown command: #{topic}")
+        puts "\nAvailable commands: #{CLI::COMMANDS.keys.join(', ')}"
       end
     end
   end

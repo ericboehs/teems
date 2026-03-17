@@ -24,24 +24,53 @@ module Teems
         teems messages "https://teams.microsoft.com/l/message/19:abc@thread.v2/123?context=..."
     HELP
 
+    # Display formatting for messages command
+    module MessagesDisplay
+      private
+
+      def display_message(message)
+        puts format_message_header(message)
+        puts "  #{message.content}"
+        display_reactions(message)
+        puts
+      end
+
+      def format_message_header(message)
+        time = message.created_at&.strftime('%Y-%m-%d %H:%M')
+        importance = message.important? ? output.red('!') : ''
+        "#{output.blue("[#{time}]")} #{importance}#{output.bold(message.sender_name)}:"
+      end
+
+      def display_reactions(message)
+        reactions = message.reactions
+        return unless reactions.any?
+
+        puts "  #{output.gray(reactions.map { |reaction| "#{reaction[:type]}(#{reaction[:count]})" }.join(' '))}"
+      end
+
+      def message_to_hash(message)
+        { id: message.id, sender_id: message.sender_id,
+          sender_name: message.sender_name, content: message.content,
+          created_at: message.created_at&.iso8601,
+          importance: message.importance, reactions: message.reactions }
+      end
+    end
+
     # Read messages from a channel or chat
     class Messages < Base
+      include MessagesDisplay
+
       def initialize(args, runner:)
         @options = {}
         super
       end
 
       def execute
-        result = validate_options
+        result = validate_options || require_auth
         return result if result
 
-        auth_result = require_auth
-        return auth_result if auth_result
-
         target = resolve_target
-        return 1 unless target
-
-        fetch_messages(target)
+        target ? fetch_messages(target) : 1
       end
 
       protected
@@ -81,12 +110,15 @@ module Teems
         return target unless target.start_with?('https://')
 
         result = Services::TeamsUrlParser.parse(target)
-        return error('Invalid Teams URL format') || nil unless result
+        result ? apply_parsed_url(result) : (error('Invalid Teams URL format') || nil)
+      end
 
+      def apply_parsed_url(result)
+        conversation_id = result.conversation_id
         team_id = result.team_id
-        debug("Parsed URL: conversation=#{result.conversation_id}, team=#{team_id}")
+        debug("Parsed URL: conversation=#{conversation_id}, team=#{team_id}")
         @options[:team_id] = team_id if team_id
-        result.conversation_id
+        conversation_id
       end
 
       def fetch_messages(target)
@@ -127,31 +159,6 @@ module Teems
         return output_json(messages.map { |msg| message_to_hash(msg) }) if @options[:json]
 
         messages.each { |msg| display_message(msg) }
-      end
-
-      def display_message(message)
-        time_str = message.created_at&.strftime('%Y-%m-%d %H:%M') || ''
-        importance = message.important? ? output.red('!') : ''
-        puts "#{output.blue("[#{time_str}]")} #{importance}#{output.bold(message.sender_name)}:"
-        puts "  #{message.content}"
-        display_reactions(message)
-        puts
-      end
-
-      def display_reactions(message)
-        return unless message.reactions.any?
-
-        reaction_text = message.reactions.map { |reaction| "#{reaction[:type]}(#{reaction[:count]})" }.join(' ')
-        puts "  #{output.gray(reaction_text)}"
-      end
-
-      def message_to_hash(message)
-        {
-          id: message.id, sender_id: message.sender_id,
-          sender_name: message.sender_name, content: message.content,
-          created_at: message.created_at&.iso8601,
-          importance: message.importance, reactions: message.reactions
-        }
       end
     end
   end

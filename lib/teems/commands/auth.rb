@@ -24,7 +24,8 @@ module Teems
     # Token input methods for manual token entry and file import
     module AuthTokenInput
       def set_tokens
-        return import_tokens_from_file(positional_args[1]) if positional_args[1]
+        file_path = positional_args[1]
+        return import_tokens_from_file(file_path) if file_path
 
         prompt_and_save_tokens
       end
@@ -32,13 +33,17 @@ module Teems
       private
 
       def prompt_and_save_tokens
-        puts 'Enter your Teams tokens.'
-        puts '(Tokens are long - you can also use: teems auth set-tokens <file>)'
-        puts
+        print_token_prompt
         auth_token = prompt_for_token('Auth token (from Authorization: Bearer header or authtoken cookie)')
         return error('Auth token is required') if auth_token.to_s.empty?
 
         save_extracted_tokens(auth_token, prompt_for_skype_token)
+      end
+
+      def print_token_prompt
+        puts 'Enter your Teams tokens.'
+        puts '(Tokens are long - you can also use: teems auth set-tokens <file>)'
+        puts
       end
 
       def prompt_for_skype_token
@@ -73,14 +78,16 @@ module Teems
       def import_tokens_from_file(file_path)
         return error("File not found: #{file_path}") unless File.exist?(file_path)
 
-        data = parse_token_file(file_path)
-        return data if data.is_a?(Integer)
-
-        build_and_save_file_tokens(data)
+        read_and_save_token_file(file_path)
       rescue Errno::EACCES => e
         error("Cannot read file: #{e.message}")
       rescue Errno::EISDIR
         error("Path is a directory, not a file: #{file_path}")
+      end
+
+      def read_and_save_token_file(file_path)
+        data = parse_token_file(file_path)
+        data.is_a?(Integer) ? data : build_and_save_file_tokens(data)
       end
 
       def parse_token_file(file_path)
@@ -198,13 +205,16 @@ module Teems
 
       def display_authenticated_status
         account = token_store.account
-        unless account
-          puts "#{output.yellow('⚠')} Token file exists but is incomplete"
-          puts 'Run: teems auth login'
-          return 0
-        end
+        return display_incomplete_tokens unless account
+
         puts "#{output.green('✓')} Authenticated as: #{account.name}"
         display_token_age
+        0
+      end
+
+      def display_incomplete_tokens
+        puts "#{output.yellow('⚠')} Token file exists but is incomplete"
+        puts 'Run: teems auth login'
         0
       end
 

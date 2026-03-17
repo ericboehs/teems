@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for the Users API wrapper
 module UsersApiTests
+  # Shared setup and sample data for users API tests
   module Helpers
     def setup
       @api_client = Teems::TestHelpers::MockApiClient.new
@@ -21,8 +23,15 @@ module UsersApiTests
     end
   end
 
+  # Tests for fetching the current user's profile
   class MeTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @users_api = nil
+      super
+    end
 
     def test_me_calls_correct_endpoint
       @api_client.stub('/v1.0/me', sample_user_profile_data)
@@ -52,8 +61,15 @@ module UsersApiTests
     end
   end
 
+  # Tests for fetching a user profile by ID
   class GetUserTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @users_api = nil
+      super
+    end
 
     def test_get_user_calls_correct_endpoint
       @api_client.stub('users/', sample_user_profile_data)
@@ -81,8 +97,15 @@ module UsersApiTests
     end
   end
 
+  # Tests for searching users by name or email
   class SearchTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @users_api = nil
+      super
+    end
 
     def test_search_calls_correct_endpoint
       @api_client.stub('/v1.0/users', { 'value' => [sample_user_profile_data] })
@@ -112,10 +135,10 @@ module UsersApiTests
     def test_search_sends_search_param
       @api_client.stub('/v1.0/users', { 'value' => [] })
       @users_api.search('john')
-      call = @api_client.calls.first
+      search_param = @api_client.calls.first[:params]['$search']
 
-      assert_includes call[:params]['$search'], 'displayName:john'
-      assert_includes call[:params]['$search'], 'mail:john'
+      assert_includes search_param, 'displayName:john'
+      assert_includes search_param, 'mail:john'
     end
 
     def test_search_returns_user_profile_models
@@ -134,8 +157,15 @@ module UsersApiTests
     end
   end
 
+  # Tests for fetching a user's manager
   class ManagerTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @users_api = nil
+      super
+    end
 
     def test_manager_calls_correct_endpoint
       @api_client.stub('manager', sample_user_profile_data)
@@ -178,8 +208,15 @@ module UsersApiTests
     end
   end
 
+  # Tests for fetching a user's direct reports
   class DirectReportsTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @users_api = nil
+      super
+    end
 
     def test_direct_reports_calls_correct_endpoint
       @api_client.stub('directReports', { 'value' => [] })
@@ -216,8 +253,15 @@ module UsersApiTests
     end
   end
 
+  # Tests for fetching a user's Graph API presence status
   class PresenceTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @users_api = nil
+      super
+    end
 
     def test_presence_calls_correct_endpoint
       @api_client.stub('presence', { 'availability' => 'Available' })
@@ -245,8 +289,15 @@ module UsersApiTests
     end
   end
 
+  # Tests for fetching presence via the Teams chat service API
   class TeamsPresenceTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @users_api = nil
+      super
+    end
 
     def test_teams_presence_posts_to_presence_endpoint
       response = [{ 'presence' => { 'availability' => 'Available' } }]
@@ -274,8 +325,15 @@ module UsersApiTests
     end
   end
 
+  # Tests for fetching a user's free/busy schedule
   class ScheduleTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @users_api = nil
+      super
+    end
 
     def test_schedule_posts_to_get_schedule
       sched = { 'value' => [{ 'availabilityView' => '0000' }] }
@@ -316,8 +374,15 @@ module UsersApiTests
     end
   end
 
+  # Tests for sanitizing special characters in search queries
   class SearchSanitizationTest < Minitest::Test
     include Helpers
+
+    def initialize(*)
+      @api_client = nil
+      @users_api = nil
+      super
+    end
 
     def test_search_strips_quotes_from_query
       @api_client.stub('/v1.0/users', { 'value' => [] })

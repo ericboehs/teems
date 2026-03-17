@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests CacheStore user caching, calendar ID storage, and cache clearing
 class CacheStoreTest < Minitest::Test
   def test_get_user_returns_nil_for_unknown_user
     with_temp_config do

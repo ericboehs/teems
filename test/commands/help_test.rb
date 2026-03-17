@@ -2,6 +2,7 @@
 
 require 'test_helper'
 
+# Tests for the help command
 class HelpCommandTest < Minitest::Test
   def test_execute_returns_zero
     with_temp_config do
@@ -12,8 +13,9 @@ class HelpCommandTest < Minitest::Test
   def test_shows_version
     result = run_help
 
-    assert_match(/teems/, result[:stdout])
-    assert_match(/v#{Teems::VERSION}/, result[:stdout])
+    stdout = result[:stdout]
+    assert_match(/teems/, stdout)
+    assert_match(/v#{Teems::VERSION}/, stdout)
   end
 
   def test_shows_commands_section
@@ -38,10 +40,10 @@ class HelpCommandTest < Minitest::Test
   end
 
   def test_shows_examples
-    result = run_help
+    stdout = run_help[:stdout]
 
-    assert_match(/EXAMPLES:/, result[:stdout])
-    assert_match(/teems auth login/, result[:stdout])
+    assert_match(/EXAMPLES:/, stdout)
+    assert_match(/teems auth login/, stdout)
   end
 
   def test_shows_usage_hint

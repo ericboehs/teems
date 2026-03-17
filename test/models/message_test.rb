@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for Message model parsing from Graph API and ng.msg formats
 module MessageTests
+  # Tests Message field extraction from Graph API responses
   class GraphApiParsingTest < Minitest::Test
     def test_from_api_with_graph_format
       message = Teems::Models::Message.from_api(sample_graph_message)
@@ -58,11 +60,13 @@ module MessageTests
     end
   end
 
+  # Tests Graph API message time parsing, display formatting, and reaction counting
   class GraphApiTimeAndFormatTest < Minitest::Test
     def test_parses_created_at_time
       message = Teems::Models::Message.from_api(sample_graph_message)
-      assert_instance_of Time, message.created_at
-      assert_equal 2026, message.created_at.year
+      created_at = message.created_at
+      assert_instance_of Time, created_at
+      assert_equal 2026, created_at.year
     end
 
     def test_handles_invalid_time_gracefully
@@ -78,8 +82,9 @@ module MessageTests
 
     def test_to_s_format
       message = Teems::Models::Message.from_api(sample_graph_message)
-      assert_includes message.to_s, 'John Doe'
-      assert_includes message.to_s, 'Hello world'
+      string_output = message.to_s
+      assert_includes string_output, 'John Doe'
+      assert_includes string_output, 'Hello world'
     end
 
     def test_to_s_with_nil_created_at
@@ -118,6 +123,7 @@ module MessageTests
     end
   end
 
+  # Tests ng.msg format parsing, system messages, replies, and internal Teams format
   class NgMsgAndOtherTest < Minitest::Test
     def test_from_api_with_ng_msg_format
       message = Teems::Models::Message.from_api(sample_ng_msg_message)
@@ -130,9 +136,10 @@ module MessageTests
     def test_from_api_with_ng_msg_parses_reactions
       message = Teems::Models::Message.from_api(sample_ng_msg_message)
       reactions = message.reactions
+      first_reaction = reactions[0]
       assert_equal 1, reactions.size
-      assert_equal 'like', reactions[0][:type]
-      assert_equal 1, reactions[0][:count]
+      assert_equal 'like', first_reaction[:type]
+      assert_equal 1, first_reaction[:count]
     end
 
     def test_from_api_with_ng_msg_uses_display_name_fallback

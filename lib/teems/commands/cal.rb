@@ -109,7 +109,8 @@ module Teems
 
       def week_monday
         today = Date.today
-        today - (today.wday.zero? ? 6 : today.wday - 1)
+        wday = today.wday
+        today - (wday.zero? ? 6 : wday - 1)
       end
 
       def date_range_for_days
@@ -128,6 +129,12 @@ module Teems
     module CalSubcommandParser
       RSVP_ACTIONS = %w[accept decline tentative].freeze
 
+      SUBCOMMAND_PARSERS = {
+        'show' => :parse_show_subcommand, 'today' => :parse_today_subcommand,
+        'tomorrow' => :parse_tomorrow_subcommand, 'create' => :parse_create_subcommand,
+        'delete' => :parse_delete_subcommand
+      }.freeze
+
       private
 
       def parse_options(args)
@@ -136,22 +143,22 @@ module Teems
       end
 
       def parse_subcommand(remaining)
-        case remaining.first
-        when 'show'      then parse_show_subcommand(remaining)
-        when 'today'     then parse_today_subcommand(remaining)
-        when 'tomorrow'  then parse_tomorrow_subcommand(remaining)
-        when 'create'    then parse_create_subcommand(remaining)
-        when 'delete'    then parse_delete_subcommand(remaining)
-        when *RSVP_ACTIONS then parse_rsvp_subcommand(remaining)
+        dispatch_subcommand_parse(remaining)
+        remaining
+      end
+
+      def dispatch_subcommand_parse(remaining)
+        parser = SUBCOMMAND_PARSERS[remaining.first]
+        if parser then send(parser, remaining)
+        elsif RSVP_ACTIONS.include?(remaining.first) then parse_rsvp_subcommand(remaining)
         else @subcommand = 'list'
         end
-        remaining
       end
 
       def parse_show_subcommand(remaining)
         @subcommand = 'show'
-        remaining.shift
-        @event_number = remaining.shift&.to_i
+        _, event_arg = remaining.shift(2)
+        @event_number = event_arg&.to_i
       end
 
       def parse_today_subcommand(remaining)
@@ -166,20 +173,21 @@ module Teems
       end
 
       def parse_rsvp_subcommand(remaining)
-        @subcommand = remaining.shift
-        @event_number = remaining.shift&.to_i
+        action, event_arg = remaining.shift(2)
+        @subcommand = action
+        @event_number = event_arg&.to_i
       end
 
       def parse_create_subcommand(remaining)
         @subcommand = 'create'
-        remaining.shift
-        @create_subject = remaining.shift
+        _, subject = remaining.shift(2)
+        @create_subject = subject
       end
 
       def parse_delete_subcommand(remaining)
         @subcommand = 'delete'
-        remaining.shift
-        @event_number = remaining.shift&.to_i
+        _, event_arg = remaining.shift(2)
+        @event_number = event_arg&.to_i
       end
     end
 
@@ -192,41 +200,47 @@ module Teems
       private
 
       def show_event
-        return missing_event_number unless @event_number&.positive?
-
-        event_id = lookup_event_id
-        return 1 unless event_id
+        event_id = validated_event_id
+        return event_id if event_id.is_a?(Integer)
 
         render_single_event(event_id)
       rescue ApiError => e
-        error("Failed to fetch event: #{e.message}")
+        api_error_result('Failed to fetch event', e)
+      end
+
+      def validated_event_id
+        return missing_event_number unless @event_number&.positive?
+
+        lookup_event_id || 1
+      end
+
+      def api_error_result(prefix, err)
+        error("#{prefix}: #{err.message}")
         1
       end
 
       def render_single_event(event_id)
-        event = with_token_refresh do
-          runner.calendar_api.get_event(event_id: event_id, timezone: detect_timezone)
-        end
+        event = fetch_event_for_display(event_id)
+        render_event_output(event)
+        0
+      end
 
+      def render_event_output(event)
         if @options[:json]
           output_json(event_to_hash(event))
         else
           formatter = Formatters::CalendarFormatter.new(output: output)
           puts formatter.format_event_detail(event)
         end
-        0
       end
 
       def rsvp_event
-        return missing_event_number unless @event_number&.positive?
-
-        event_id = lookup_event_id
-        return 1 unless event_id
+        event_id = validated_event_id
+        return event_id if event_id.is_a?(Integer)
 
         send_rsvp(event_id)
       rescue ApiError => e
-        error("Failed to respond to event: #{e.message}")
-        1
+        api_error_result('Failed to respond to event', e)
       end
 
       def send_rsvp(event_id)
@@ -257,22 +271,24 @@ module Teems
       end
 
       def delete_event
-        return missing_event_number unless @event_number&.positive?
-
-        event_id = lookup_event_id
-        return 1 unless event_id
+        event_id = validated_event_id
+        return event_id if event_id.is_a?(Integer)
 
         send_delete(event_id)
       end
 
       def send_delete(event_id)
-        event = fetch_event_for_display(event_id)
-        with_token_refresh { runner.calendar_api.delete_event(event_id: event_id) }
+        event = fetch_and_delete(event_id)
         display_delete_result(event)
         0
       rescue ApiError => e
-        error("Failed to delete event: #{e.message}")
-        1
+        api_error_result('Failed to delete event', e)
+      end
+
+      def fetch_and_delete(event_id)
+        event = fetch_event_for_display(event_id)
+        with_token_refresh { runner.calendar_api.delete_event(event_id: event_id) }
+        event
       end
 
       def fetch_event_for_display(event_id)
@@ -301,10 +317,11 @@ module Teems
       end
 
       def split_time_input(raw)
+        today = Date.today
         if raw.start_with?('tomorrow ')
-          [Date.today + 1, raw.delete_prefix('tomorrow ')]
+          [today + 1, raw.delete_prefix('tomorrow ')]
         elsif raw.match?(/\A(?:today\s+)?\d{1,2}:\d{2}\z/)
-          [Date.today, raw.delete_prefix('today ')]
+          [today, raw.delete_prefix('today ')]
         elsif raw.match?(/\A\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\z/)
           raw.split(/\s+/, 2)
         end
@@ -332,15 +349,22 @@ module Teems
       private
 
       def create_event
-        return error('Event title required. Usage: teems cal create "Title" --start TIME') || 1 unless @create_subject
+        return missing_subject_error unless @create_subject
 
+        validated_create_event
+      rescue ApiError => e
+        api_error_result('Failed to create event', e)
+      end
+
+      def validated_create_event
         times = resolve_create_times
         return times if times.is_a?(Integer)
 
-        start_dt, end_dt = times
-        send_create_request(start_dt, end_dt)
-      rescue ApiError => e
-        error("Failed to create event: #{e.message}")
+        send_create_request(*times)
+      end
+
+      def missing_subject_error
+        error('Event title required. Usage: teems cal create "Title" --start TIME')
         1
       end
 
@@ -357,14 +381,8 @@ module Teems
       end
 
       def resolve_timed_event_times
-        start_input = @options[:start]
-        unless start_input
-          error('Start time required. Use --start "YYYY-MM-DD HH:MM" or --start "today HH:MM"')
-          return 1
-        end
-
-        start_time = parse_time_input(start_input)
-        return error("Invalid start time: #{start_input}") || 1 unless start_time
+        start_time = validated_start_time
+        return start_time if start_time.is_a?(Integer)
 
         end_time = compute_end_time(start_time)
         return end_time if end_time.is_a?(Integer)
@@ -372,19 +390,32 @@ module Teems
         [format_time(start_time), format_time(end_time)]
       end
 
+      def validated_start_time
+        start_input = @options[:start]
+        return missing_start_time_error unless start_input
+
+        parse_time_input(start_input) || (error("Invalid start time: #{start_input}") || 1)
+      end
+
+      def missing_start_time_error
+        error('Start time required. Use --start "YYYY-MM-DD HH:MM" or --start "today HH:MM"')
+        1
+      end
+
       def compute_end_time(start_time)
+        @options[:end] ? parse_explicit_end_time : compute_end_from_duration(start_time)
+      end
+
+      def parse_explicit_end_time
         end_input = @options[:end]
-        if end_input
-          parsed = parse_time_input(end_input)
-          return error("Invalid end time: #{end_input}") || 1 unless parsed
+        parse_time_input(end_input) || (error("Invalid end time: #{end_input}") || 1)
+      end
 
-          parsed
-        else
-          duration = @options[:duration] || 30
-          return error('Duration must be a positive number of minutes') || 1 unless duration.positive?
+      def compute_end_from_duration(start_time)
+        duration = @options[:duration] || 30
+        return error('Duration must be a positive number of minutes') || 1 unless duration.positive?
 
-          start_time + (duration * 60)
-        end
+        start_time + (duration * 60)
       end
 
       def format_time(time)
@@ -409,11 +440,23 @@ module Teems
       end
 
       def add_optional_event_fields(body)
-        body[:location] = { displayName: @options[:location] } if @options[:location]
-        body[:body] = { contentType: 'text', content: @options[:body] } if @options[:body]
-        body[:attendees] = @options[:attendees].map { |e| attendee_entry(e) } if @options[:attendees]
+        add_location_field(body)
+        add_body_field(body)
+        add_attendees_field(body)
         add_teams_meeting(body) if @options[:teams]
         body
+      end
+
+      def add_location_field(body)
+        body[:location] = { displayName: @options[:location] } if @options[:location]
+      end
+
+      def add_body_field(body)
+        body[:body] = { contentType: 'text', content: @options[:body] } if @options[:body]
+      end
+
+      def add_attendees_field(body)
+        body[:attendees] = @options[:attendees].map { |email| attendee_entry(email) } if @options[:attendees]
       end
 
       def add_teams_meeting(body)
@@ -501,8 +544,7 @@ module Teems
 
         fetch_and_display_events(range)
       rescue ApiError => e
-        error("Failed to fetch calendar: #{e.message}")
-        1
+        api_error_result('Failed to fetch calendar', e)
       end
 
       def fetch_and_display_events(range)
@@ -534,10 +576,14 @@ module Teems
         if @options[:json]
           output_json(events.map { |event| event_to_hash(event) })
         else
-          formatter = Formatters::CalendarFormatter.new(output: output)
-          method = @options[:verbose] ? :format_event_list_verbose : :format_event_list_compact
-          puts formatter.public_send(method, events)
+          render_events_text(events)
         end
+      end
+
+      def render_events_text(events)
+        formatter = Formatters::CalendarFormatter.new(output: output)
+        method = @options[:verbose] ? :format_event_list_verbose : :format_event_list_compact
+        puts formatter.public_send(method, events)
       end
     end
   end

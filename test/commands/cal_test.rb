@@ -2,7 +2,9 @@
 
 require 'test_helper'
 
+# Tests for the calendar command
 module CalCommandTests
+  # Shared helpers for running calendar commands and building test data
   module SharedHelpers
     private
 
@@ -86,7 +88,11 @@ module CalCommandTests
       zone ? ENV['TZ'] = zone : ENV.delete('TZ')
       yield
     ensure
-      original_tz ? ENV['TZ'] = original_tz : ENV.delete('TZ')
+      restore_tz(original_tz)
+    end
+
+    def restore_tz(value)
+      value ? ENV['TZ'] = value : ENV.delete('TZ')
     end
 
     def build_nil_time_event
@@ -100,6 +106,7 @@ module CalCommandTests
     end
   end
 
+  # Tests for auth, help, listing, and basic calendar options
   class BasicTest < Minitest::Test
     include SharedHelpers
 
@@ -178,8 +185,9 @@ module CalCommandTests
 
     def test_verbose_mode
       result = run_cal(['-v'], stubs: { 'calendarView' => { 'value' => [sample_event_data] } })
-      assert_match(/Weekly Standup/, result[:stdout])
-      assert_match(/Alice Manager/, result[:stdout])
+      stdout = result[:stdout]
+      assert_match(/Weekly Standup/, stdout)
+      assert_match(/Alice Manager/, stdout)
     end
 
     def test_events_are_numbered_in_output
@@ -197,6 +205,7 @@ module CalCommandTests
     end
   end
 
+  # Tests for show subcommand and today/tomorrow aliases
   class ShowAndAliasTest < Minitest::Test
     include SharedHelpers
 
@@ -212,8 +221,9 @@ module CalCommandTests
 
     def test_show_subcommand_with_cached_event
       result = run_cal_with_cached_show(%w[show 1], '1', 'AAMkAGVmMDEzMTM4LTZmYWUtNDdkNC1hMDZe')
-      assert_match(/Weekly Standup/, result[:stdout])
-      assert_match(/Conference Room A/, result[:stdout])
+      stdout = result[:stdout]
+      assert_match(/Weekly Standup/, stdout)
+      assert_match(/Conference Room A/, stdout)
     end
 
     def test_show_subcommand_with_json
@@ -253,17 +263,17 @@ module CalCommandTests
     def test_today_alias_uses_today_date_range
       runner = run_cal_runner(['today'], stubs: { 'calendarView' => { 'value' => [] } })
       today = Date.today.strftime('%Y-%m-%d')
-      call = runner.api_client.calls.first
-      assert call[:params]['startDateTime'].start_with?(today), "Expected start to be today (#{today})"
-      assert call[:params]['endDateTime'].start_with?(today), "Expected end to be today (#{today})"
+      params = runner.api_client.calls.first[:params]
+      assert params['startDateTime'].start_with?(today), "Expected start to be today (#{today})"
+      assert params['endDateTime'].start_with?(today), "Expected end to be today (#{today})"
     end
 
     def test_tomorrow_alias_uses_tomorrow_date
       runner = run_cal_runner(['tomorrow'], stubs: { 'calendarView' => { 'value' => [] } })
       tomorrow = (Date.today + 1).strftime('%Y-%m-%d')
-      call = runner.api_client.calls.first
-      assert call[:params]['startDateTime'].start_with?(tomorrow), "Expected start: #{tomorrow}"
-      assert call[:params]['endDateTime'].start_with?(tomorrow), "Expected end: #{tomorrow}"
+      params = runner.api_client.calls.first[:params]
+      assert params['startDateTime'].start_with?(tomorrow), "Expected start: #{tomorrow}"
+      assert params['endDateTime'].start_with?(tomorrow), "Expected end: #{tomorrow}"
     end
 
     def test_tomorrow_alias_with_options
@@ -272,12 +282,13 @@ module CalCommandTests
     end
 
     def test_help_includes_today_and_tomorrow
-      result = run_cal(['--help'])
-      assert_match(/today/, result[:stdout])
-      assert_match(/tomorrow/, result[:stdout])
+      stdout = run_cal(['--help'])[:stdout]
+      assert_match(/today/, stdout)
+      assert_match(/tomorrow/, stdout)
     end
   end
 
+  # Tests for RSVP actions: accept, decline, and tentative
   class RsvpTest < Minitest::Test
     include SharedHelpers
 
@@ -290,8 +301,9 @@ module CalCommandTests
       runner = run_cal_rsvp_runner(%w[accept 3], '3', 'event-xyz', 'accept')
       call = runner.api_client.calls.first
       assert_equal :post, call[:method]
-      assert_includes call[:path], '/accept'
-      assert_includes call[:path], 'event-xyz'
+      call_path = call[:path]
+      assert_includes call_path, '/accept'
+      assert_includes call_path, 'event-xyz'
       assert_equal true, call[:body][:sendResponse]
     end
 
@@ -368,6 +380,7 @@ module CalCommandTests
     end
   end
 
+  # Tests for event creation input validation
   class CreateValidationTest < Minitest::Test
     include SharedHelpers
 
@@ -423,6 +436,7 @@ module CalCommandTests
     end
   end
 
+  # Tests for event creation API request formatting
   class CreateApiCallTest < Minitest::Test
     include SharedHelpers
 
@@ -493,15 +507,17 @@ module CalCommandTests
       with_temp_config do
         with_tz('America/Chicago') do
           runner = configured_runner
-          runner.api_client.stub('/v1.0/me/events', sample_event_data)
+          api = runner.api_client
+          api.stub('/v1.0/me/events', sample_event_data)
           Teems::Commands::Cal.new(['create', 'Test', '--start', '2026-03-20 09:00'], runner: runner).execute
-          body = runner.api_client.calls.first[:body]
+          body = api.calls.first[:body]
           assert_equal 'America/Chicago', body[:start][:timeZone]
         end
       end
     end
   end
 
+  # Tests for optional event creation fields like location, body, and attendees
   class CreateOptionsTest < Minitest::Test
     include SharedHelpers
 
@@ -550,6 +566,7 @@ module CalCommandTests
     end
   end
 
+  # Tests for event creation output display
   class CreateDisplayTest < Minitest::Test
     include SharedHelpers
 
@@ -593,6 +610,7 @@ module CalCommandTests
     end
   end
 
+  # Tests for event deletion subcommand
   class DeleteTest < Minitest::Test
     include SharedHelpers
 
@@ -649,6 +667,7 @@ module CalCommandTests
     end
   end
 
+  # Tests for timezone detection and date range computation
   class TimezoneAndDateRangeTest < Minitest::Test
     include SharedHelpers
 
