@@ -195,6 +195,15 @@ module MarkdownFormatterTests
       assert_includes result, '[doc.pdf](https://sharepoint.com/doc.pdf)'
     end
 
+    def test_format_attachment_rejects_non_https_url
+      msg = build_message(
+        attachments: [{ 'fileName' => 'doc.pdf', 'siteUrl' => 'javascript:alert(1)' }]
+      )
+      result = build_formatter.format([msg])
+      refute_includes result, 'javascript:'
+      refute_includes result, '['
+    end
+
     def test_format_attachment_without_site_url
       msg = build_message(attachments: [{ 'fileName' => 'doc.pdf' }])
       result = build_formatter.format([msg])

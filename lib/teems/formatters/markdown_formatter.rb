@@ -92,7 +92,7 @@ module Teems
       def format_file_attachment(att)
         name = att['fileName'] || att['name'] || 'file'
         url = att['siteUrl']
-        url ? "\u{1F4CE} [#{name}](#{url})" : "\u{1F4CE} #{name}"
+        url&.start_with?('https://') ? "\u{1F4CE} [#{name}](#{url})" : "\u{1F4CE} #{name}"
       end
 
       def format_message_reactions(msg)

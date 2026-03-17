@@ -121,7 +121,7 @@ module Teems
       end
 
       def download_one(att, dir)
-        name = att['fileName'] || att['name'] || 'file'
+        name = safe_filename(att['fileName'] || att['name'] || 'file')
         print "\u{1F4CE} Downloading #{name}..."
         perform_download(att, dir, name)
       rescue StandardError => e
@@ -156,11 +156,20 @@ module Teems
         dir
       end
 
+      def safe_filename(name)
+        base = File.basename(name)
+        base.empty? ? 'file' : base
+      end
+
       def unique_path(dir, name)
         path = File.join(dir, name)
         return path unless File.exist?(path)
 
-        File.join(dir, "#{Time.now.strftime('%Y%m%d-%H%M')}-#{name}")
+        ext = File.extname(name)
+        base = File.basename(name, ext)
+        counter = 1
+        counter += 1 while File.exist?(path = File.join(dir, "#{base}-#{counter}#{ext}"))
+        path
       end
 
       def format_bytes(bytes)

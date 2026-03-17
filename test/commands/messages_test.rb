@@ -403,8 +403,12 @@ module MessagesCommandTests
     private
 
     def msg_with_sharepoint_attachment
+      msg_with_filename('report.pdf')
+    end
+
+    def msg_with_filename(name)
       files = [{
-        'fileName' => 'report.pdf',
+        'fileName' => name,
         'sharepointIds' => { 'siteId' => 's1', 'listId' => 'l1', 'listItemUniqueId' => 'i1' }
       }]
       sample_ng_msg_message.merge('properties' => { 'files' => JSON.generate(files) })
@@ -419,9 +423,9 @@ module MessagesCommandTests
       downloader
     end
 
-    def run_download(tmpdir, output:, downloader: nil)
+    def run_download(tmpdir, output:, downloader: nil, msg: nil)
       runner = configured_runner(output: output)
-      runner.api_client.stub('messages', { 'messages' => [msg_with_sharepoint_attachment] })
+      runner.api_client.stub('messages', { 'messages' => [msg || msg_with_sharepoint_attachment] })
       runner.api_client.stub('driveItem', DRIVE_ITEM_STUB)
       cmd = Teems::Commands::Messages.new(['--download', '-o', tmpdir, '19:abc@thread.v2'], runner: runner)
       cmd.instance_variable_set(:@file_downloader, downloader) if downloader
@@ -520,7 +524,30 @@ module MessagesCommandTests
         File.write(File.join(tmpdir, 'report.pdf'), 'existing')
         with_temp_config do
           capture_output { |out| run_download(tmpdir, output: out, downloader: mock_file_downloader_bytes(12)) }
-          assert_equal 1, Dir.glob(File.join(tmpdir, '*-report.pdf')).length
+          assert File.exist?(File.join(tmpdir, 'report-1.pdf'))
+        end
+      end
+    end
+
+    def test_download_handles_multiple_collisions
+      Dir.mktmpdir('teems-dl-test') do |tmpdir|
+        File.write(File.join(tmpdir, 'report.pdf'), 'existing')
+        File.write(File.join(tmpdir, 'report-1.pdf'), 'existing')
+        with_temp_config do
+          capture_output { |out| run_download(tmpdir, output: out, downloader: mock_file_downloader_bytes(12)) }
+          assert File.exist?(File.join(tmpdir, 'report-2.pdf'))
+        end
+      end
+    end
+
+    def test_download_sanitizes_path_traversal
+      Dir.mktmpdir('teems-dl-test') do |tmpdir|
+        with_temp_config do
+          dl = mock_file_downloader_bytes(12)
+          evil = msg_with_filename('../../etc/evil.txt')
+          capture_output { |out| run_download(tmpdir, output: out, downloader: dl, msg: evil) }
+          assert File.exist?(File.join(tmpdir, 'evil.txt'))
+          refute File.exist?(File.join(tmpdir, '..', '..', 'etc', 'evil.txt'))
         end
       end
     end
