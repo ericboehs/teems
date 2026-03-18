@@ -369,7 +369,7 @@ module OrgCommandTests
     def stub_boss_with_report(runner, user, rep)
       api = runner.api_client
       api.stub('/v1.0/me', user)
-      stub_not_found(runner, '/v1.0/me/manager')
+      api.stub_error('/v1.0/me/manager', Teems::ApiError.new('Not found', status_code: 404))
       api.stub('/v1.0/me/directReports', { 'value' => [rep] })
     end
   end

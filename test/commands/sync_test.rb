@@ -188,9 +188,7 @@ module SyncCommandTests
       [out, configured_runner(output: verbose_output)]
     end
 
-    def setup_verbose_response_logging(runner, _out)
-      api = runner.api_client
-      output = runner.output
+    def setup_verbose_response_logging(api, output)
       api.on_response = lambda { |path, code|
         output.debug("  API <- #{code} #{path[0..80]}") if output.verbose?
       }
@@ -669,7 +667,7 @@ module SyncCommandTests
         api = runner.api_client
         api.stub('conversations', { 'conversations' => [sample_ngmsg_chat] })
         api.stub('messages', { 'messages' => [sample_ng_msg_message], '_metadata' => {} })
-        setup_verbose_response_logging(runner, out)
+        setup_verbose_response_logging(api, runner.output)
         Teems::Commands::Sync.new(['-v'], runner: runner).execute
 
         assert_match(/Sync complete/, out.string)

@@ -247,7 +247,7 @@ module Teems
 
       # Raise error only for the first N calls matching this path, then succeed
       def stub_transient_error(path, error, times: 1)
-        @stubs[:transient][path] = { error: error, remaining: times }
+        @stubs[:transient][path] = TransientError.new(error, times)
       end
 
       def get(_endpoint, path, account:, **)
@@ -289,14 +289,10 @@ module Teems
       end
 
       def check_transient_errors(path)
-        @stubs[:transient].each do |pattern, info|
+        @stubs[:transient].each do |pattern, transient|
           next unless path.include?(pattern)
 
-          remaining = info[:remaining]
-          next unless remaining.positive?
-
-          info[:remaining] = remaining - 1
-          raise info[:error]
+          transient.attempt
         end
       end
 
@@ -307,15 +303,27 @@ module Teems
       end
 
       def find_response(path)
-        responses = @stubs[:responses]
-        # Try exact match first
-        return responses[path] if responses.key?(path)
+        return @stubs[:responses][path] if @stubs[:responses].key?(path)
 
-        # Try partial match
-        responses.each do |pattern, response|
+        @stubs[:responses].each do |pattern, response|
           return response if path.include?(pattern)
         end
         nil
+      end
+
+      # Tracks a transient error that fires a limited number of times
+      class TransientError
+        def initialize(error, remaining)
+          @error = error
+          @remaining = remaining
+        end
+
+        def attempt
+          return unless @remaining.positive?
+
+          @remaining -= 1
+          raise @error
+        end
       end
     end
   end

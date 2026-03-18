@@ -21,12 +21,15 @@ module ActivityCommandTests
     end
 
     def calendar_activity(overrides = {})
-      behalf = overrides.delete(:behalf)
-      location = overrides.delete(:location)
-      ctx = { 'templateParameters' => behalf ? "{\"behalfOf\":\"#{behalf}\"}" : '{}' }
-      ctx['location'] = location if location
+      ctx = calendar_context(behalf: overrides.delete(:behalf), location: overrides.delete(:location))
       build_activity({ type: 'msGraph', subtype: 'privateMeetingCreated',
                        who: 'Alice', preview: 'Standup', context: ctx }.merge(overrides))
+    end
+
+    def calendar_context(behalf:, location:)
+      ctx = { 'templateParameters' => behalf ? "{\"behalfOf\":\"#{behalf}\"}" : '{}' }
+      ctx['location'] = location if location
+      ctx
     end
 
     def mention_activity(overrides = {})

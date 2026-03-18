@@ -677,6 +677,12 @@ module ApiClientTests
 
       def request(req)
         @client.instance_variable_set(:@last_request, req)
+        build_ok_response
+      end
+
+      private
+
+      def build_ok_response
         response = Net::HTTPResponse::CODE_TO_OBJ['200'].new('1.1', '200', 'OK')
         response.instance_variable_set(:@body, '{}')
         response.instance_variable_set(:@read, true)
