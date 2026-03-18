@@ -170,8 +170,10 @@ module Teems
       XDG_ENV_KEYS.zip(saved).each { |key, val| ENV[key] = val }
     end
 
-    def mock_token_store(account: nil, configured: true)
-      MockTokenStore.new(account: account, configured: configured)
+    def mock_token_store(account: nil, configured: true, **extra)
+      MockTokenStore.new(account: account, configured: configured).tap do |store|
+        extra.each { |key, val| store.public_send(:"#{key}=", val) }
+      end
     end
 
     def mock_unconfigured_store

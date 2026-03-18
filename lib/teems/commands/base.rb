@@ -2,8 +2,53 @@
 
 module Teems
   module Commands
+    # Output helpers for CLI commands: logging, printing, JSON
+    module CommandOutput
+      protected
+
+      def success(msg) = @options[:quiet] || output.success(msg)
+      def info(msg) = @options[:quiet] || output.info(msg)
+      def warn(message) = output.warn(message)
+      def error(message) = output.error(message) || 1
+      def debug(msg) = @options[:verbose] && output.debug(msg)
+      def puts(message = '') = @options[:quiet] || output.puts(message)
+      def print(msg) = @options[:quiet] || output.print(msg)
+      def output_json(data) = output.puts(JSON.pretty_generate(data))
+    end
+
+    # Option validation helpers for CLI commands
+    module CommandValidation
+      protected
+
+      def check_unknown_options
+        return nil if @unknown_options.empty?
+
+        error("Unknown option: #{@unknown_options.first}")
+        error('Run with --help for available options.')
+        1
+      end
+
+      def unknown_options? = @unknown_options.any?
+      def show_help? = @options[:help]
+
+      def show_help
+        output.puts help_text
+        0
+      end
+
+      def validate_options
+        return show_help if show_help?
+        return check_unknown_options if unknown_options?
+
+        nil
+      end
+    end
+
     # Base class for all CLI commands with option parsing and output helpers
     class Base
+      include CommandOutput
+      include CommandValidation
+
       attr_reader :runner, :options, :positional_args
 
       def initialize(args, runner:)
@@ -68,46 +113,9 @@ module Teems
         @unknown_options << arg
       end
 
-      def check_unknown_options
-        return nil if @unknown_options.empty?
-
-        error("Unknown option: #{@unknown_options.first}")
-        error('Run with --help for available options.')
-        1
-      end
-
-      def unknown_options?
-        @unknown_options.any?
-      end
-
-      def show_help?
-        @options[:help]
-      end
-
-      def show_help
-        output.puts help_text
-        0
-      end
-
-      def validate_options
-        return show_help if show_help?
-        return check_unknown_options if unknown_options?
-
-        nil
-      end
-
       def help_text
         'No help available for this command.'
       end
-
-      def success(msg) = @options[:quiet] || output.success(msg)
-      def info(msg) = @options[:quiet] || output.info(msg)
-      def warn(message) = output.warn(message)
-      def error(message) = output.error(message) || 1
-      def debug(msg) = @options[:verbose] && output.debug(msg)
-      def puts(message = '') = @options[:quiet] || output.puts(message)
-      def print(msg) = @options[:quiet] || output.print(msg)
-      def output_json(data) = output.puts(JSON.pretty_generate(data))
 
       def require_auth
         return nil if runner.configured?

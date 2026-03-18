@@ -24,8 +24,8 @@ module Teems
 
       def compile_helper(source, binary)
         log('Compiling headless token helper...')
-        _, status = Open3.capture2(*swiftc_command(source, binary))
-        status.success? ? binary : log_and_nil('Failed to compile helper')
+        result = Open3.capture2(*swiftc_command(source, binary))
+        result.last.success? ? binary : log_and_nil('Failed to compile helper')
       rescue Errno::ENOENT
         log_and_nil('swiftc not found')
       end

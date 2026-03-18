@@ -287,7 +287,9 @@ module SyncEngineTests
 
     def test_advance_link_nil
       with_temp_config do
-        assert_nil build_public_engine(:advance_link).advance_link(nil, Time.now)
+        engine = build_public_engine(:advance_link)
+        engine.instance_variable_set(:@backward_link, nil)
+        assert_nil engine.advance_link(Time.now)
       end
     end
 

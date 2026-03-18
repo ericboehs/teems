@@ -598,19 +598,14 @@ module ApiClientTests
 
   # Tests custom header application on HTTP requests
   class ApplyHeadersTest < Minitest::Test
-    # Exposes private apply_headers method for testing
-    class ExposedHeaders < Teems::Services::ApiClient
-      public :apply_headers
-    end
-
     def test_apply_headers_sets_custom_headers_on_request
-      client = ExposedHeaders.new
-      request = Net::HTTP::Get.new('/')
+      client = StubbedApiClient.new
+      account = mock_account
 
-      client.apply_headers(request, { 'X-Custom' => 'value', 'Accept' => 'text/plain' })
+      client.get(:graph, '/v1.0/me', account: account, headers: { 'X-Custom' => 'value', 'Accept' => 'text/plain' })
 
-      assert_equal 'value', request['X-Custom']
-      assert_equal 'text/plain', request['Accept']
+      assert_equal 'value', client.last_request['X-Custom']
+      assert_equal 'text/plain', client.last_request['Accept']
     end
   end
 

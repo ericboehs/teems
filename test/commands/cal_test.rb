@@ -963,13 +963,11 @@ module CalCommandTests
       end
     end
 
-    def test_event_to_hash_nil_times
-      with_temp_config do
-        cmd = Teems::Commands::Cal.new([], runner: configured_runner)
-        hash = cmd.send(:event_to_hash, build_nil_time_event)
-        assert_nil hash[:start_time]
-        assert_nil hash[:end_time]
-      end
+    def test_event_to_json_hash_nil_times
+      event = build_nil_time_event
+      hash = event.to_json_hash
+      assert_nil hash[:start_time]
+      assert_nil hash[:end_time]
     end
   end
 end

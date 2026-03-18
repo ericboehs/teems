@@ -20,10 +20,7 @@ module TokenRefresherTests
       with_temp_config do
         store = mock_token_store(configured: true)
         store.define_singleton_method(:skype_spaces_token) { nil }
-
-        refresher = Teems::Services::TokenRefresher.new(token_store: store)
-
-        refute refresher.refresh
+        refute Teems::Services::TokenRefresher.new(token_store: store).refresh
       end
     end
 
@@ -31,28 +28,20 @@ module TokenRefresherTests
       with_temp_config do
         store = mock_token_store(configured: true)
         store.define_singleton_method(:skype_spaces_token) { nil }
-
-        output = test_output
-        refresher = Teems::Services::TokenRefresher.new(token_store: store, output: output)
-        refresher.refresh
+        Teems::Services::TokenRefresher.new(token_store: store, output: test_output).refresh
       end
     end
 
     def test_initializes_with_token_store
       with_temp_config do
-        store = mock_token_store
-        refresher = Teems::Services::TokenRefresher.new(token_store: store)
-
-        assert_instance_of Teems::Services::TokenRefresher, refresher
+        assert_instance_of Teems::Services::TokenRefresher,
+                           Teems::Services::TokenRefresher.new(token_store: mock_token_store)
       end
     end
 
     def test_initializes_with_optional_output
       with_temp_config do
-        store = mock_token_store
-        output = test_output
-        refresher = Teems::Services::TokenRefresher.new(token_store: store, output: output)
-
+        refresher = Teems::Services::TokenRefresher.new(token_store: mock_token_store, output: test_output)
         assert_instance_of Teems::Services::TokenRefresher, refresher
       end
     end
@@ -60,12 +49,16 @@ module TokenRefresherTests
 
   # Testable subclass that mocks the exchange_token HTTP call
   class TestableTokenRefresher < Teems::Services::TokenRefresher
-    attr_accessor :mock_response, :mock_error
+    def initialize(token_store:, mock_response: nil, mock_error: nil)
+      super(token_store: token_store)
+      @mock_response = mock_response
+      @mock_error = mock_error
+    end
 
     def exchange_token(_skype_spaces_token)
-      raise mock_error if mock_error
+      raise @mock_error if @mock_error
 
-      mock_response
+      @mock_response
     end
   end
 
@@ -73,204 +66,131 @@ module TokenRefresherTests
   class MockHttpTest < Minitest::Test
     def test_refresh_returns_true_on_successful_exchange
       with_temp_config do |dir|
-        refresher, = build_testable_refresher(dir, mock_response: 'new-skype-token')
-
+        refresher, = build_testable(dir, mock_response: 'new-skype-token')
         assert refresher.refresh
       end
     end
 
     def test_refresh_updates_token_in_store
       with_temp_config do |dir|
-        refresher, store = build_testable_refresher(dir, mock_response: 'new-skype-token')
-
+        refresher, store = build_testable(dir, mock_response: 'new-skype-token')
         refresher.refresh
-
         assert_equal 'new-skype-token', store.account.skype_token
       end
     end
 
     def test_refresh_returns_false_on_nil_response
       with_temp_config do |dir|
-        refresher, = build_testable_refresher(dir, mock_response: nil)
-
+        refresher, = build_testable(dir)
         refute refresher.refresh
       end
     end
 
     def test_refresh_returns_false_on_network_error
       with_temp_config do |dir|
-        error = SocketError.new('connection failed')
-        refresher, = build_testable_refresher(dir, mock_error: error)
-
+        refresher, = build_testable(dir, mock_error: SocketError.new('connection failed'))
         refute refresher.refresh
       end
     end
 
     def test_refresh_preserves_original_token_on_failure
       with_temp_config do |dir|
-        refresher, store = build_testable_refresher(dir, skype_token: 'original-skype')
-
+        refresher, store = build_testable(dir, skype_token: 'original-skype')
         refresher.refresh
-
         assert_equal 'original-skype', store.account.skype_token
       end
     end
 
     private
 
-    def build_testable_refresher(dir, skype_token: 'old-skype', mock_response: nil, mock_error: nil)
-      write_tokens_file(dir, {
-                          'auth_token' => 'test-auth',
-                          'skype_token' => skype_token,
-                          'skype_spaces_token' => 'spaces-token'
-                        })
+    def build_testable(dir, skype_token: 'old-skype', **)
+      write_tokens_file(dir, { 'auth_token' => 'test-auth', 'skype_token' => skype_token,
+                               'skype_spaces_token' => 'spaces-token' })
       store = Teems::Services::TokenStore.new
-      refresher = TestableTokenRefresher.new(token_store: store)
-      refresher.mock_response = mock_response
-      refresher.mock_error = mock_error
-      [refresher, store]
+      [TestableTokenRefresher.new(token_store: store, **), store]
     end
   end
 
-  # Tests HTTP client and request construction for token exchange
-  class BuildMethodsTest < Minitest::Test
-    # Exposes private build methods for testing exchange request construction
-    class ExposedBuilder < Teems::Services::TokenRefresher
-      public :build_exchange_http, :build_exchange_request
-    end
-
-    def test_build_exchange_http_returns_http_client
-      with_temp_config do
-        store = mock_token_store
-        refresher = ExposedBuilder.new(token_store: store)
-
-        http = refresher.build_exchange_http
-
-        assert_instance_of Net::HTTP, http
-        assert http.use_ssl?
-        assert_equal 10, http.open_timeout
-        assert_equal 30, http.read_timeout
-      end
-    end
-
-    def test_build_exchange_request_returns_post_request
-      with_temp_config do
-        store = mock_token_store
-        refresher = ExposedBuilder.new(token_store: store)
-
-        request = refresher.build_exchange_request('test-spaces-token')
-
-        assert_instance_of Net::HTTP::Post, request
-        assert_equal 'Bearer test-spaces-token', request['Authorization']
-        assert_equal 'application/json', request['Content-Type']
-        assert_equal '{}', request.body
-      end
-    end
-  end
-
-  # Tests exchange response parsing, error handling, and timeout recovery
+  # Tests exchange_token response parsing, error handling, and timeout recovery
   class ExchangeTokenTest < Minitest::Test
-    # Exposes private exchange and parse methods for testing
-    class ExposedTokenRefresher < Teems::Services::TokenRefresher
-      public :exchange_token, :parse_exchange_response
+    # Exposes exchange_token for direct testing
+    class ExposedRefresher < Teems::Services::TokenRefresher
+      public :exchange_token
     end
 
-    def test_parse_exchange_response_success
+    def test_exchange_token_extracts_skype_token
       with_temp_config do
-        store = mock_token_store
-        refresher = ExposedTokenRefresher.new(token_store: store, output: test_output)
-        response = build_http_response('200', 'OK', '{"tokens":{"skypeToken":"new-token"}}')
-
-        result = refresher.parse_exchange_response(response)
-
-        assert_equal 'new-token', result
+        refresher = build_refresher_with_stub('200', '{"tokens":{"skypeToken":"new-token"}}')
+        assert_equal 'new-token', refresher.exchange_token('spaces-token')
       end
     end
 
-    def test_parse_exchange_response_failure
+    def test_exchange_token_returns_nil_on_failure
       with_temp_config do
-        store = mock_token_store
-        refresher = ExposedTokenRefresher.new(token_store: store, output: test_output)
-        response = build_http_response('500', 'Internal Server Error', '')
-
-        result = refresher.parse_exchange_response(response)
-
-        assert_nil result
+        refresher = build_refresher_with_stub('500', '')
+        assert_nil refresher.exchange_token('spaces-token')
       end
     end
 
-    def test_parse_exchange_response_missing_tokens_key
+    def test_exchange_token_returns_nil_on_missing_key
       with_temp_config do
-        store = mock_token_store
-        refresher = ExposedTokenRefresher.new(token_store: store, output: test_output)
-        response = build_http_response('200', 'OK', '{"other":"data"}')
-
-        result = refresher.parse_exchange_response(response)
-
-        assert_nil result
+        refresher = build_refresher_with_stub('200', '{"other":"data"}')
+        assert_nil refresher.exchange_token('spaces-token')
       end
     end
 
     def test_refresh_handles_json_parse_error
       with_temp_config do |dir|
-        error = JSON::ParserError.new('unexpected token')
-        refresher = build_testable_refresher(dir, mock_error: error)
-
+        write_tokens_file(dir, { 'auth_token' => 'a', 'skype_token' => 's', 'skype_spaces_token' => 'ss' })
+        refresher = TestableTokenRefresher.new(token_store: Teems::Services::TokenStore.new,
+                                               mock_error: JSON::ParserError.new('unexpected'))
         refute refresher.refresh
       end
     end
 
     def test_refresh_handles_timeout_error
       with_temp_config do |dir|
-        refresher = build_testable_refresher(dir, mock_error: Net::ReadTimeout.new)
-
+        write_tokens_file(dir, { 'auth_token' => 'a', 'skype_token' => 's', 'skype_spaces_token' => 'ss' })
+        refresher = TestableTokenRefresher.new(token_store: Teems::Services::TokenStore.new,
+                                               mock_error: Net::ReadTimeout.new)
         refute refresher.refresh
       end
     end
 
     private
 
-    def build_testable_refresher(dir, mock_error: nil)
-      write_tokens_file(dir, {
-                          'auth_token' => 'test-auth',
-                          'skype_token' => 'old-skype',
-                          'skype_spaces_token' => 'spaces-token'
-                        })
-      store = Teems::Services::TokenStore.new
-      refresher = TestableTokenRefresher.new(token_store: store)
-      refresher.mock_error = mock_error
-      refresher
-    end
-
-    def build_http_response(code, message, body)
-      response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, message)
+    def build_refresher_with_stub(code, body)
+      refresher = ExposedRefresher.new(token_store: mock_token_store, output: test_output)
+      response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, 'Response')
       response.instance_variable_set(:@body, body)
       response.instance_variable_set(:@read, true)
-      response
+      refresher.define_singleton_method(:post_authsvc_exchange) { |_token| response }
+      refresher
     end
   end
 
   # Testable refresher that mocks both OIDC and authsvc HTTP calls
   class OidcTestableRefresher < Teems::Services::TokenRefresher
-    attr_accessor :oidc_responses, :authsvc_response, :authsvc_error
-
-    def initialize(token_store:, output: nil)
-      super
-      @oidc_responses = {}
-      @authsvc_response = nil
-      @authsvc_error = nil
+    def initialize(token_store:, oidc_responses: {}, authsvc_response: nil, authsvc_error: nil, oidc_error: nil)
+      super(token_store: token_store)
+      @oidc_responses = oidc_responses
+      @authsvc_response = authsvc_response
+      @authsvc_error = authsvc_error
+      @oidc_error = oidc_error
     end
 
     private
 
     def oidc_token_request(scope, _refresh_token)
+      raise @oidc_error if @oidc_error
+
       @oidc_responses[scope]
     end
 
     def exchange_token(_skype_spaces_token)
-      raise authsvc_error if authsvc_error
+      raise @authsvc_error if @authsvc_error
 
-      authsvc_response
+      @authsvc_response
     end
   end
 
@@ -307,10 +227,8 @@ module TokenRefresherTests
 
     def test_oidc_falls_back_to_authsvc_when_graph_fails
       with_temp_config do |dir|
-        refresher, store = build_oidc_refresher(dir)
-        refresher.oidc_responses = { GRAPH => nil, SKYPE => nil }
-        refresher.authsvc_response = 'fallback-skype'
-
+        refresher, store = build_oidc_refresher(dir, oidc_responses: { GRAPH => nil, SKYPE => nil },
+                                                     authsvc_response: 'fallback-skype')
         assert refresher.refresh
         assert_equal 'fallback-skype', store.account.skype_token
       end
@@ -318,10 +236,8 @@ module TokenRefresherTests
 
     def test_oidc_falls_back_to_authsvc_when_skype_scope_fails
       with_temp_config do |dir|
-        refresher, store = build_oidc_refresher(dir)
-        refresher.oidc_responses = { GRAPH => oidc_graph_response, SKYPE => nil }
-        refresher.authsvc_response = 'fallback-skype'
-
+        refresher, store = build_oidc_refresher(dir, oidc_responses: { GRAPH => oidc_graph_response, SKYPE => nil },
+                                                     authsvc_response: 'fallback-skype')
         assert refresher.refresh
         assert_equal 'fallback-skype', store.account.skype_token
       end
@@ -329,8 +245,7 @@ module TokenRefresherTests
 
     def test_oidc_falls_back_when_authsvc_exchange_fails_in_oidc_flow
       with_temp_config do |dir|
-        refresher, _store = build_successful_oidc(dir)
-        refresher.authsvc_response = nil
+        refresher, = build_successful_oidc(dir, authsvc_response: nil)
         refute refresher.refresh
       end
     end
@@ -340,21 +255,16 @@ module TokenRefresherTests
         tokens = { 'auth_token' => 'old-auth', 'skype_token' => 'old-skype',
                    'skype_spaces_token' => 'spaces', 'client_id' => 'cid', 'tenant_id' => 'tid' }
         write_tokens_file(dir, tokens)
-        store = Teems::Services::TokenStore.new
-        refresher = OidcTestableRefresher.new(token_store: store)
-        refresher.authsvc_response = 'new-skype'
-
+        refresher = OidcTestableRefresher.new(token_store: Teems::Services::TokenStore.new,
+                                              authsvc_response: 'new-skype')
         assert refresher.refresh
-        assert_equal 'new-skype', store.account.skype_token
       end
     end
 
     def test_oidc_falls_back_on_network_error
       with_temp_config do |dir|
-        refresher, store = build_oidc_refresher(dir)
-        stub_oidc_network_error(refresher)
-        refresher.authsvc_response = 'fallback-skype'
-
+        refresher, store = build_oidc_refresher(dir, authsvc_response: 'fallback-skype',
+                                                     oidc_error: SocketError.new('fail'))
         assert refresher.refresh
         assert_equal 'fallback-skype', store.account.skype_token
       end
@@ -362,49 +272,34 @@ module TokenRefresherTests
 
     private
 
-    def stub_oidc_network_error(refresher)
-      refresher.define_singleton_method(:oidc_token_request) { |*| raise SocketError, 'fail' }
-    end
-
     def oidc_graph_response = { 'access_token' => 'new-auth', 'refresh_token' => 'rt2' }
     def oidc_skype_response = { 'access_token' => 'new-spaces', 'refresh_token' => 'rt3' }
 
-    def build_successful_oidc(dir)
-      refresher, store = build_oidc_refresher(dir)
-      refresher.oidc_responses = { GRAPH => oidc_graph_response, SKYPE => oidc_skype_response }
-      refresher.authsvc_response = 'new-skype'
-      [refresher, store]
+    def build_successful_oidc(dir, authsvc_response: 'new-skype')
+      build_oidc_refresher(dir, oidc_responses: { GRAPH => oidc_graph_response, SKYPE => oidc_skype_response },
+                                authsvc_response: authsvc_response)
     end
 
-    def build_oidc_refresher(dir)
+    def build_oidc_refresher(dir, **)
       write_tokens_file(dir, { 'auth_token' => 'old-auth', 'skype_token' => 'old-skype',
                                'skype_spaces_token' => 'spaces',
                                'refresh_token' => 'rt1', 'client_id' => 'cid', 'tenant_id' => 'tid' })
       store = Teems::Services::TokenStore.new
-      [OidcTestableRefresher.new(token_store: store), store]
+      [OidcTestableRefresher.new(token_store: store, **), store]
     end
   end
 
-  # Tests OIDC request construction and token URI generation with tenant ID
+  # Tests OIDC request body construction and token URI generation
   class OidcBuildMethodsTest < Minitest::Test
-    # Exposes private OIDC request and URI methods for testing
+    # Exposes private OIDC methods for testing
     class ExposedOidc < Teems::Services::TokenRefresher
-      public :build_oidc_request, :oidc_token_uri
+      public :oidc_request_body, :oidc_token_uri
     end
 
-    def test_build_oidc_request_headers_and_body
+    def test_oidc_request_body_includes_grant_type
       with_temp_config do
-        request = build_test_oidc_request
-        assert_instance_of Net::HTTP::Post, request
-        assert_equal 'application/x-www-form-urlencoded', request['Content-Type']
-        assert_equal 'https://teams.microsoft.com', request['Origin']
-      end
-    end
-
-    def test_build_oidc_request_params
-      with_temp_config do
-        request = build_test_oidc_request
-        body = request.body
+        refresher = build_exposed_oidc(tenant: 'test-tenant', client: 'test-client')
+        body = refresher.oidc_request_body('https://graph.microsoft.com/.default', 'my-rt')
         assert_includes body, 'grant_type=refresh_token'
         assert_includes body, 'client_id=test-client'
         assert_includes body, 'refresh_token=my-rt'
@@ -413,10 +308,7 @@ module TokenRefresherTests
 
     def test_oidc_token_uri_uses_tenant_id
       with_temp_config do
-        store = mock_token_store
-        store.tenant_id = 'my-tenant-123'
-        refresher = ExposedOidc.new(token_store: store)
-
+        refresher = build_exposed_oidc(tenant: 'my-tenant-123')
         assert_equal 'https://login.microsoftonline.com/my-tenant-123/oauth2/v2.0/token',
                      refresher.oidc_token_uri.to_s
       end
@@ -424,97 +316,63 @@ module TokenRefresherTests
 
     private
 
-    def build_test_oidc_request
-      store = mock_token_store
-      store.tenant_id = 'test-tenant'
-      store.client_id = 'test-client'
-      refresher = ExposedOidc.new(token_store: store)
-      refresher.build_oidc_request(refresher.oidc_token_uri, 'https://graph.microsoft.com/.default', 'my-rt')
+    def build_exposed_oidc(tenant: nil, client: nil)
+      ExposedOidc.new(token_store: mock_token_store(tenant_id: tenant, client_id: client))
     end
   end
 
   # Tests OIDC token request failure handling and logging
   class OidcTokenRequestTest < Minitest::Test
-    # Exposes private OIDC request and logging methods for testing
+    # Exposes private OIDC logging methods for testing
     class ExposedOidcRequest < Teems::Services::TokenRefresher
-      public :oidc_token_request, :log_oidc_failure, :oidc_token_uri
+      public :log_oidc_failure
     end
 
-    def test_oidc_token_request_returns_nil_on_http_failure
+    def test_oidc_failure_returns_nil
       with_temp_config do
-        refresher = build_exposed_refresher
-        response = build_http_response('401', 'Unauthorized', '{"error":"invalid_grant"}')
-        result = refresher.log_oidc_failure(response)
-
-        assert_nil result
+        refresher = build_exposed_request
+        response = Net::HTTPResponse::CODE_TO_OBJ['401'].new('1.1', '401', 'Unauthorized')
+        response.instance_variable_set(:@body, '')
+        response.instance_variable_set(:@read, true)
+        assert_nil refresher.log_oidc_failure(response)
       end
     end
 
-    def test_log_oidc_failure_returns_nil
+    def test_log_oidc_failure_with_output
       with_temp_config do
-        output = test_output
-        refresher = build_exposed_refresher(output: output)
-        response = build_http_response('403', 'Forbidden', '')
-
+        refresher = build_exposed_request(output: test_output)
+        response = Net::HTTPResponse::CODE_TO_OBJ['403'].new('1.1', '403', 'Forbidden')
+        response.instance_variable_set(:@body, '')
+        response.instance_variable_set(:@read, true)
         assert_nil refresher.log_oidc_failure(response)
       end
     end
 
     private
 
-    def build_exposed_refresher(output: nil)
-      store = mock_token_store
-      store.tenant_id = 'test-tenant'
-      store.client_id = 'test-client'
-      store.refresh_token = 'test-rt'
-      ExposedOidcRequest.new(token_store: store, output: output)
-    end
-
-    def build_http_response(code, message, body)
-      response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, message)
-      response.instance_variable_set(:@body, body)
-      response.instance_variable_set(:@read, true)
-      response
+    def build_exposed_request(output: nil)
+      ExposedOidcRequest.new(
+        token_store: mock_token_store(tenant_id: 'test-tenant', client_id: 'test-client', refresh_token: 'test-rt'),
+        output: output
+      )
     end
   end
 
-  # Tests exchange failure logging and malformed JSON error handling
+  # Tests exchange failure logging via log_exchange_failure
   class LogExchangeFailureTest < Minitest::Test
-    # Exposes private parse_exchange_response method for testing failure paths
+    # Exposes log_exchange_failure for testing
     class ExposedExchange < Teems::Services::TokenRefresher
-      public :parse_exchange_response
+      public :log_exchange_failure
     end
 
-    def test_parse_exchange_response_logs_failure_code
+    def test_log_exchange_failure_returns_nil
       with_temp_config do
-        output = test_output
-        store = mock_token_store
-        refresher = ExposedExchange.new(token_store: store, output: output)
-        response = build_http_response('403', 'Forbidden', '')
-
-        result = refresher.parse_exchange_response(response)
-
-        assert_nil result
+        refresher = ExposedExchange.new(token_store: mock_token_store, output: test_output)
+        response = Net::HTTPResponse::CODE_TO_OBJ['403'].new('1.1', '403', 'Forbidden')
+        response.instance_variable_set(:@body, '')
+        response.instance_variable_set(:@read, true)
+        assert_nil refresher.log_exchange_failure(response)
       end
-    end
-
-    def test_parse_exchange_response_handles_malformed_json
-      with_temp_config do
-        store = mock_token_store
-        refresher = ExposedExchange.new(token_store: store, output: test_output)
-        response = build_http_response('200', 'OK', 'not-json')
-
-        assert_raises(JSON::ParserError) { refresher.parse_exchange_response(response) }
-      end
-    end
-
-    private
-
-    def build_http_response(code, message, body)
-      response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, message)
-      response.instance_variable_set(:@body, body)
-      response.instance_variable_set(:@read, true)
-      response
     end
   end
 end

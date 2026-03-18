@@ -78,7 +78,7 @@ module Teems
 
     def wire_up_warnings
       warning_handler = ->(message) { @output.warn(message) }
-      @config.on_warning = warning_handler
+      @config.register_warning_handler(warning_handler)
     end
   end
 end

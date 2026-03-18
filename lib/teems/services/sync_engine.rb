@@ -56,40 +56,33 @@ module Teems
 
       private
 
-      # :reek:TooManyStatements
       def paginate_messages(chat_id, start_time)
+        @backward_link = nil
+        @page_count = 0
         messages = []
-        backward_link = nil
-        page_count = 0
         loop do
-          page_messages, backward_link = fetch_messages_page(chat_id, start_time, backward_link, page_count)
-          break if page_messages.empty? || log_and_check_max(page_count += 1, page_messages)
+          page_messages = fetch_next_page(chat_id, start_time)
+          break if page_messages.empty? || log_and_check_max(@page_count += 1, page_messages)
 
-          backward_link = accumulate_page(messages, page_messages, backward_link, start_time)
-          break unless backward_link
+          @backward_link = accumulate_page(messages, page_messages, start_time)
+          break unless @backward_link
         end
         messages
       end
 
-      def accumulate_page(messages, page_messages, backward_link, start_time)
+      def accumulate_page(messages, page_messages, start_time)
         parsed, cutoff = parse_page_messages(page_messages, start_time)
         messages.concat(parsed)
-        cutoff ? nil : advance_link(backward_link, start_time)
+        cutoff ? nil : advance_link(start_time)
       end
 
-      def fetch_messages_page(chat_id, start_time, backward_link, page_count)
-        response = fetch_page_response(chat_id, start_time, backward_link, page_count)
-        extract_messages_and_link(response)
-      end
-
-      def fetch_page_response(chat_id, start_time, backward_link, page_count)
-        @runner.messages_api.chat_messages_page(
-          chat_id: chat_id, start_time: page_count.zero? ? start_time : nil, backward_link: backward_link
+      def fetch_next_page(chat_id, start_time)
+        response = @runner.messages_api.chat_messages_page(
+          chat_id: chat_id, start_time: @page_count.zero? ? start_time : nil, backward_link: @backward_link
         )
-      end
-
-      def extract_messages_and_link(response)
-        [response['messages'] || response['value'] || [], response.dig('_metadata', 'backwardLink')]
+        msgs = response['messages'] || response['value'] || []
+        @backward_link = response.dig('_metadata', 'backwardLink')
+        msgs
       end
 
       def log_and_check_max(page_count, page_messages)
@@ -112,15 +105,11 @@ module Teems
         debug('  Reached cutoff date, stopping pagination') || true
       end
 
-      def rewrite_start_time(link, start_time)
-        link.gsub(/startTime=\d+/, "startTime=#{(start_time.to_f * 1000).to_i}")
-      end
-
-      def advance_link(backward_link, start_time)
-        return nil unless backward_link
+      def advance_link(start_time)
+        return nil unless @backward_link
 
         sleep(API_DELAY_SECONDS)
-        rewrite_start_time(backward_link, start_time)
+        @backward_link.gsub(/startTime=\d+/, "startTime=#{(start_time.to_f * 1000).to_i}")
       end
     end
 

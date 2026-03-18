@@ -373,7 +373,7 @@ module TokenExtractorTests
   class AppleScriptErrorTest < Minitest::Test
     # Exposes private AppleScript error methods for testing
     class ExposedAutomation < Teems::Services::TokenExtractor
-      public :applescript_failure, :log_applescript_error, :applescript_error_message
+      public :applescript_failure, :log_applescript_error, :format_applescript_error
 
       private
 
@@ -396,17 +396,17 @@ module TokenExtractorTests
       assert_nil extractor.log_applescript_error(error)
     end
 
-    def test_applescript_error_message_for_enoent
+    def test_format_applescript_error_for_enoent
       extractor = ExposedAutomation.new
       error = Errno::ENOENT.new('osascript')
-      result = extractor.applescript_error_message(error)
+      result = extractor.format_applescript_error(error)
       assert_includes result, 'osascript not found'
     end
 
-    def test_applescript_error_message_for_io_error
+    def test_format_applescript_error_for_io_error
       extractor = ExposedAutomation.new
       error = IOError.new('stream closed')
-      result = extractor.applescript_error_message(error)
+      result = extractor.format_applescript_error(error)
       assert_includes result, 'AppleScript I/O error'
       assert_includes result, 'stream closed'
     end

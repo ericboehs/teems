@@ -4,12 +4,14 @@ module Teems
   module Services
     # Manages CLI configuration stored in XDG config directory
     class Configuration
-      attr_writer :on_warning
-
       def initialize(paths: Support::XdgPaths.new)
         @paths = paths
         @on_warning = nil
         @data = nil
+      end
+
+      def register_warning_handler(handler)
+        @on_warning = handler
       end
 
       def [](key)
