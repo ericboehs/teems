@@ -6,7 +6,7 @@ require 'test_helper'
 module MarkdownFormatterTests
   # Shared message and formatter builders for markdown formatter tests
   module Helpers
-    private
+    module_function
 
     def build_formatter(chat_name: 'Test Chat', chat_type: nil, synced_at: nil)
       Teems::Formatters::MarkdownFormatter.new(chat_name: chat_name, chat_type: chat_type, synced_at: synced_at)

@@ -5,10 +5,10 @@ module Teems
   module CLIVerbose
     private
 
-    def verbose_mode?(args) = args.include?('-v') || args.include?('--verbose')
+    def verbose_mode? = @argv.include?('-v') || @argv.include?('--verbose')
 
-    def build_runner(args)
-      out = verbose_mode?(args) ? @output.with_verbose : @output
+    def build_runner
+      out = verbose_mode? ? @output.with_verbose : @output
       Runner.new(output: out).tap { |new_runner| setup_verbose_logging(new_runner, out) if out.verbose? }
     end
 
@@ -21,16 +21,16 @@ module Teems
     def execute_command(command_class, args, runner)
       command = command_class.new(args, runner: runner)
       result = command.execute
-      log_api_call_count(runner) if runner.output.verbose?
+      out = runner.output || @output
+      log_api_call_count(out, runner.api_client.call_count) if out.verbose?
       result
     end
 
-    def log_api_call_count(runner)
-      count = runner.api_client.call_count
-      runner.output.debug("Total API calls: #{count}") if count.positive?
+    def log_api_call_count(output, count)
+      output.debug("Total API calls: #{count}") if @output && count.positive?
     end
 
-    def log_error(error) = Support::ErrorLogger.log(error)
+    def log_error(error) = (@output || true) && Support::ErrorLogger.log(error)
   end
 
   # Command-line interface entry point that dispatches to commands
@@ -67,16 +67,16 @@ module Teems
     end
 
     def route_command(command_name, args)
-      return show_help if help_requested?(command_name)
-      return show_version if version_requested?(command_name)
+      return show_help if help_requested?
+      return show_version if version_requested?
 
       dispatch_command(command_name, args)
     end
 
     private
 
-    def help_requested?(name) = !name || ['-h', '--help'].include?(name)
-    def version_requested?(name) = ['--version', '-V', 'version'].include?(name)
+    def help_requested? = @argv.empty? || ['-h', '--help'].include?(@argv.first)
+    def version_requested? = ['--version', '-V', 'version'].include?(@argv.first)
 
     def show_help = run_command('help', [])
 
@@ -122,7 +122,7 @@ module Teems
       command_class = COMMANDS[name]
       return 1 unless command_class
 
-      runner = build_runner(args)
+      runner = build_runner
       execute_command(command_class, args, runner)
     ensure
       runner&.api_client&.close

@@ -37,6 +37,8 @@ module TokenExtractorTests
 
   # Shared builders for extractor instances, token sequences, and verbose output
   module Helpers
+    module_function
+
     TEAMS_URL = 'https://teams.microsoft.com/v2/|complete'
     LOGIN_URL = 'https://login.microsoftonline.com/|loading'
 

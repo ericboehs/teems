@@ -40,7 +40,7 @@ module SyncCommandTests
   module SharedHelpers
     include SharedFixtures
 
-    private
+    module_function
 
     def build_sync_runner
       out = StringIO.new
@@ -61,7 +61,7 @@ module SyncCommandTests
 
     def execute_with_no_sleep(args, runner:)
       cmd = Teems::Commands::Sync.new(args, runner: runner)
-      cmd.define_singleton_method(:sleep) { |_| nil }
+      cmd.define_singleton_method(:sleep) { |_duration| nil }
       cmd.execute
     end
 
@@ -757,7 +757,7 @@ module SyncCommandTests
 
       def init_sync_state
         super
-        @sync_store.define_singleton_method(:save_state) { |_| raise 'disk full' }
+        @sync_store.define_singleton_method(:save_state) { |_state| raise 'disk full' }
       end
     end
 

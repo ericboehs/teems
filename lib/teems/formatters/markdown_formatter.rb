@@ -101,14 +101,8 @@ module Teems
       end
 
       def format_reactions_line(reactions)
-        "Reactions: #{reactions.map { |reaction| format_single_reaction(reaction) }.join('  ')}"
-      end
-
-      def format_single_reaction(reaction)
-        type = reaction[:type]
-        emoji = REACTION_EMOJI[type] || type
-        count = reaction[:count] || 1
-        count > 1 ? "#{emoji} \u00d7#{count}" : emoji.to_s
+        parts = reactions.map { |reaction| FormatUtils.format_single_reaction(reaction, REACTION_EMOJI) }
+        "Reactions: #{parts.join('  ')}"
       end
     end
   end

@@ -243,12 +243,10 @@ module MessageTests
         { 'mri' => '8:orgid:abc', 'displayName' => 'Jane' },
         { 'mri' => '8:orgid:def', 'displayName' => 'Bob' }
       ]
-      data = sample_ng_msg_message.merge(
-        'properties' => { 'mentions' => JSON.generate(mentions_data) }
-      )
-      message = Teems::Models::Message.from_api(data)
-      assert_includes message.mentions, 'Jane'
-      assert_includes message.mentions, 'Bob'
+      props = { 'properties' => { 'mentions' => JSON.generate(mentions_data) } }
+      names = Teems::Models::Message.from_api(sample_ng_msg_message.merge(props)).mentions
+      assert_includes names, 'Jane'
+      assert_includes names, 'Bob'
     end
 
     def test_ng_msg_mentions_empty_without_property
@@ -278,8 +276,8 @@ module MessageTests
 
     def test_short_hash_is_deterministic
       message = Teems::Models::Message.from_api(sample_graph_message)
-      first_call = message.short_hash
-      assert_equal first_call, message.short_hash
+      hash = message.short_hash
+      assert_equal hash, message.short_hash
     end
 
     def test_short_hash_differs_for_different_ids

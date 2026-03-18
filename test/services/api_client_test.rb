@@ -614,8 +614,9 @@ module ApiClientTests
 
       client.get(:graph, '/v1.0/me', account: account, headers: { 'X-Custom' => 'value', 'Accept' => 'text/plain' })
 
-      assert_equal 'value', client.last_request['X-Custom']
-      assert_equal 'text/plain', client.last_request['Accept']
+      request = client.last_request
+      assert_equal 'value', request['X-Custom']
+      assert_equal 'text/plain', request['Accept']
     end
   end
 

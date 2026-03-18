@@ -61,25 +61,16 @@ module Teems
         attachments = message.attachments
         return unless attachments.any?
 
-        names = attachments.map { |att| attachment_display_name(att) }
+        names = attachments.map { |att| Formatters::FormatUtils.attachment_name(att) }
         puts "  #{output.gray("\u{1F4CE} #{names.join(', ')}")}"
-      end
-
-      def attachment_display_name(att)
-        att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
       end
 
       def display_reactions(message)
         reactions = message.reactions
         return unless reactions.any?
 
-        parts = reactions.map { |reaction| format_reaction_summary(reaction) }
+        parts = reactions.map { |reaction| Formatters::FormatUtils.format_single_reaction(reaction, REACTION_EMOJI) }
         puts "  #{output.gray(parts.join(' '))}"
-      end
-
-      def format_reaction_summary(reaction)
-        type = reaction[:type]
-        "#{REACTION_EMOJI[type] || type}(#{reaction[:count]})"
       end
 
       def highlight_mentions(content, mentions)
@@ -123,7 +114,7 @@ module Teems
       end
 
       def download_one(att, dir)
-        name = safe_filename(att['fileName'] || att['name'] || 'file')
+        name = Formatters::FormatUtils.safe_filename(att['fileName'] || att['name'] || 'file')
         print "\u{1F4CE} Downloading #{name}..."
         perform_download(att, dir, name)
       rescue StandardError => e
@@ -138,7 +129,7 @@ module Teems
       def perform_download(att, dir, name)
         url = resolve_download_url(att['sharepointIds'])
         bytes = file_downloader.download(url, unique_path(dir, name))
-        puts " done (#{format_bytes(bytes)})"
+        puts " done (#{Formatters::FormatUtils.format_bytes(bytes)})"
         1
       end
 
@@ -163,12 +154,8 @@ module Teems
       end
 
       def default_download_dir
-        File.join(Support::XdgPaths.new.data_dir, 'downloads')
-      end
-
-      def safe_filename(name)
-        base = File.basename(name)
-        base.empty? ? 'file' : base
+        subdir = @options[:output_dir] || 'downloads'
+        File.join(Support::XdgPaths.new.data_dir, File.basename(subdir))
       end
 
       def unique_path(dir, name)
@@ -180,13 +167,6 @@ module Teems
         counter = 1
         counter += 1 while File.exist?(path = File.join(dir, "#{base}-#{counter}#{ext}"))
         path
-      end
-
-      def format_bytes(bytes)
-        if bytes >= 1_048_576 then "#{(bytes / 1_048_576.0).round(1)} MB"
-        elsif bytes >= 1024 then "#{(bytes / 1024.0).round(1)} KB"
-        else "#{bytes} B"
-        end
       end
     end
 

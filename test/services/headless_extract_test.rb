@@ -34,6 +34,8 @@ module HeadlessExtractTests
 
   # Shared helpers for building HTTP response stubs
   module ResponseHelper
+    module_function
+
     def build_http_response(code, message, body)
       response = Net::HTTPResponse::CODE_TO_OBJ[code].new('1.1', code, message)
       response.instance_variable_set(:@body, body)
@@ -44,6 +46,8 @@ module HeadlessExtractTests
 
   # Shared helper for URL-safe base64 encoding (no external gem)
   module JwtHelper
+    module_function
+
     def urlsafe_encode(str)
       [str].pack('m0').tr('+/', '-_').delete('=')
     end

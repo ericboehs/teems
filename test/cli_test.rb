@@ -6,7 +6,7 @@ require 'test_helper'
 module CLITests
   # Shared helpers for capturing CLI output in tests
   module Helpers
-    private
+    module_function
 
     def capture_cli_output(argv)
       out = StringIO.new
@@ -281,8 +281,8 @@ module CLITests
 
       private
 
-      def build_runner(args)
-        out = verbose_mode?(args) ? @output.with_verbose : @output
+      def build_runner
+        out = verbose_mode? ? @output.with_verbose : @output
         mock_api = Teems::TestHelpers::MockApiClient.new
         mock_api.stub('joinedTeams', { 'value' => [] })
         store = Teems::TestHelpers::MockTokenStore.new(
@@ -361,8 +361,8 @@ module CLITests
 
       private
 
-      def build_runner(args)
-        out = verbose_mode?(args) ? @output.with_verbose : @output
+      def build_runner
+        out = verbose_mode? ? @output.with_verbose : @output
         store = Teems::TestHelpers::MockTokenStore.new(configured: false)
         Teems::Runner.new(output: out, token_store: store, api_client: @mock_api)
       end

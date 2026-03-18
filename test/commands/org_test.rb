@@ -6,7 +6,7 @@ require 'test_helper'
 module OrgCommandTests
   # Shared helpers for building org chart API stubs and running commands
   module Helpers
-    private
+    module_function
 
     def run_org(args = [])
       exit_code = nil
