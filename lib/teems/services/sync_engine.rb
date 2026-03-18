@@ -28,8 +28,10 @@ module Teems
       end
 
       def parse_stored_reactions(reactions)
-        Array(reactions).map { |reaction| { type: reaction['type'], count: reaction['count'] } }
+        Array(reactions).map { |reaction| stored_reaction_hash(reaction) }
       end
+
+      def stored_reaction_hash(reaction) = { type: reaction['type'], count: reaction['count'] }
 
       def stored_msg_attrs(data)
         stored_msg_core(data).merge(stored_msg_extras(data))
@@ -44,9 +46,13 @@ module Teems
 
       def stored_msg_extras(data)
         { reply_to_id: data['reply_to_id'], reactions: parse_stored_reactions(data['reactions']),
-          attachments: data['attachments'] || [], importance: data['importance'],
-          edited: data['edited'] || false, mentions: data['mentions'] || [] }
+          attachments: stored_default(data, 'attachments', []),
+          importance: data['importance'],
+          edited: stored_default(data, 'edited', false),
+          mentions: stored_default(data, 'mentions', []) }
       end
+
+      def stored_default(data, key, fallback) = data[key] || fallback
     end
 
     # Pagination helpers for fetching chat messages across pages

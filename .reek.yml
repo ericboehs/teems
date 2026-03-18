@@ -7,12 +7,12 @@ directories:
       enabled: false
 
 detectors:
+  TooManyMethods:
+    max_methods: 20
+  TooManyStatements:
+    max_statements: 10
   UncommunicativeVariableName:
     accept:
       - e
-  UtilityFunction:                                                               
-    public_methods_only: true                                                    
-  TooManyStatements:                                                             
-    max_statements: 10                                                           
-  TooManyMethods:                                                                
-    max_methods: 20  
+  UtilityFunction:
+    public_methods_only: true

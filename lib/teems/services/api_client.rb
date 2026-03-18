@@ -11,6 +11,8 @@ module Teems
         presence: 'https://presence.gcc.teams.microsoft.com'
       }.freeze
 
+      TIMEOUTS = { open_timeout: 10, read_timeout: 30, keep_alive_timeout: 30 }.freeze
+
       private
 
       def get_http_for_endpoint(endpoint_key)
@@ -20,18 +22,21 @@ module Teems
       end
 
       def start_http(uri)
-        Net::HTTP.new(uri.host, uri.port).tap do |http|
-          configure_http(http, uri.scheme == 'https')
-          http.start
-        end
+        build_http(uri.host, uri.port, ssl_scheme?(uri)).tap(&:start)
       end
 
-      def configure_http(http, use_ssl)
+      def ssl_scheme?(uri) = uri.scheme == 'https'
+
+      def build_http(host, port, use_ssl)
+        http = Net::HTTP.new(host, port)
+        apply_timeouts(http)
         http.use_ssl = use_ssl
-        http.open_timeout = 10
-        http.read_timeout = 30
-        http.keep_alive_timeout = 30
         configure_ssl(http) if use_ssl
+        http
+      end
+
+      def apply_timeouts(http)
+        TIMEOUTS.each { |attr, val| http.send(:"#{attr}=", val) }
       end
 
       def configure_ssl(http)
@@ -155,8 +160,12 @@ module Teems
 
       def build_get_request(endpoint_key, path, options)
         req = Net::HTTP::Get.new(resolve_uri(endpoint_key, path, options.fetch(:params, {})))
-        options.fetch(:headers, {}).each { |key, value| req[key] = value }
+        apply_headers(req, options.fetch(:headers, {}))
         req
+      end
+
+      def apply_headers(request, headers)
+        headers.each { |key, value| request[key] = value }
       end
 
       def resolve_uri(endpoint_key, path, params)

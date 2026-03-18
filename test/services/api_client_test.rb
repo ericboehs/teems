@@ -350,35 +350,29 @@ module ApiClientTests
   class ConnectionPoolTest < Minitest::Test
     # Exposes private connection pool and SSL methods for testing
     class ExposedPool < Teems::Services::ApiClient
-      public :get_http_for_endpoint, :start_http, :configure_http, :configure_ssl
+      public :get_http_for_endpoint, :start_http, :build_http, :configure_ssl
     end
 
-    def test_configure_http_sets_timeouts
+    def test_build_http_sets_timeouts
       client = ExposedPool.new
-      http = Net::HTTP.new('example.com', 443)
-
-      client.configure_http(http, false)
+      http = client.build_http('example.com', 443, false)
 
       assert_equal 10, http.open_timeout
       assert_equal 30, http.read_timeout
       assert_equal 30, http.keep_alive_timeout
     end
 
-    def test_configure_http_enables_ssl_when_requested
+    def test_build_http_enables_ssl_when_requested
       client = ExposedPool.new
-      http = Net::HTTP.new('example.com', 443)
-
-      client.configure_http(http, true)
+      http = client.build_http('example.com', 443, true)
 
       assert http.use_ssl?
       assert_equal OpenSSL::SSL::VERIFY_PEER, http.verify_mode
     end
 
-    def test_configure_http_skips_ssl_when_not_requested
+    def test_build_http_skips_ssl_when_not_requested
       client = ExposedPool.new
-      http = Net::HTTP.new('example.com', 80)
-
-      client.configure_http(http, false)
+      http = client.build_http('example.com', 80, false)
 
       refute http.use_ssl?
     end

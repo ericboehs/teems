@@ -95,15 +95,19 @@ module Teems
 
       def format_message_reactions(msg)
         reactions = msg.reactions
-        return [] unless reactions.is_a?(Array) && reactions.any?
+        return [] unless displayable_reactions?(reactions)
 
         [format_reactions_line(reactions)]
       end
 
+      def displayable_reactions?(reactions) = reactions.is_a?(Array) && reactions.any?
+
       def format_reactions_line(reactions)
         parts = reactions.map { |reaction| FormatUtils.format_single_reaction(reaction, REACTION_EMOJI) }
-        "Reactions: #{parts.join('  ')}"
+        "#{reactions_label} #{parts.join('  ')}"
       end
+
+      def reactions_label = 'Reactions:'
     end
   end
 end

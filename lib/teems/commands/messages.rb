@@ -42,7 +42,7 @@ module Teems
 
       def display_message(message)
         puts format_message_header(message)
-        puts "  #{highlight_mentions(message.content, message.mentions)}"
+        puts "  #{formatted_content(message)}"
         display_attachments(message)
         display_reactions(message)
         puts
@@ -73,8 +73,8 @@ module Teems
         puts "  #{output.gray(parts.join(' '))}"
       end
 
-      def highlight_mentions(content, mentions)
-        mentions.empty? ? content : mentions.inject(content) { |text, name| text.gsub(name, output.bold(name)) }
+      def formatted_content(message)
+        message.content_with_mentions_highlighted { |name| output.bold(name) }
       end
 
       def message_to_hash(message)
@@ -109,9 +109,7 @@ module Teems
         messages.flat_map { |msg| downloadable_from(msg) }
       end
 
-      def downloadable_from(msg)
-        Array(msg.attachments).select { |att| att.is_a?(Hash) && att['sharepointIds'] }
-      end
+      def downloadable_from(msg) = msg.downloadable_attachments
 
       def download_one(att, dir)
         name = Formatters::FormatUtils.safe_filename(att['fileName'] || att['name'] || 'file')

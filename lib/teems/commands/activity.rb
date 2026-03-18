@@ -17,6 +17,8 @@ module Teems
         %w[reactionInChat] => 'reacted'
       }.freeze
 
+      START_DATETIME_PATTERN = %r{<StartDateTime>(.+?)</StartDateTime>}
+      END_DATETIME_PATTERN = %r{<EndDateTime>(.+?)</EndDateTime>}
       MAX_PREVIEW = 120
 
       private
@@ -47,10 +49,12 @@ module Teems
       end
 
       def describe_action(activity)
-        type = activity['activityType']
-        subtype = activity['activitySubtype']
-        desc = ACTIVITY_DESCRIPTIONS[[type, subtype]] || ACTIVITY_DESCRIPTIONS[[type]] || subtype || type
+        desc = resolve_activity_description(activity['activityType'], activity['activitySubtype'])
         output.yellow(desc)
+      end
+
+      def resolve_activity_description(type, subtype)
+        ACTIVITY_DESCRIPTIONS[[type, subtype]] || ACTIVITY_DESCRIPTIONS[[type]] || subtype || type
       end
 
       def format_meeting_time(activity)
@@ -71,9 +75,8 @@ module Teems
       end
 
       def extract_datetime_matches(text)
-        output # reference instance state
-        [text.match(%r{<StartDateTime>(.+?)</StartDateTime>}),
-         text.match(%r{<EndDateTime>(.+?)</EndDateTime>})]
+        [text.match(START_DATETIME_PATTERN),
+         text.match(END_DATETIME_PATTERN)]
       end
 
       def format_time_range(start_time, end_time)
