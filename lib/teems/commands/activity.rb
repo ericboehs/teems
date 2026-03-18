@@ -230,7 +230,10 @@ module Teems
       end
 
       def print_activity_lines(marker, text)
-        text.lines.each_with_index { |line, idx| puts idx.zero? ? "#{marker}#{line.chomp}" : "  #{line.chomp}" }
+        text.lines.each_with_index do |line, idx|
+          trimmed = line.chomp
+          puts idx.zero? ? "#{marker}#{trimmed}" : "  #{trimmed}"
+        end
         puts
       end
     end

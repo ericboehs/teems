@@ -184,6 +184,62 @@ module ActivityCommandTests
       result = run_activity([], [calendar_activity(location: loc)])
       assert_match(/Mar 1[56].*Mar 1[78]/, result[:stdout])
     end
+
+    def test_shows_activity_with_nil_composetime
+      result = run_activity([], [build_activity(type: 'mentionInChat', subtype: 'person',
+                                                who: 'Bob', preview: 'Hey!',
+                                                topic: 'Chat', time: nil)])
+      assert_equal 0, result[:exit_code]
+    end
+
+    def test_shows_meeting_start_only
+      loc = '<DateTimeRange><StartDateTime>2026-01-20T14:00:00Z</StartDateTime></DateTimeRange>'
+      result = run_activity([], [calendar_activity(location: loc)])
+      assert_match(/Jan 20/, result[:stdout])
+    end
+
+    def test_handles_invalid_meeting_datetime
+      loc = '<DateTimeRange><StartDateTime>not-a-date</StartDateTime></DateTimeRange>'
+      result = run_activity([], [calendar_activity(location: loc)])
+      assert_equal 0, result[:exit_code]
+    end
+
+    def test_calendar_activity_without_location
+      result = run_activity([], [calendar_activity])
+      assert_equal 0, result[:exit_code]
+    end
+
+    def test_empty_preview_omitted
+      result = run_activity([], [mention_activity(preview: '')])
+      assert_equal 0, result[:exit_code]
+    end
+
+    def test_unknown_activity_type_falls_through
+      result = run_activity([], [build_activity(type: 'unknownType', subtype: nil,
+                                                who: 'Test', preview: 'Hi', topic: nil)])
+      assert_match(/unknownType/, result[:stdout])
+    end
+
+    def test_unknown_activity_type_with_subtype
+      result = run_activity([], [build_activity(type: 'unknownType', subtype: 'customSub',
+                                                who: 'Test', preview: 'Hi', topic: nil)])
+      assert_match(/customSub/, result[:stdout])
+    end
+
+    def test_behalf_with_invalid_json
+      activity = calendar_activity
+      activity['properties']['activity']['activityContext']['templateParameters'] = 'not-json'
+      result = run_activity([], [activity])
+      assert_equal 0, result[:exit_code]
+    end
+
+    def test_behalf_with_non_string_params
+      activity = calendar_activity
+      activity['properties']['activity']['activityContext']['templateParameters'] = { 'behalfOf' => 'Boss' }
+      result = run_activity([], [activity])
+      assert_equal 0, result[:exit_code]
+      refute_match(/on behalf of/, result[:stdout])
+    end
   end
 
   # Tests for unread filtering, ordering, and JSON output

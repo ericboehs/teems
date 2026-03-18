@@ -428,6 +428,16 @@ module ApiClientTests
 
   # Tests connection cleanup and error handling during close
   class CloseTest < Minitest::Test
+    def test_close_handles_not_started_connection
+      client, cache = build_client_with_cache
+      not_started = Object.new
+      not_started.define_singleton_method(:started?) { false }
+      cache['idle:443'] = not_started
+
+      client.close
+      assert_empty cache
+    end
+
     def test_close_handles_io_error_gracefully
       client, cache = build_client_with_cache
       cache['broken:443'] = build_fake_http { raise IOError, 'stream closed' }

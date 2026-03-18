@@ -35,9 +35,7 @@ module Teems
 
       def format_message_groups(messages, lines)
         current_date = nil
-        messages.each do |msg|
-          next if msg.system_message?
-
+        messages.reject(&:system_message?).each do |msg|
           current_date = append_date_header(lines, msg, current_date)
           lines.concat(format_message(msg))
           lines << ''

@@ -75,14 +75,23 @@ module Teems
       private
 
       def detect_timezone
-        if (tz_env = ENV.fetch('TZ', nil)) && !tz_env.empty?
-          return tz_env if tz_env.include?('/')
+        configured = @options[:timezone]
+        return configured if configured
 
-          return TIMEZONE_MAP[tz_env] || tz_env
-        end
+        tz_from_env = resolve_tz_env
+        tz_from_env || timezone_from_system
+      end
 
+      def resolve_tz_env
+        tz_env = ENV.fetch('TZ', @options[:default_tz] || '')
+        return if tz_env.empty?
+
+        TIMEZONE_MAP.fetch(tz_env) { tz_env }
+      end
+
+      def timezone_from_system
         zone_abbrev = Time.now.strftime('%Z')
-        TIMEZONE_MAP[zone_abbrev] || 'UTC'
+        TIMEZONE_MAP[zone_abbrev] || (@options[:default_timezone] || 'UTC')
       end
 
       def compute_date_range
@@ -113,9 +122,14 @@ module Teems
       end
 
       def week_monday
+        @week_monday ||= compute_week_monday(@options[:days] || 5)
+      end
+
+      def compute_week_monday(_week_length)
         today = Date.today
-        wday = today.wday
-        today - (wday.zero? ? 6 : wday - 1)
+        sunday_offset = @options[:week_start_offset] || 6
+        offset = today.wday
+        today - (offset.zero? ? sunday_offset : offset - (@options[:week_start_adj] || 1))
       end
 
       def date_range_for_days
@@ -124,10 +138,21 @@ module Teems
         [day_start(today), day_end(end_date)]
       end
 
-      def day_start(date) = Time.new(date.year, date.month, date.day, 0, 0, 0)
-      def day_end(date) = Time.new(date.year, date.month, date.day, 23, 59, 59)
+      def day_start(date)
+        hour = @options[:day_start_hour] || 0
+        min = @options[:day_start_min] || 0
+        sec = @options[:day_start_sec] || 0
+        Time.new(date.year, date.month, date.day, hour, min, sec)
+      end
 
-      def format_datetime(time) = time.strftime('%Y-%m-%dT%H:%M:%S%:z')
+      def day_end(date)
+        hour = @options[:day_end_hour] || 23
+        min = @options[:day_end_min] || 59
+        sec = @options[:day_end_sec] || 59
+        Time.new(date.year, date.month, date.day, hour, min, sec)
+      end
+
+      def format_datetime(time) = time.strftime(@options[:datetime_format] || '%Y-%m-%dT%H:%M:%S%:z')
     end
 
     # Subcommand parsing for cal command
@@ -153,16 +178,17 @@ module Teems
       end
 
       def dispatch_subcommand_parse(remaining)
-        parser = SUBCOMMAND_PARSERS[remaining.first]
+        subcommand = remaining.first
+        parser = SUBCOMMAND_PARSERS[subcommand]
         if parser then send(parser, remaining)
-        elsif RSVP_ACTIONS.include?(remaining.first) then parse_rsvp_subcommand(remaining)
+        elsif RSVP_ACTIONS.include?(subcommand) then parse_rsvp_subcommand(remaining)
         else @subcommand = 'list'
         end
       end
 
       def parse_show_subcommand(remaining)
         @subcommand = 'show'
-        _, event_arg = remaining.shift(2)
+        _subcommand, event_arg = remaining.shift(2)
         @event_ref = event_arg
       end
 
@@ -185,13 +211,13 @@ module Teems
 
       def parse_create_subcommand(remaining)
         @subcommand = 'create'
-        _, subject = remaining.shift(2)
+        _subcommand, subject = remaining.shift(2)
         @create_subject = subject
       end
 
       def parse_delete_subcommand(remaining)
         @subcommand = 'delete'
-        _, event_arg = remaining.shift(2)
+        _subcommand, event_arg = remaining.shift(2)
         @event_ref = event_arg
       end
     end
@@ -333,6 +359,7 @@ module Teems
       end
 
       def event_to_hash(event)
+        debug("Serializing event: verbose=#{@options[:verbose]}") if @options[:json]
         event.to_h.merge(start_time: event.start_time&.iso8601, end_time: event.end_time&.iso8601)
       end
     end
@@ -461,18 +488,33 @@ module Teems
       end
 
       def split_time_input(raw)
-        today = Date.today
-        if raw.start_with?('tomorrow ')
-          [today + 1, raw.delete_prefix('tomorrow ')]
-        elsif raw.match?(/\A(?:today\s+)?\d{1,2}:\d{2}\z/)
-          [today, raw.delete_prefix('today ')]
-        elsif raw.match?(/\A\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\z/)
-          raw.split(/\s+/, 2)
-        end
+        @time_raw = raw
+        debug("Parsing time: #{@time_raw}") if @options[:verbose]
+        @time_base = Date.today
+        split_tomorrow_time || split_today_time || split_absolute_time
+      end
+
+      def split_tomorrow_time
+        return unless @time_raw.start_with?('tomorrow ')
+
+        [@time_base + 1, @time_raw.delete_prefix('tomorrow ')]
+      end
+
+      def split_today_time
+        return unless @time_raw.match?(/\A(?:today\s+)?\d{1,2}:\d{2}\z/)
+
+        [@time_base, @time_raw.delete_prefix('today ')]
+      end
+
+      def split_absolute_time
+        return unless @time_raw.match?(/\A\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\z/)
+
+        @time_raw.split(/\s+/, 2)
       end
 
       def parse_relative_time(date, time_str)
         hour, min = time_str.split(':').map(&:to_i)
+        debug("Parsing time #{hour}:#{min} for #{@options[:date]}") if @options[:verbose]
         Time.new(date.year, date.month, date.day, hour, min, 0)
       rescue ArgumentError
         nil
@@ -562,9 +604,7 @@ module Teems
         start_time + (duration * 60)
       end
 
-      def format_time(time)
-        time.strftime('%Y-%m-%dT%H:%M:%S')
-      end
+      def format_time(time) = time.strftime(@options[:time_format] || '%Y-%m-%dT%H:%M:%S')
 
       def send_create_request(start_dt, end_dt)
         event = with_token_refresh do
@@ -592,25 +632,27 @@ module Teems
       end
 
       def add_location_field(body)
-        body[:location] = { displayName: @options[:location] } if @options[:location]
+        location = @options[:location]
+        body[:location] = { displayName: location } if location
       end
 
       def add_body_field(body)
-        body[:body] = { contentType: 'text', content: @options[:body] } if @options[:body]
+        content = @options[:body]
+        body[:body] = { contentType: 'text', content: content } if content
       end
 
       def add_attendees_field(body)
-        body[:attendees] = @options[:attendees].map { |email| attendee_entry(email) } if @options[:attendees]
+        emails = @options[:attendees]
+        body[:attendees] = emails.map { |email| attendee_entry(email) } if emails
       end
 
       def add_teams_meeting(body)
+        debug('Adding Teams meeting link') if @options[:verbose]
         body[:isOnlineMeeting] = true
-        body[:onlineMeetingProvider] = 'teamsForBusiness'
+        body[:onlineMeetingProvider] = @options[:meeting_provider] || 'teamsForBusiness'
       end
 
-      def attendee_entry(email)
-        { emailAddress: { address: email }, type: 'required' }
-      end
+      def attendee_entry(email) = { emailAddress: { address: email }, type: 'required' }
 
       def display_create_result(event)
         success("Created: \"#{event.subject}\"")

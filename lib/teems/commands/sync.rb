@@ -33,23 +33,21 @@ module Teems
 
       private
 
-      def sync_or_skip_chat(chat_data, index, total)
+      def sync_or_skip_chat(chat_data, label)
         chat = Models::Chat.from_api(chat_data)
-        return skip_chat(chat, index, total) if skip_reason(chat.id)
-
-        sync_chat_with_logging(chat, index, total)
+        skip_reason(chat.id) ? log_skip(chat, label) : log_and_sync(chat, label)
       rescue StandardError => e
         handle_sync_error(chat, e)
       end
 
-      def sync_chat_with_logging(chat, index, total)
-        info("[#{index + 1}/#{total}] Syncing: #{chat.display_name}")
+      def log_and_sync(chat, label)
+        info("#{label} Syncing: #{chat.display_name}")
         with_404_retry(chat) { sync_single_chat(chat) }
       end
 
-      def skip_chat(chat, index, total)
+      def log_skip(chat, label)
         chat_id = chat.id
-        debug("[#{index + 1}/#{total}] Skipping #{skip_reason(chat_id)}: #{chat.display_name} (#{chat_id})")
+        debug("#{label} Skipping #{skip_reason(chat_id)}: #{chat.display_name} (#{chat_id})")
         @stats[:skipped] += 1
       end
 
@@ -68,7 +66,8 @@ module Teems
       end
 
       def process_fetched_messages(chat, new_messages)
-        return skip_unchanged(chat.id) if new_messages.empty? && @sync_store.last_synced_time(@state, chat.id)
+        chat_id = chat.id
+        return skip_unchanged(chat_id) if new_messages.empty? && @sync_store.last_synced_time(@state, chat_id)
 
         merge_and_update(chat, new_messages)
       end
@@ -206,7 +205,8 @@ module Teems
 
       def show_summary_stats
         info("  Chats synced: #{@stats[:synced]}")
-        info("  Chats skipped (no new messages): #{@stats[:skipped]}") if @stats[:skipped].positive?
+        skipped = @stats[:skipped]
+        info("  Chats skipped (no new messages): #{skipped}") if skipped.positive?
         info("  Total messages: #{@stats[:messages_total]}")
         display_error_count
       end
@@ -339,7 +339,7 @@ module Teems
       end
 
       def sync_all_chats(chats)
-        chats.each_with_index { |chat_data, index| sync_or_skip_chat(chat_data, index, chats.length) }
+        chats.each_with_index { |chat_data, index| sync_or_skip_chat(chat_data, "[#{index + 1}/#{chats.length}]") }
         save_state_safely
         show_summary
         sync_exit_code

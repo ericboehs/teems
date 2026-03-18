@@ -2,8 +2,30 @@
 
 module Teems
   module Formatters
+    # ANSI color wrapping helpers for Output
+    module OutputColors
+      def red(text) = wrap(:red, text)
+      def green(text) = wrap(:green, text)
+      def yellow(text) = wrap(:yellow, text)
+      def blue(text) = wrap(:blue, text)
+      def magenta(text) = wrap(:magenta, text)
+      def cyan(text) = wrap(:cyan, text)
+      def gray(text) = wrap(:gray, text)
+      def bold(text) = wrap(:bold, text)
+
+      def with_verbose(mode = :verbose)
+        self.class.new(io: @io, err: @err, color: @color, mode: mode)
+      end
+
+      def with_quiet(mode = :quiet)
+        self.class.new(io: @io, err: @err, color: @color, mode: mode)
+      end
+    end
+
     # Terminal output with ANSI color support
     class Output
+      include OutputColors
+
       COLORS = {
         red: "\e[0;31m",
         green: "\e[0;32m",
@@ -30,11 +52,11 @@ module Teems
       def tty? = @io.tty?
 
       def puts(message = '')
-        @io.puts(message) unless quiet?
+        write_unless_quiet { @io.puts(message) }
       end
 
       def print(message)
-        @io.print(message) unless quiet?
+        write_unless_quiet { @io.print(message) }
       end
 
       def flush
@@ -46,7 +68,7 @@ module Teems
       end
 
       def warn(message)
-        @err.puts(colorize("#{yellow('Warning:')} #{message}")) unless quiet?
+        write_unless_quiet { @err.puts(colorize("#{yellow('Warning:')} #{message}")) }
       end
 
       def success(message)
@@ -63,25 +85,11 @@ module Teems
         @err.puts(colorize("#{gray('[debug]')} #{message}"))
       end
 
-      # Color helpers
-      def red(text) = wrap(:red, text)
-      def green(text) = wrap(:green, text)
-      def yellow(text) = wrap(:yellow, text)
-      def blue(text) = wrap(:blue, text)
-      def magenta(text) = wrap(:magenta, text)
-      def cyan(text) = wrap(:cyan, text)
-      def gray(text) = wrap(:gray, text)
-      def bold(text) = wrap(:bold, text)
-
-      def with_verbose(mode = :verbose)
-        self.class.new(io: @io, err: @err, color: @color, mode: mode)
-      end
-
-      def with_quiet(mode = :quiet)
-        self.class.new(io: @io, err: @err, color: @color, mode: mode)
-      end
-
       private
+
+      def write_unless_quiet
+        yield unless quiet?
+      end
 
       def wrap(color, text)
         return text.to_s unless @color

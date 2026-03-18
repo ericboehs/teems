@@ -61,27 +61,29 @@ module Teems
         attachments = message.attachments
         return unless attachments.any?
 
-        names = attachments.map do |att|
-          att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
-        end
+        names = attachments.map { |att| attachment_display_name(att) }
         puts "  #{output.gray("\u{1F4CE} #{names.join(', ')}")}"
+      end
+
+      def attachment_display_name(att)
+        att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
       end
 
       def display_reactions(message)
         reactions = message.reactions
         return unless reactions.any?
 
-        summary = reactions.map do |reaction|
-          type = reaction[:type]
-          "#{REACTION_EMOJI[type] || type}(#{reaction[:count]})"
-        end.join(' ')
-        puts "  #{output.gray(summary)}"
+        parts = reactions.map { |reaction| format_reaction_summary(reaction) }
+        puts "  #{output.gray(parts.join(' '))}"
+      end
+
+      def format_reaction_summary(reaction)
+        type = reaction[:type]
+        "#{REACTION_EMOJI[type] || type}(#{reaction[:count]})"
       end
 
       def highlight_mentions(content, mentions)
-        return content if mentions.empty?
-
-        mentions.inject(content) { |text, name| text.gsub(name, output.bold(name)) }
+        mentions.empty? ? content : mentions.inject(content) { |text, name| text.gsub(name, output.bold(name)) }
       end
 
       def message_to_hash(message)
@@ -125,7 +127,11 @@ module Teems
         print "\u{1F4CE} Downloading #{name}..."
         perform_download(att, dir, name)
       rescue StandardError => e
-        warn " failed (#{e.message})"
+        handle_download_error(e)
+      end
+
+      def handle_download_error(err)
+        warn " failed (#{err.message})"
         0
       end
 

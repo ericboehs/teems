@@ -143,7 +143,8 @@ module EventTests
 
     def test_short_hash_is_deterministic
       event = Teems::Models::Event.from_api(sample_event_data)
-      assert_equal event.short_hash, event.short_hash
+      results = Array.new(2) { event.short_hash }
+      assert_equal results.first, results.last
     end
 
     def test_short_hash_differs_for_different_ids
@@ -339,6 +340,52 @@ module EventTests
     end
   end
 
+  # Tests to_json_hash output including nil time handling
+  class ToJsonHashTest < Minitest::Test
+    def test_to_json_hash_includes_iso8601_times
+      event = Teems::Models::Event.from_api(sample_event_data)
+      hash = event.to_json_hash
+
+      assert_match(/\d{4}-\d{2}-\d{2}T/, hash[:start_time])
+      assert_match(/\d{4}-\d{2}-\d{2}T/, hash[:end_time])
+    end
+
+    def test_to_json_hash_handles_nil_times
+      event = Teems::Models::Event.from_api({ 'id' => 'evt-nil' })
+      hash = event.to_json_hash
+
+      assert_nil hash[:start_time]
+      assert_nil hash[:end_time]
+    end
+  end
+
+  # Tests date_display for edge case: all-day with nil start_time
+  class DateDisplayEdgeCasesTest < Minitest::Test
+    def test_date_display_all_day_with_nil_start_time
+      event = Teems::Models::Event.new(
+        id: 'e1', subject: 'Test', start_time: nil, end_time: nil,
+        location: nil, is_all_day: true, organizer: nil, attendees: [],
+        body_preview: nil, online_meeting_url: nil, show_as: nil,
+        importance: nil, is_cancelled: false, response_status: nil, sensitivity: nil,
+        event_type: nil
+      )
+      assert_match(/all day/, event.date_display)
+    end
+
+    def test_create_summary_lines_when_date_display_nil
+      event = Teems::Models::Event.new(
+        id: 'e1', subject: 'Test', start_time: nil, end_time: nil,
+        location: nil, is_all_day: false, organizer: nil, attendees: [],
+        body_preview: nil, online_meeting_url: nil, show_as: nil,
+        importance: nil, is_cancelled: false, response_status: nil, sensitivity: nil,
+        event_type: nil
+      )
+      lines = event.create_summary_lines
+      assert_empty lines
+    end
+  end
+
+  # Tests event recurrence type detection
   class RecurrenceTest < Minitest::Test
     def test_recurring_occurrence
       assert Teems::Models::Event.from_api(sample_event_data.merge('type' => 'occurrence')).recurring?
