@@ -196,12 +196,11 @@ module SyncStoreTests
       with_temp_config do
         store = Teems::Services::SyncStore.new
         state = { 'chats' => {} }
-        dir_name = store.ensure_dir_name(state, '19:abc@thread.v2', 'Project: Design/Review <Q1>')
+        dir_name = store.ensure_dir_name(state,
+                                         chat_info: { chat_id: '19:abc@thread.v2',
+                                                      display_name: 'Project: Design/Review <Q1>' })
         assert_equal 'Project- Design-Review -Q1-', dir_name
-        refute_includes dir_name, ':'
-        refute_includes dir_name, '/'
-        refute_includes dir_name, '<'
-        refute_includes dir_name, '>'
+        %w[: / < >].each { |ch| refute_includes dir_name, ch }
       end
     end
 
@@ -210,7 +209,9 @@ module SyncStoreTests
         store = Teems::Services::SyncStore.new
         state = { 'chats' => {} }
         ['Group Chat', '1:1 Chat', 'Meeting Chat'].each do |label|
-          dir_name = store.ensure_dir_name(state, '19:abc123def456@thread.v2', label)
+          dir_name = store.ensure_dir_name(state,
+                                           chat_info: { chat_id: '19:abc123def456@thread.v2',
+                                                        display_name: label })
           assert_match(/\(19_abc123def456_thre\)\z/, dir_name, "#{label} should have ID suffix")
         end
       end
@@ -219,7 +220,9 @@ module SyncStoreTests
     def test_named_topics_no_suffix
       with_temp_config do
         state = { 'chats' => {} }
-        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(state, '19:abc@thread.v2', 'EERT Sprint Planning')
+        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(
+          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'EERT Sprint Planning' }
+        )
         assert_equal 'EERT Sprint Planning', dir_name
         refute_includes dir_name, '('
       end
@@ -228,7 +231,9 @@ module SyncStoreTests
     def test_null_display_name_falls_back_to_sanitized_id
       with_temp_config do
         state = { 'chats' => {} }
-        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(state, '19:abc@thread.v2', nil)
+        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(
+          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: nil }
+        )
         assert_equal '19_abc_thread.v2', dir_name
       end
     end
@@ -251,7 +256,9 @@ module SyncStoreTests
     def test_long_display_name_is_truncated
       with_temp_config do
         state = { 'chats' => {} }
-        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(state, '19:abc@thread.v2', 'A' * 200)
+        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(
+          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'A' * 200 }
+        )
         assert_operator dir_name.length, :<=, Teems::Services::SyncStore::MAX_DIR_NAME_LENGTH
       end
     end
@@ -259,7 +266,9 @@ module SyncStoreTests
     def test_trailing_dots_and_spaces_stripped_from_dir_name
       with_temp_config do
         state = { 'chats' => {} }
-        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(state, '19:abc@thread.v2', 'My Chat...')
+        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(
+          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'My Chat...' }
+        )
         refute dir_name.end_with?('.'), 'Dir name should not end with dots'
         refute dir_name.end_with?(' '), 'Dir name should not end with spaces'
         assert_equal 'My Chat', dir_name
@@ -275,7 +284,8 @@ module SyncStoreTests
         store, state = build_store_with_state(chat_id, dir_name: 'Old Topic', chat_type: 'group')
         make_chat_dir(store, 'groups', 'Old Topic')
         sync_dir = store.sync_dir
-        assert_equal 'New Topic', store.ensure_dir_name(state, chat_id, 'New Topic', chat_type: 'group')
+        info = { chat_id: chat_id, display_name: 'New Topic', chat_type: 'group' }
+        assert_equal 'New Topic', ensure_dir(store, state, info)
         assert File.directory?(File.join(sync_dir, 'chats', 'groups', 'New Topic'))
         refute File.directory?(File.join(sync_dir, 'chats', 'groups', 'Old Topic'))
       end
@@ -286,9 +296,8 @@ module SyncStoreTests
         chat_id = '19:abc@thread.v2'
         store, state = build_store_with_state(chat_id, dir_name: 'Sprint Planning', chat_type: 'group')
         old_dir = make_chat_dir(store, 'groups', 'Sprint Planning')
-        store.ensure_dir_name(state, chat_id, 'Sprint Planning', chat_type: 'meeting')
-        new_dir = File.join(store.sync_dir, 'chats', 'meetings', 'Sprint Planning')
-        assert File.directory?(new_dir), 'Directory should be in meetings/ subdir'
+        ensure_dir(store, state, { chat_id: chat_id, display_name: 'Sprint Planning', chat_type: 'meeting' })
+        assert File.directory?(File.join(store.sync_dir, 'chats', 'meetings', 'Sprint Planning'))
         refute File.directory?(old_dir), 'Old groups/ directory should not exist'
         assert_equal 'meeting', state.dig('chats', chat_id, 'chat_type')
       end
@@ -320,13 +329,19 @@ module SyncStoreTests
       with_temp_config do
         store, state = build_store_with_state('19:abc@thread.v2', dir_name: 'Old Name', chat_type: 'group')
         old_dir, new_dir = setup_collision_dirs(store)
-        store.ensure_dir_name(state, '19:abc@thread.v2', 'New Name', chat_type: 'group')
+        store.ensure_dir_name(
+          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'New Name', chat_type: 'group' }
+        )
         assert File.directory?(old_dir), 'Old dir should still exist since rename was skipped'
         assert_equal '# Existing content', File.read(File.join(new_dir, 'messages.md'))
       end
     end
 
     private
+
+    def ensure_dir(store, state, chat_info)
+      store.ensure_dir_name(state, chat_info: chat_info)
+    end
 
     def update_and_load_chat_state(chat_id, display_name:, chat_type:)
       store = Teems::Services::SyncStore.new
@@ -466,7 +481,9 @@ module SyncStoreTests
     def test_ensure_dir_name_stores_chat_type_in_state
       with_temp_config do
         state = { 'chats' => {} }
-        Teems::Services::SyncStore.new.ensure_dir_name(state, '19:abc@thread.v2', 'My Chat', chat_type: 'group')
+        Teems::Services::SyncStore.new.ensure_dir_name(
+          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'My Chat', chat_type: 'group' }
+        )
         assert_equal 'group', state.dig('chats', '19:abc@thread.v2', 'chat_type')
       end
     end

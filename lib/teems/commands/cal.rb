@@ -753,8 +753,8 @@ module Teems
         start_dt, end_dt = range
         with_token_refresh do
           runner.calendar_api.list_events(
-            start_dt: start_dt, end_dt: end_dt,
-            timezone: detect_timezone, top: @options[:limit]
+            time_range: { start_dt: start_dt, end_dt: end_dt, timezone: detect_timezone },
+            top: @options[:limit]
           )
         end
       end

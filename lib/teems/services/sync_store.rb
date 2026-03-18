@@ -177,7 +177,8 @@ module Teems
         atomic_write(File.join(sync_dir, STATE_FILE), JSON.pretty_generate(state))
       end
 
-      def ensure_dir_name(state, chat_id, display_name, chat_type: nil)
+      def ensure_dir_name(state, chat_info:)
+        chat_id, display_name, chat_type = chat_info.values_at(:chat_id, :display_name, :chat_type)
         new_dir_name = build_dir_name(chat_id, display_name)
         entry = (state['chats'] ||= {})[chat_id] ||= {}
         rename_entry_dir(entry, new_dir_name, chat_type)

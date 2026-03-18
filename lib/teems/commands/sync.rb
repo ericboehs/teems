@@ -59,7 +59,10 @@ module Teems
       end
 
       def sync_single_chat(chat)
-        @sync_store.ensure_dir_name(@state, chat.id, chat.display_name, chat_type: chat.chat_type)
+        @sync_store.ensure_dir_name(
+          @state, chat_info: { chat_id: chat.id, display_name: chat.display_name,
+                               chat_type: chat.chat_type }
+        )
         new_messages = fetch_new_messages(chat)
         debug("  Fetched #{new_messages.length} new message(s)")
         process_fetched_messages(chat, new_messages)

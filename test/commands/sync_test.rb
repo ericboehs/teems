@@ -203,7 +203,7 @@ module SyncCommandTests
                                  api_client: Teems::TestHelpers::MockApiClient.new)
       extractor = Object.new
       extractor.define_singleton_method(:extract) { extract_result }
-      runner.instance_variable_set(:@token_extractor, extractor)
+      runner.define_singleton_method(:token_extractor) { extractor }
       runner
     end
 
@@ -214,7 +214,7 @@ module SyncCommandTests
                                  api_client: Teems::TestHelpers::MockApiClient.new)
       extractor = Object.new
       extractor.define_singleton_method(:extract) { { auth_token: 'test-auth', skype_token: 'test-skype' } }
-      runner.instance_variable_set(:@token_extractor, extractor)
+      runner.define_singleton_method(:token_extractor) { extractor }
       runner
     end
 

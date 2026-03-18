@@ -25,10 +25,8 @@ module Teems
       end
 
       def request_schedule(target, time_range)
-        with_token_refresh do
-          runner.users_api.schedule(target.email, start_time: time_range.first, end_time: time_range.last,
-                                                  timezone: target.timezone)
-        end
+        tr = { start_time: time_range.first, end_time: time_range.last, timezone: target.timezone }
+        with_token_refresh { runner.users_api.schedule(target.email, time_range: tr) }
       end
 
       def schedule_time_range(work_start, work_end)

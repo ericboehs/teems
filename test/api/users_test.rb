@@ -338,8 +338,9 @@ module UsersApiTests
     def test_schedule_posts_to_get_schedule
       sched = { 'value' => [{ 'availabilityView' => '0000' }] }
       @api_client.stub('getSchedule', sched)
-      @users_api.schedule('john@example.com', start_time: '2026-03-16T09:00:00',
-                                              end_time: '2026-03-16T17:00:00', timezone: 'UTC')
+      @users_api.schedule('john@example.com',
+                          time_range: { start_time: '2026-03-16T09:00:00',
+                                        end_time: '2026-03-16T17:00:00', timezone: 'UTC' })
       call = @api_client.calls.first
 
       assert_equal :post, call[:method]
@@ -349,8 +350,9 @@ module UsersApiTests
     def test_schedule_sends_correct_body
       sched = { 'value' => [{ 'availabilityView' => '0000' }] }
       @api_client.stub('getSchedule', sched)
-      @users_api.schedule('john@example.com', start_time: '2026-03-16T09:00:00',
-                                              end_time: '2026-03-16T17:00:00', timezone: 'America/Chicago')
+      @users_api.schedule('john@example.com',
+                          time_range: { start_time: '2026-03-16T09:00:00',
+                                        end_time: '2026-03-16T17:00:00', timezone: 'America/Chicago' })
       body = @api_client.calls.first[:body]
 
       assert_equal ['john@example.com'], body[:schedules]
@@ -361,14 +363,16 @@ module UsersApiTests
     def test_schedule_returns_first_value
       sched = { 'value' => [{ 'availabilityView' => '00112233' }] }
       @api_client.stub('getSchedule', sched)
-      result = @users_api.schedule('j@ex.com', start_time: 'a', end_time: 'b', timezone: 'UTC')
+      result = @users_api.schedule('j@ex.com',
+                                   time_range: { start_time: 'a', end_time: 'b', timezone: 'UTC' })
 
       assert_equal '00112233', result['availabilityView']
     end
 
     def test_schedule_returns_nil_for_empty_value
       @api_client.stub('getSchedule', { 'value' => [] })
-      result = @users_api.schedule('j@ex.com', start_time: 'a', end_time: 'b', timezone: 'UTC')
+      result = @users_api.schedule('j@ex.com',
+                                   time_range: { start_time: 'a', end_time: 'b', timezone: 'UTC' })
 
       assert_nil result
     end

@@ -16,7 +16,7 @@ module Teems
       private
 
       def get_http_for_endpoint(endpoint_key)
-        uri = URI(ENDPOINTS[endpoint_key])
+        uri = URI(resolve_endpoint(endpoint_key))
         cache_key = "#{uri.host}:#{uri.port}"
         (http = @http_cache[cache_key])&.started? ? http : @http_cache[cache_key] = start_http(uri)
       end
@@ -129,7 +129,10 @@ module Teems
 
       def get(endpoint_key, path, **options)
         account = options.delete(:account)
-        req = build_get_request(endpoint_key, path, options)
+        base_url = resolve_endpoint(endpoint_key)
+        uri = build_request_uri(base_url, path, options.fetch(:params, {}))
+        req = Net::HTTP::Get.new(uri)
+        apply_headers(req, options.fetch(:headers, {}))
         apply_auth(req, account, endpoint_key)
         run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
       end
@@ -143,9 +146,9 @@ module Teems
         run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
       end
 
-      def delete(endpoint_key, path, account:)
-        uri = URI("#{resolve_endpoint(endpoint_key)}#{path}")
-        run_request(path, get_http_for_endpoint(endpoint_key)) do |http|
+      def delete(url, endpoint_key:, account:)
+        uri = URI(url)
+        run_request(uri.path, get_http_for_endpoint(endpoint_key)) do |http|
           req = Net::HTTP::Delete.new(uri)
           apply_auth(req, account, endpoint_key)
           http.request(req)
@@ -158,18 +161,12 @@ module Teems
         @http_cache.select! { |_key, http| http.started? }
       end
 
-      def build_get_request(endpoint_key, path, options)
-        req = Net::HTTP::Get.new(resolve_uri(endpoint_key, path, options.fetch(:params, {})))
-        apply_headers(req, options.fetch(:headers, {}))
-        req
-      end
-
       def apply_headers(request, headers)
         headers.each { |key, value| request[key] = value }
       end
 
-      def resolve_uri(endpoint_key, path, params)
-        URI(path.start_with?('http') ? path : "#{resolve_endpoint(endpoint_key)}#{path}").tap do |uri|
+      def build_request_uri(base_url, path, params)
+        URI(path.start_with?('http') ? path : "#{base_url}#{path}").tap do |uri|
           uri.query = URI.encode_www_form(params) if params&.any?
         end
       end

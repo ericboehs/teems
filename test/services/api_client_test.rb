@@ -474,7 +474,7 @@ module ApiClientTests
       account = mock_account
 
       error = assert_raises(ArgumentError) do
-        client.delete(:unknown, '/path', account: account)
+        client.delete('https://example.com/path', endpoint_key: :unknown, account: account)
       end
 
       assert_match(/Unknown endpoint/, error.message)
@@ -484,7 +484,7 @@ module ApiClientTests
       client = StubbedApiClient.new
       account = mock_account
 
-      client.delete(:graph, '/v1.0/me/chats/123', account: account)
+      client.delete('https://graph.microsoft.com/v1.0/me/chats/123', endpoint_key: :graph, account: account)
 
       assert_equal 1, client.call_count
       assert_instance_of Net::HTTP::Delete, client.last_request
@@ -512,38 +512,38 @@ module ApiClientTests
   end
 
   # Tests URI resolution for relative paths, absolute URLs, and query params
-  class ResolveUriTest < Minitest::Test
-    # Exposes private resolve_uri method for testing
+  class BuildRequestUriTest < Minitest::Test
+    # Exposes private build_request_uri method for testing
     class ExposedUri < Teems::Services::ApiClient
-      public :resolve_uri
+      public :build_request_uri
     end
 
-    def test_resolve_uri_prepends_endpoint_for_relative_path
+    def test_build_request_uri_prepends_base_url_for_relative_path
       client = ExposedUri.new
-      uri = client.resolve_uri(:graph, '/v1.0/me', {})
+      uri = client.build_request_uri('https://graph.microsoft.com', '/v1.0/me', {})
 
       assert_equal 'https://graph.microsoft.com/v1.0/me', uri.to_s
     end
 
-    def test_resolve_uri_uses_absolute_url_when_given
+    def test_build_request_uri_uses_absolute_url_when_given
       client = ExposedUri.new
-      uri = client.resolve_uri(:graph, 'https://custom.example.com/api', {})
+      uri = client.build_request_uri('https://graph.microsoft.com', 'https://custom.example.com/api', {})
 
       assert_equal 'https://custom.example.com/api', uri.to_s
     end
 
-    def test_resolve_uri_adds_query_params
+    def test_build_request_uri_adds_query_params
       client = ExposedUri.new
-      uri = client.resolve_uri(:graph, '/v1.0/me', { '$top' => '10', '$skip' => '0' })
+      uri = client.build_request_uri('https://graph.microsoft.com', '/v1.0/me', { '$top' => '10', '$skip' => '0' })
 
       uri_string = uri.to_s
       assert_includes uri_string, '%24top=10'
       assert_includes uri_string, '%24skip=0'
     end
 
-    def test_resolve_uri_skips_params_when_empty
+    def test_build_request_uri_skips_params_when_empty
       client = ExposedUri.new
-      uri = client.resolve_uri(:graph, '/v1.0/me', {})
+      uri = client.build_request_uri('https://graph.microsoft.com', '/v1.0/me', {})
 
       assert_nil uri.query
     end
