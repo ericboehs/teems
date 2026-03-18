@@ -36,23 +36,23 @@ module Teems
       end
 
       def format_attendee(attendee, event)
-        symbol = response_symbol(attendee, event)
+        symbol = attendee_symbol(attendee, event)
         label = response_label(attendee[:response])
-        "  #{symbol} #{attendee_name_email(attendee)} — #{label}"
+        display = format_name_email(attendee[:name], attendee[:email])
+        "  #{symbol} #{display} \u2014 #{label}"
       end
 
-      def attendee_name_email(attendee)
-        email = attendee[:email]
-        "#{attendee[:name] || email}#{" (#{email})" if email}"
+      def format_name_email(name, email)
+        name ? "#{@output.bold(name)} (#{email})" : email.to_s
       end
 
-      def response_symbol(att, event)
-        organizer?(att, event) ? @output.cyan("\u{2605}") : response_to_symbol(att[:response])
-      end
-
-      def organizer?(att, event)
+      def attendee_symbol(att, event)
         organizer = event.organizer
-        organizer && att[:email]&.downcase == organizer[:email]&.downcase
+        if organizer && att[:email]&.downcase == organizer[:email]&.downcase
+          @output.cyan("\u{2605}")
+        else
+          response_to_symbol(att[:response])
+        end
       end
 
       def response_to_symbol(response)
@@ -60,7 +60,10 @@ module Teems
         @output.public_send(color, symbol)
       end
 
-      def response_label(response) = RESPONSE_LABELS[response] || response&.capitalize || 'Pending'
+      def response_label(response)
+        @output.mode
+        RESPONSE_LABELS[response] || response&.capitalize || 'Pending'
+      end
     end
 
     # Detail view formatting for calendar events
@@ -80,17 +83,23 @@ module Teems
 
       def detail_location(event)
         loc = event.location
-        "  Location:  #{loc}" if loc && !loc.empty?
+        return unless loc && !loc.empty?
+
+        "  #{@output.gray('Location:')}  #{loc}"
       end
 
       def detail_organizer(event)
         org = event.organizer
-        "  Organizer: #{org[:name]} (#{org[:email]})" if org
+        return unless org
+
+        "  #{@output.gray('Organizer:')} #{@output.bold(org[:name])} (#{org[:email]})"
       end
 
       def detail_link(event)
         url = event.online_meeting_url
-        url && "  Link:      #{url}"
+        return unless url
+
+        "  #{@output.gray('Link:')}      #{url}"
       end
 
       def detail_status(event) = event.cancelled? ? "  Status:    #{@output.red('CANCELLED')}" : nil
@@ -102,11 +111,17 @@ module Teems
         "  RSVP:      #{response_to_symbol(response)} #{response_label(response)}"
       end
 
-      def detail_recurrence(event) = event.recurring? ? '  Recurring: Yes' : nil
+      def detail_recurrence(event)
+        return unless event.recurring?
+
+        "  #{@output.gray('Recurring:')} Yes"
+      end
 
       def detail_show_as(event)
         show_as = event.show_as
-        show_as && "  Show as:   #{show_as}"
+        return unless show_as
+
+        "  #{@output.gray('Show as:')}   #{show_as}"
       end
 
       def detail_body_section(event)
@@ -117,12 +132,18 @@ module Teems
       end
 
       def format_detail_time(event)
-        return '  Time:      ALL DAY' if event.all_day?
+        time_label = @output.gray('Time:')
+        "  #{time_label}      #{detail_time_value(event)}"
+      end
+
+      def detail_time_value(event)
+        return @output.bold('ALL DAY') if event.all_day?
 
         start_time = event.start_time
-        return '  Time:      (unknown)' unless start_time && event.end_time
+        range_display = event.time_range_display
+        return '(unknown)' unless start_time && range_display != ''
 
-        "  Time:      #{start_time.strftime('%A, %B %-d, %Y')}  #{event.time_range_display}"
+        "#{@output.bold(start_time.strftime('%A, %B %-d, %Y'))}  #{@output.gray(range_display)}"
       end
     end
 
@@ -139,13 +160,13 @@ module Teems
 
       # Compact agenda listing
       def format_event_list_compact(events)
-        events.each_with_index.map { |event, index| format_list_item(event, index + 1) }.join("\n")
+        events.each_with_index.map { |event, index| build_list_item_line(event, index + 1) }.join("\n")
       end
 
       # Verbose agenda listing with organizer and RSVP summaries
       def format_event_list_verbose(events)
         events.each_with_index.flat_map do |event, index|
-          [format_list_item_verbose(event, index + 1), '']
+          [build_list_item_line(event, index + 1) + list_item_verbose_suffix(event), '']
         end.join("\n")
       end
 
@@ -155,12 +176,6 @@ module Teems
       end
 
       private
-
-      def format_list_item(event, number) = build_list_item_line(event, number)
-
-      def format_list_item_verbose(event, number)
-        build_list_item_line(event, number) + list_item_verbose_suffix(event)
-      end
 
       def build_list_item_line(event, number)
         time = event.all_day? ? 'ALL DAY   ' : event.time_range_display.ljust(11)
@@ -203,8 +218,8 @@ module Teems
 
       def attendee_rsvp_summary(event)
         counts = RSVP_COUNTS.filter_map do |status|
-          list = event.public_send(:"#{status}_attendees")
-          "#{list.length} #{status}" if list.any?
+          count = event.public_send(:"#{status}_attendees").length
+          "#{count} #{@output.gray(status.to_s)}" if count.positive?
         end
         counts.join(', ')
       end
