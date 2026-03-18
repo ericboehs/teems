@@ -96,6 +96,8 @@ module Teems
 
     XDG_ENV_KEYS = %w[XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME].freeze
 
+    private
+
     def test_output
       Formatters::Output.new(io: StringIO.new, err: StringIO.new, color: false)
     end

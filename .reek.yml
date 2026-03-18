@@ -10,3 +10,9 @@ detectors:
   UncommunicativeVariableName:
     accept:
       - e
+  UtilityFunction:                                                               
+    public_methods_only: true                                                    
+  TooManyStatements:                                                             
+    max_statements: 10                                                           
+  TooManyMethods:                                                                
+    max_methods: 20  
