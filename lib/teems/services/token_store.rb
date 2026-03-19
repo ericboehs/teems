@@ -19,7 +19,8 @@ module Teems
       def token_age
         return nil unless File.exist?(tokens_file)
 
-        timestamp = load_tokens['tokens_refreshed_at'] || load_tokens['saved_at']
+        tokens = load_tokens
+        timestamp = tokens['tokens_refreshed_at'] || tokens['saved_at']
         timestamp ? Time.now - Time.parse(timestamp) : nil
       rescue ArgumentError
         nil

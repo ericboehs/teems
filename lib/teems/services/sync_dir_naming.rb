@@ -18,7 +18,7 @@ module Teems
       private
 
       def sanitize_id(id)
-        id.gsub(/[:@]/, '_').tap { type_dir(nil) }
+        id.gsub(/[:@]/, '_')
       end
 
       def sanitize_display_name(name)

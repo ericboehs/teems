@@ -75,15 +75,12 @@ module Teems
       private
 
       def detect_timezone
-        configured = @options[:timezone]
-        return configured if configured
-
         tz_from_env = resolve_tz_env
         tz_from_env || timezone_from_system
       end
 
       def resolve_tz_env
-        tz_env = ENV.fetch('TZ', @options[:default_tz] || '')
+        tz_env = ENV.fetch('TZ', '')
         return if tz_env.empty?
 
         TIMEZONE_MAP.fetch(tz_env) { tz_env }
@@ -91,7 +88,7 @@ module Teems
 
       def timezone_from_system
         zone_abbrev = Time.now.strftime('%Z')
-        TIMEZONE_MAP[zone_abbrev] || (@options[:default_timezone] || 'UTC')
+        TIMEZONE_MAP[zone_abbrev] || 'UTC'
       end
 
       def compute_date_range
@@ -127,9 +124,8 @@ module Teems
 
       def compute_week_monday(_week_length)
         today = Date.today
-        sunday_offset = @options[:week_start_offset] || 6
         offset = today.wday
-        today - (offset.zero? ? sunday_offset : offset - (@options[:week_start_adj] || 1))
+        today - (offset.zero? ? 6 : offset - 1)
       end
 
       def date_range_for_days
@@ -139,20 +135,14 @@ module Teems
       end
 
       def day_start(date)
-        hour = @options[:day_start_hour] || 0
-        min = @options[:day_start_min] || 0
-        sec = @options[:day_start_sec] || 0
-        Time.new(date.year, date.month, date.day, hour, min, sec)
+        Time.new(date.year, date.month, date.day, 0, 0, 0)
       end
 
       def day_end(date)
-        hour = @options[:day_end_hour] || 23
-        min = @options[:day_end_min] || 59
-        sec = @options[:day_end_sec] || 59
-        Time.new(date.year, date.month, date.day, hour, min, sec)
+        Time.new(date.year, date.month, date.day, 23, 59, 59)
       end
 
-      def format_datetime(time) = time.strftime(@options[:datetime_format] || '%Y-%m-%dT%H:%M:%S%:z')
+      def format_datetime(time) = time.strftime('%Y-%m-%dT%H:%M:%S%:z')
     end
 
     # Subcommand parsing for cal command
@@ -604,7 +594,7 @@ module Teems
         start_time + (duration * 60)
       end
 
-      def format_time(time) = time.strftime(@options[:time_format] || '%Y-%m-%dT%H:%M:%S')
+      def format_time(time) = time.strftime('%Y-%m-%dT%H:%M:%S')
 
       def send_create_request(start_dt, end_dt)
         event = with_token_refresh do
@@ -649,7 +639,7 @@ module Teems
       def add_teams_meeting(body)
         debug('Adding Teams meeting link') if @options[:verbose]
         body[:isOnlineMeeting] = true
-        body[:onlineMeetingProvider] = @options[:meeting_provider] || 'teamsForBusiness'
+        body[:onlineMeetingProvider] = 'teamsForBusiness'
       end
 
       def attendee_entry(email) = { emailAddress: { address: email }, type: 'required' }

@@ -89,7 +89,7 @@ module MessageFormatterTests
 
       result = formatter.format(message)
 
-      assert_includes result, "\u{1F44D} \u00d73"
+      assert_includes result, "\u{1F44D}(3)"
       assert_includes result, "\u{2764}\u{FE0F}"
     end
 
@@ -97,7 +97,7 @@ module MessageFormatterTests
       formatter = Teems::Formatters::MessageFormatter.new(output: test_output)
 
       assert_includes formatter.format(build_message(reactions: [{ type: 'custom_emoji', count: 2 }])),
-                      "custom_emoji \u00d72"
+                      'custom_emoji(2)'
     end
 
     def test_format_shows_edited_indicator

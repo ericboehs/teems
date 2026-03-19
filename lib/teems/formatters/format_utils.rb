@@ -30,7 +30,7 @@ module Teems
         type = reaction[:type]
         emoji = emoji_map[type] || type
         count = reaction[:count] || 1
-        count > 1 ? "#{emoji} \u00d7#{count}" : emoji.to_s
+        count > 1 ? "#{emoji}(#{count})" : emoji.to_s
       end
 
       def format_time(time_string)

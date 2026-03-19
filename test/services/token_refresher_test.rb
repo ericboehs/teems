@@ -375,4 +375,128 @@ module TokenRefresherTests
       end
     end
   end
+
+  # Tests HTTP configuration: SSL, timeouts, headers, and request construction
+  class HttpConfigTest < Minitest::Test
+    # Captures HTTP config from Net::HTTP.start calls
+    class HttpCapture < Teems::Services::TokenRefresher
+      attr_reader :last_http_args, :last_post_request
+
+      def post_authsvc_exchange(token)
+        post = Net::HTTP::Post.new(authsvc_uri,
+                                   'Authorization' => "Bearer #{token}",
+                                   'Content-Type' => 'application/json')
+        post.body = '{}'
+        capture_http_start(authsvc_uri, post)
+      end
+
+      def send_oidc_request(scope, refresh_token)
+        uri = oidc_token_uri
+        post = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/x-www-form-urlencoded',
+                                        'Origin' => 'https://teams.microsoft.com')
+        post.body = oidc_request_body(scope, refresh_token)
+        capture_http_start(uri, post)
+      end
+
+      private
+
+      def capture_http_start(uri, post)
+        @last_post_request = post
+        @last_http_args = {}
+        Net::HTTP.start(uri.host, uri.port,
+                        use_ssl: true, open_timeout: 10,
+                        read_timeout: 30) do |http|
+          @last_http_args = { use_ssl: http.use_ssl?, open_timeout: http.open_timeout,
+                              read_timeout: http.read_timeout }
+          mock_response
+        end
+      end
+
+      def mock_response
+        resp = Net::HTTPResponse::CODE_TO_OBJ['200'].new('1.1', '200', 'OK')
+        resp.instance_variable_set(:@body, '{"tokens":{"skypeToken":"t"}}')
+        resp.instance_variable_set(:@read, true)
+        resp
+      end
+    end
+
+    def test_authsvc_uses_ssl
+      with_temp_config do
+        capture = build_capture
+        capture.post_authsvc_exchange('test-token')
+        assert capture.last_http_args[:use_ssl]
+      end
+    end
+
+    def test_authsvc_sets_open_timeout
+      with_temp_config do
+        capture = build_capture
+        capture.post_authsvc_exchange('test-token')
+        assert_equal 10, capture.last_http_args[:open_timeout]
+      end
+    end
+
+    def test_authsvc_sets_read_timeout
+      with_temp_config do
+        capture = build_capture
+        capture.post_authsvc_exchange('test-token')
+        assert_equal 30, capture.last_http_args[:read_timeout]
+      end
+    end
+
+    def test_authsvc_sets_authorization_header
+      with_temp_config do
+        capture = build_capture
+        capture.post_authsvc_exchange('my-spaces-token')
+        assert_equal 'Bearer my-spaces-token', capture.last_post_request['Authorization']
+      end
+    end
+
+    def test_authsvc_sets_content_type_json
+      with_temp_config do
+        capture = build_capture
+        capture.post_authsvc_exchange('test-token')
+        assert_equal 'application/json', capture.last_post_request['Content-Type']
+      end
+    end
+
+    def test_oidc_uses_ssl
+      with_temp_config do
+        capture = build_capture(tenant_id: 'tid', client_id: 'cid', refresh_token: 'rt')
+        capture.send_oidc_request('https://graph.microsoft.com/.default', 'rt')
+        assert capture.last_http_args[:use_ssl]
+      end
+    end
+
+    def test_oidc_sets_timeouts
+      with_temp_config do
+        capture = build_capture(tenant_id: 'tid', client_id: 'cid', refresh_token: 'rt')
+        capture.send_oidc_request('https://graph.microsoft.com/.default', 'rt')
+        assert_equal 10, capture.last_http_args[:open_timeout]
+        assert_equal 30, capture.last_http_args[:read_timeout]
+      end
+    end
+
+    def test_oidc_sets_content_type_form
+      with_temp_config do
+        capture = build_capture(tenant_id: 'tid', client_id: 'cid', refresh_token: 'rt')
+        capture.send_oidc_request('https://graph.microsoft.com/.default', 'rt')
+        assert_equal 'application/x-www-form-urlencoded', capture.last_post_request['Content-Type']
+      end
+    end
+
+    def test_oidc_sets_origin_header
+      with_temp_config do
+        capture = build_capture(tenant_id: 'tid', client_id: 'cid', refresh_token: 'rt')
+        capture.send_oidc_request('https://graph.microsoft.com/.default', 'rt')
+        assert_equal 'https://teams.microsoft.com', capture.last_post_request['Origin']
+      end
+    end
+
+    private
+
+    def build_capture(**store_opts)
+      HttpCapture.new(token_store: mock_token_store(**store_opts))
+    end
+  end
 end

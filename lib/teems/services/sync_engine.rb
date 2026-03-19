@@ -68,7 +68,7 @@ module Teems
         messages = []
         loop do
           page_messages = fetch_next_page(chat_id, start_time)
-          break if page_messages.empty? || log_and_check_max(@page_count += 1, page_messages)
+          break if page_messages.empty? || log_and_check_max?(@page_count += 1, page_messages)
 
           @backward_link = accumulate_page(messages, page_messages, start_time)
           break unless @backward_link
@@ -91,11 +91,12 @@ module Teems
         msgs
       end
 
-      def log_and_check_max(page_count, page_messages)
+      def log_and_check_max?(page_count, page_messages)
         debug("  Page #{page_count}: #{page_messages.length} message(s)")
         return false unless page_count >= MAX_PAGES
 
-        debug("  Reached max pages (#{MAX_PAGES}), stopping pagination") || true
+        debug("  Reached max pages (#{MAX_PAGES}), stopping pagination")
+        true
       end
 
       def parse_page_messages(page_messages, start_time)
@@ -108,7 +109,8 @@ module Teems
         oldest = parsed.min_by { |msg| msg.created_at || Time.now }
         return false unless oldest&.created_at && oldest.created_at < start_time
 
-        debug('  Reached cutoff date, stopping pagination') || true
+        debug('  Reached cutoff date, stopping pagination')
+        true
       end
 
       def advance_link(start_time)

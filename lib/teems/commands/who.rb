@@ -42,14 +42,16 @@ module Teems
         render_now_marker(ctx.with(view: view))
       end
 
-      def render_bitmap(view) = debug('Rendering schedule bitmap') || view.chars.map { |ch| SLOT_CHARS[ch] || ch }.join
+      def render_bitmap(view)
+        view.chars.map { |ch| SLOT_CHARS[ch] || ch }.join
+      end
 
       def render_hour_labels(view, work_start)
         total_hours = view.length / SLOTS_PER_HOUR
         (0...total_hours).map { |idx| format_hour_label(work_start + idx) }.join
       end
 
-      def format_hour_label(hour) = debug("Hour: #{hour}") || (((hour - 1) % 12) + 1).to_s.ljust(SLOTS_PER_HOUR)
+      def format_hour_label(hour) = (((hour - 1) % 12) + 1).to_s.ljust(SLOTS_PER_HOUR)
 
       def render_now_marker(ctx)
         slot_index = slot_for_now(ctx.work_start)
@@ -90,31 +92,27 @@ module Teems
       end
 
       def slot_to_time(work_start, slot_index)
-        debug("Converting slot #{slot_index} to time")
         offset = (work_start * 60) + (slot_index * 15)
         Date.today.to_time + (offset * 60)
       end
 
       def slot_for_now(work_start)
         now = Time.now
-        debug("Calculating current slot for work_start=#{work_start}")
-        minutes_since_start = ((now.hour - work_start) * 60) + now.min
-        debug("Minutes since work start: #{minutes_since_start}")
-        minutes_since_start / 15
+        (((now.hour - work_start) * 60) + now.min) / 15
       end
 
       def find_next_change(view, start_slot)
         offset = start_slot + 1
-        match = view[offset..]&.index(free_slot?(view[start_slot]) ? /[^0]/ : /0/)
-        debug("Schedule change search from slot #{start_slot}: match=#{match}")
+        match = search_view(view, offset, change_pattern(view[start_slot]))
         match && (offset + match)
       end
 
-      def free_slot?(char) = debug("Checking slot: #{char}") || char == '0'
+      def search_view(view, offset, pattern) = view[offset..]&.index(pattern)
+      def change_pattern(slot_char) = free_slot?(slot_char) ? /[^0]/ : /0/
+      def free_slot?(char) = char == '0'
       def parse_work_hours(schedule) = [parse_hour(schedule, 'startTime', 9), parse_hour(schedule, 'endTime', 17)]
 
       def parse_hour(schedule, key, default)
-        debug("Parsing work hour: #{key}")
         value = schedule.dig('workingHours', key)
         value ? value.split(':').first.to_i : default
       end

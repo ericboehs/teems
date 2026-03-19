@@ -121,7 +121,7 @@ module MarkdownFormatterTests
       result = build_formatter.format([msg])
       assert_includes result, "\u{1F44D}"
       assert_includes result, "\u{2764}"
-      assert_includes result, "\u{D7}3"
+      assert_includes result, '(3)'
     end
 
     def test_format_unknown_reaction_uses_name

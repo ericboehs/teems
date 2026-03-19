@@ -266,9 +266,9 @@ module SyncEngineTests
 
     def test_log_and_check_max
       with_temp_config do
-        engine = build_public_engine(:log_and_check_max)
-        refute engine.log_and_check_max(1, ['msg'])
-        assert engine.log_and_check_max(500, ['msg'])
+        engine = build_public_engine(:log_and_check_max?)
+        refute engine.log_and_check_max?(1, ['msg'])
+        assert engine.log_and_check_max?(500, ['msg'])
       end
     end
 

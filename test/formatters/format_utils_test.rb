@@ -73,7 +73,7 @@ module FormatUtilsTests
     def test_format_single_reaction_with_count
       emoji_map = { 'like' => "\u{1F44D}" }
       result = Teems::Formatters::FormatUtils.format_single_reaction({ type: 'like', count: 3 }, emoji_map)
-      assert_equal "\u{1F44D} \u00d73", result
+      assert_equal "\u{1F44D}(3)", result
     end
 
     def test_format_single_reaction_unknown_emoji

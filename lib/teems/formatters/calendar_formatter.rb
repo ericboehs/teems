@@ -61,7 +61,6 @@ module Teems
       end
 
       def response_label(response)
-        @output.mode
         RESPONSE_LABELS[response] || response&.capitalize || 'Pending'
       end
     end

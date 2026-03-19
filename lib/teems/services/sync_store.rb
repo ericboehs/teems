@@ -10,13 +10,11 @@ module Teems
         tmp_path = "#{path}.tmp"
         File.write(tmp_path, content)
         File.rename(tmp_path, path)
-        @xdg_paths # anchor to instance
       end
 
       def backup_corrupt_file(path)
         backup_path = "#{path}.corrupt.#{Time.now.strftime('%Y%m%d%H%M%S')}"
         File.rename(path, backup_path)
-        @xdg_paths # anchor to instance
       rescue StandardError
         nil
       end
@@ -43,7 +41,9 @@ module Teems
       end
 
       def chat_unavailable?(state, chat_id)
-        @xdg_paths && state.dig('chats', chat_id, 'unavailable') == true
+        return false unless sync_dir
+
+        state.dig('chats', chat_id, 'unavailable') == true
       end
     end
 
@@ -71,12 +71,10 @@ module Teems
 
       def apply_unavailable(entry)
         entry.merge!('unavailable' => true, 'unavailable_at' => Time.now.iso8601)
-        @xdg_paths # anchor to instance
       end
 
       def apply_chat_type(entry, chat_type)
         entry['chat_type'] = chat_type if chat_type
-        @xdg_paths # anchor to instance
       end
 
       def apply_display_info(entry, chat_id, display_name)
@@ -133,7 +131,6 @@ module Teems
                         chat_type_path(chat_type, new_dir_name))
         end
         entry.merge!('dir_name' => new_dir_name, 'chat_type' => chat_type)
-        @xdg_paths # anchor to instance
       end
 
       def move_chat_dir(old_path, new_path)
@@ -141,7 +138,6 @@ module Teems
 
         FileUtils.mkdir_p(File.dirname(new_path))
         File.rename(old_path, new_path)
-        @xdg_paths # anchor to instance
       end
 
       def chat_type_path(type, name) = File.join(sync_dir, SyncStore::CHATS_DIR, type_dir(type), name)
