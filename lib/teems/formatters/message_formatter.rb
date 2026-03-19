@@ -41,22 +41,26 @@ module Teems
         attachments = message.attachments
         return unless attachments.any?
 
-        names = attachments.map { |att| att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s }
-        "  #{@output.gray("\u{1F4CE} #{names.join(', ')}")}"
+        "  #{@output.gray("\u{1F4CE} #{attachment_names(attachments)}")}"
       end
 
       def format_reactions(message)
-        return unless message.reactions.any?
+        reactions = message.reactions
+        return unless reactions.any?
 
-        summary = message.reactions.map do |reaction|
-          type = reaction[:type]
-          "#{REACTION_EMOJI[type] || type}(#{reaction[:count]})"
-        end.join(' ')
-        "  #{@output.gray(summary)}"
+        "  #{@output.gray(reaction_parts(reactions))}"
       end
 
       def highlight_mentions(content, mentions)
         mentions.inject(content) { |text, name| text.gsub(name, @output.bold(name)) }
+      end
+
+      def attachment_names(attachments)
+        attachments.map { |att| FormatUtils.attachment_name(att) }.join(', ')
+      end
+
+      def reaction_parts(reactions)
+        reactions.map { |reaction| FormatUtils.format_single_reaction(reaction, REACTION_EMOJI) }.join(' ')
       end
     end
   end

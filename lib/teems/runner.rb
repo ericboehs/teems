@@ -15,7 +15,7 @@ module Teems
   class Runner
     include ApiFactories
 
-    attr_reader :output, :config, :token_store, :api_client, :cache_store
+    attr_reader :output, :config, :token_store
 
     def initialize(
       output: Formatters::Output.new,
@@ -27,11 +27,13 @@ module Teems
       @output = output
       @config = config
       @token_store = token_store
-      @api_client = api_client
-      @cache_store = cache_store
+      @services = { api_client: api_client, cache_store: cache_store }
 
       wire_up_warnings
     end
+
+    def api_client = @services[:api_client]
+    def cache_store = @services[:cache_store]
 
     # Account helpers - always get fresh from token_store (important for token refresh)
     def account
@@ -50,23 +52,17 @@ module Teems
 
     # Formatter helpers
     def message_formatter
-      @message_formatter ||= Formatters::MessageFormatter.new(
-        output: @output,
-        cache_store: @cache_store
-      )
+      Formatters::MessageFormatter.new(output: @output, cache_store: cache_store)
     end
 
     # Token extractor for Safari automation
     def token_extractor
-      @token_extractor ||= Services::TokenExtractor.new(output: @output)
+      Services::TokenExtractor.new(output: @output)
     end
 
     # Token refresher for automatic token refresh
     def token_refresher
-      @token_refresher ||= Services::TokenRefresher.new(
-        token_store: @token_store,
-        output: @output
-      )
+      Services::TokenRefresher.new(token_store: @token_store, output: @output)
     end
 
     # Attempt to refresh the skype_token
@@ -78,7 +74,7 @@ module Teems
 
     def wire_up_warnings
       warning_handler = ->(message) { @output.warn(message) }
-      @config.on_warning = warning_handler
+      @config.register_warning_handler(warning_handler)
     end
   end
 end

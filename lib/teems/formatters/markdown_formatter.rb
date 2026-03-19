@@ -35,9 +35,7 @@ module Teems
 
       def format_message_groups(messages, lines)
         current_date = nil
-        messages.each do |msg|
-          next if msg.system_message?
-
+        messages.reject(&:system_message?).each do |msg|
           current_date = append_date_header(lines, msg, current_date)
           lines.concat(format_message(msg))
           lines << ''
@@ -97,21 +95,19 @@ module Teems
 
       def format_message_reactions(msg)
         reactions = msg.reactions
-        return [] unless reactions.is_a?(Array) && reactions.any?
+        return [] unless displayable_reactions?(reactions)
 
         [format_reactions_line(reactions)]
       end
 
+      def displayable_reactions?(reactions) = reactions.is_a?(Array) && reactions.any?
+
       def format_reactions_line(reactions)
-        "Reactions: #{reactions.map { |reaction| format_single_reaction(reaction) }.join('  ')}"
+        parts = reactions.map { |reaction| FormatUtils.format_single_reaction(reaction, REACTION_EMOJI) }
+        "#{reactions_label} #{parts.join('  ')}"
       end
 
-      def format_single_reaction(reaction)
-        type = reaction[:type]
-        emoji = REACTION_EMOJI[type] || type
-        count = reaction[:count] || 1
-        count > 1 ? "#{emoji} \u00d7#{count}" : emoji.to_s
-      end
+      def reactions_label = 'Reactions:'
     end
   end
 end

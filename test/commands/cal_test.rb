@@ -6,7 +6,7 @@ require 'test_helper'
 module CalCommandTests
   # Shared helpers for running calendar commands and building test data
   module SharedHelpers
-    private
+    module_function
 
     def run_cal(args = [], stubs: {})
       out = StringIO.new
@@ -34,8 +34,9 @@ module CalCommandTests
       with_temp_config do
         return capture_output do |output|
           runner = configured_runner(output: output)
-          runner.api_client.stub('calendarView', { 'value' => events_data })
-          runner.api_client.stub('events', events_data.first)
+          api = runner.api_client
+          api.stub('calendarView', { 'value' => events_data })
+          api.stub('events', events_data.first)
           Teems::Commands::Cal.new(args, runner: runner).execute
         end
       end
@@ -45,8 +46,9 @@ module CalCommandTests
       with_temp_config do
         return capture_output do |output|
           runner = configured_runner(output: output)
-          runner.api_client.stub('calendarView', { 'value' => events_data })
-          runner.api_client.stub(rsvp_stub_key, {})
+          api = runner.api_client
+          api.stub('calendarView', { 'value' => events_data })
+          api.stub(rsvp_stub_key, {})
           Teems::Commands::Cal.new(args, runner: runner).execute
         end
       end
@@ -55,8 +57,9 @@ module CalCommandTests
     def run_cal_rsvp_runner(args, events_data, rsvp_stub_key)
       with_temp_config do
         runner = configured_runner
-        runner.api_client.stub('calendarView', { 'value' => events_data })
-        runner.api_client.stub(rsvp_stub_key, {})
+        api = runner.api_client
+        api.stub('calendarView', { 'value' => events_data })
+        api.stub(rsvp_stub_key, {})
         Teems::Commands::Cal.new(args, runner: runner).execute
         return runner
       end
@@ -287,8 +290,9 @@ module CalCommandTests
       with_temp_config do
         result = capture_output do |output|
           runner = configured_runner(output: output)
-          runner.api_client.stub('calendarView', { 'value' => [sample_event_data] })
-          runner.api_client.stub_error('events', Teems::ApiError.new('Not found', status_code: 404))
+          api = runner.api_client
+          api.stub('calendarView', { 'value' => [sample_event_data] })
+          api.stub_error('events', Teems::ApiError.new('Not found', status_code: 404))
           Teems::Commands::Cal.new(%w[show 1], runner: runner).execute
         end
         assert_match(/Failed to fetch event/, result[:stderr])
@@ -340,7 +344,7 @@ module CalCommandTests
     def test_accept_sends_correct_api_call
       runner = run_cal_rsvp_runner(%w[accept 1], [sample_event_data], 'accept')
       calls = runner.api_client.calls
-      rsvp_call = calls.find { |c| c[:method] == :post && c[:path].include?('/accept') }
+      rsvp_call = calls.find { |entry| entry[:method] == :post && entry[:path].include?('/accept') }
       assert rsvp_call, 'Expected an accept API call'
       assert_includes rsvp_call[:path], sample_event_data['id']
       assert_equal true, rsvp_call[:body][:sendResponse]
@@ -360,7 +364,7 @@ module CalCommandTests
     def test_decline_sends_correct_api_call
       runner = run_cal_rsvp_runner(%w[decline 1], [sample_event_data], 'decline')
       calls = runner.api_client.calls
-      rsvp_call = calls.find { |c| c[:method] == :post && c[:path].include?('/decline') }
+      rsvp_call = calls.find { |entry| entry[:method] == :post && entry[:path].include?('/decline') }
       assert rsvp_call, 'Expected a decline API call'
     end
 
@@ -372,7 +376,7 @@ module CalCommandTests
     def test_tentative_sends_tentatively_accept_action
       runner = run_cal_rsvp_runner(%w[tentative 1], [sample_event_data], 'tentativelyAccept')
       calls = runner.api_client.calls
-      rsvp_call = calls.find { |c| c[:method] == :post && c[:path].include?('/tentativelyAccept') }
+      rsvp_call = calls.find { |entry| entry[:method] == :post && entry[:path].include?('/tentativelyAccept') }
       assert rsvp_call, 'Expected a tentativelyAccept API call'
     end
 
@@ -380,14 +384,14 @@ module CalCommandTests
       runner = run_cal_rsvp_runner(['accept', '1', '--comment', 'Looking forward to it'],
                                    [sample_event_data], 'accept')
       calls = runner.api_client.calls
-      rsvp_call = calls.find { |c| c[:method] == :post && c[:path].include?('/accept') }
+      rsvp_call = calls.find { |entry| entry[:method] == :post && entry[:path].include?('/accept') }
       assert_equal 'Looking forward to it', rsvp_call[:body][:comment]
     end
 
     def test_rsvp_with_no_send
       runner = run_cal_rsvp_runner(['decline', '1', '--no-send'], [sample_event_data], 'decline')
       calls = runner.api_client.calls
-      rsvp_call = calls.find { |c| c[:method] == :post && c[:path].include?('/decline') }
+      rsvp_call = calls.find { |entry| entry[:method] == :post && entry[:path].include?('/decline') }
       assert_equal false, rsvp_call[:body][:sendResponse]
     end
 
@@ -405,8 +409,9 @@ module CalCommandTests
       with_temp_config do
         result = capture_output do |output|
           runner = configured_runner(output: output)
-          runner.api_client.stub('calendarView', { 'value' => [sample_event_data] })
-          runner.api_client.stub_error('accept', Teems::ApiError.new('Forbidden', status_code: 403))
+          api = runner.api_client
+          api.stub('calendarView', { 'value' => [sample_event_data] })
+          api.stub_error('accept', Teems::ApiError.new('Forbidden', status_code: 403))
           Teems::Commands::Cal.new(%w[accept 1], runner: runner).execute
         end
         assert_match(/Failed to respond to event/, result[:stderr])
@@ -416,7 +421,7 @@ module CalCommandTests
     def test_rsvp_without_comment_omits_comment_key
       runner = run_cal_rsvp_runner(%w[accept 1], [sample_event_data], 'accept')
       calls = runner.api_client.calls
-      rsvp_call = calls.find { |c| c[:method] == :post && c[:path].include?('/accept') }
+      rsvp_call = calls.find { |entry| entry[:method] == :post && entry[:path].include?('/accept') }
       refute rsvp_call[:body].key?(:comment),
              'Expected no comment key in body when --comment not provided'
     end
@@ -669,8 +674,9 @@ module CalCommandTests
       with_temp_config do
         return capture_output do |output|
           runner = configured_runner(output: output)
-          runner.api_client.stub('calendarView', { 'value' => events_data })
-          runner.api_client.stub('events', stub_event)
+          api = runner.api_client
+          api.stub('calendarView', { 'value' => events_data })
+          api.stub('events', stub_event)
           Teems::Commands::Cal.new(['delete', ref], runner: runner).execute
         end
       end
@@ -710,8 +716,9 @@ module CalCommandTests
       with_temp_config do
         result = capture_output do |output|
           runner = configured_runner(output: output)
-          runner.api_client.stub('calendarView', { 'value' => [sample_event_data] })
-          runner.api_client.stub_error('events', Teems::ApiError.new('Not found', status_code: 404))
+          api = runner.api_client
+          api.stub('calendarView', { 'value' => [sample_event_data] })
+          api.stub_error('events', Teems::ApiError.new('Not found', status_code: 404))
           Teems::Commands::Cal.new(%w[delete 1], runner: runner).execute
         end
         assert_match(/Failed to delete event/, result[:stderr])
@@ -746,12 +753,12 @@ module CalCommandTests
     end
 
     def test_number_resolves_as_positional
-      events = [sample_event_data, second_event_data]
       with_temp_config do
         result = capture_output do |output|
           runner = configured_runner(output: output)
-          runner.api_client.stub('calendarView', { 'value' => events })
-          runner.api_client.stub('events', second_event_data)
+          api = runner.api_client
+          api.stub('calendarView', { 'value' => [sample_event_data, second_event_data] })
+          api.stub('events', second_event_data)
           Teems::Commands::Cal.new(%w[show 2], runner: runner).execute
         end
         assert_match(/Second Event/, result[:stdout])
@@ -803,8 +810,9 @@ module CalCommandTests
     def test_no_interactive_suppresses_prompt
       result = run_cal(['--no-interactive'],
                        stubs: { 'calendarView' => { 'value' => [sample_event_data] } })
-      assert_match(/Weekly Standup/, result[:stdout])
-      refute_match(/Enter #/, result[:stdout])
+      stdout = result[:stdout]
+      assert_match(/Weekly Standup/, stdout)
+      refute_match(/Enter #/, stdout)
     end
 
     def test_json_suppresses_prompt
@@ -816,8 +824,9 @@ module CalCommandTests
     def test_non_tty_suppresses_prompt
       result = run_cal([],
                        stubs: { 'calendarView' => { 'value' => [sample_event_data] } })
-      assert_match(/Weekly Standup/, result[:stdout])
-      refute_match(/Enter #/, result[:stdout])
+      stdout = result[:stdout]
+      assert_match(/Weekly Standup/, stdout)
+      refute_match(/Enter #/, stdout)
     end
   end
 
@@ -832,8 +841,9 @@ module CalCommandTests
 
     def test_interactive_select_event_shows_detail
       result = run_interactive("1\nq\n", stubs: default_stubs)
-      assert_includes result[:output], 'Conference Room A'
-      assert_includes result[:output], '[a]ccept'
+      output = result[:output]
+      assert_includes output, 'Conference Room A'
+      assert_includes output, '[a]ccept'
     end
 
     def test_interactive_back_returns_to_list
@@ -963,13 +973,11 @@ module CalCommandTests
       end
     end
 
-    def test_event_to_hash_nil_times
-      with_temp_config do
-        cmd = Teems::Commands::Cal.new([], runner: configured_runner)
-        hash = cmd.send(:event_to_hash, build_nil_time_event)
-        assert_nil hash[:start_time]
-        assert_nil hash[:end_time]
-      end
+    def test_event_to_json_hash_nil_times
+      event = build_nil_time_event
+      hash = event.to_json_hash
+      assert_nil hash[:start_time]
+      assert_nil hash[:end_time]
     end
   end
 end

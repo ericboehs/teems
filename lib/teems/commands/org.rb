@@ -74,21 +74,38 @@ module Teems
 
     # Renders org chart as text tree or JSON
     module OrgRenderer
-      private
+      # Groups org chart data: managers chain, target user, and reports tree
+      OrgData = Struct.new(:managers, :target, :reports) do
+        def to_json_hash
+          { managers: managers.map(&:to_h), target: target.to_h,
+            direct_reports: self.class.json_reports(reports[:reports]) }
+        end
 
-      def render_org(managers, target, reports)
-        if @options[:json]
-          output_json(build_json(managers, target, reports))
-        else
-          render_tree(managers, target, reports)
+        def self.json_reports(reports)
+          reports.map { |report| json_report(*report.values_at(:user, :reports)) }
+        end
+
+        def self.json_report(user, sub_reports)
+          user.to_h.merge(direct_reports: json_reports(sub_reports))
         end
       end
 
-      def render_tree(managers, target, reports)
+      private
+
+      def render_org(org_data)
+        if @options[:json]
+          output_json(org_data.to_json_hash)
+        else
+          render_tree(org_data)
+        end
+      end
+
+      def render_tree(org_data)
+        managers = org_data.managers
         depth = managers.length
         managers.each_with_index { |mgr, index| puts "#{'  ' * index}#{format_person(mgr)}" }
-        puts "#{'  ' * depth}--> #{format_person(target)}"
-        render_reports(reports[:reports], depth + 1)
+        puts "#{'  ' * depth}--> #{format_person(org_data.target)}"
+        render_reports(org_data.reports[:reports], depth + 1)
       end
 
       def render_reports(reports, level)
@@ -102,19 +119,6 @@ module Teems
         title = profile.job_title
         name = profile.best_name
         title && !title.empty? ? "#{name} (#{title})" : name.to_s
-      end
-
-      def build_json(managers, target, reports)
-        { managers: managers.map(&:to_h), target: target.to_h,
-          direct_reports: json_reports(reports[:reports]) }
-      end
-
-      def json_reports(reports)
-        reports.map { |report| json_report(*report.values_at(:user, :reports)) }
-      end
-
-      def json_report(user, sub_reports)
-        user.to_h.merge(direct_reports: json_reports(sub_reports))
       end
     end
 
@@ -196,7 +200,7 @@ module Teems
       end
 
       def display_org(target)
-        render_org(*fetch_org_data(target))
+        render_org(fetch_org_data(target))
         0
       end
 
@@ -204,7 +208,7 @@ module Teems
         managers = walk_manager_chain(target.id)
         report_fetch = method(target_is_me? ? :fetch_my_reports : :fetch_user_reports)
         reports = walk_reports_tree(target, depth, report_fetch)
-        [managers, target, reports]
+        OrgRenderer::OrgData.new(managers: managers, target: target, reports: reports)
       end
 
       def depth

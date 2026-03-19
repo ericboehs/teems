@@ -6,7 +6,7 @@ require 'test_helper'
 module MarkdownFormatterTests
   # Shared message and formatter builders for markdown formatter tests
   module Helpers
-    private
+    module_function
 
     def build_formatter(chat_name: 'Test Chat', chat_type: nil, synced_at: nil)
       Teems::Formatters::MarkdownFormatter.new(chat_name: chat_name, chat_type: chat_type, synced_at: synced_at)
@@ -121,7 +121,7 @@ module MarkdownFormatterTests
       result = build_formatter.format([msg])
       assert_includes result, "\u{1F44D}"
       assert_includes result, "\u{2764}"
-      assert_includes result, "\u{D7}3"
+      assert_includes result, '(3)'
     end
 
     def test_format_unknown_reaction_uses_name

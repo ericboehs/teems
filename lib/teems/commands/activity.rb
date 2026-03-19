@@ -17,6 +17,8 @@ module Teems
         %w[reactionInChat] => 'reacted'
       }.freeze
 
+      START_DATETIME_PATTERN = %r{<StartDateTime>(.+?)</StartDateTime>}
+      END_DATETIME_PATTERN = %r{<EndDateTime>(.+?)</EndDateTime>}
       MAX_PREVIEW = 120
 
       private
@@ -25,35 +27,33 @@ module Teems
         [format_activity_header(activity, composetime),
          format_preview(activity),
          format_meeting_time(activity),
-         format_source(activity)].compact.join("\n")
+         format_activity_source(activity)].compact.join("\n")
       end
 
       def format_activity_header(activity, composetime)
         who = activity['sourceUserImDisplayName'] || 'Unknown'
         behalf = parse_behalf(activity)
         name = behalf ? "#{who} on behalf of #{behalf}" : who
-        "#{output.blue(format_time(composetime))} #{output.bold(name)} #{describe_action(activity)}"
+        time_str = Formatters::FormatUtils.format_time(composetime)
+        "#{output.blue(time_str)} #{output.bold(name)} #{describe_action(activity)}"
       end
 
       def format_preview(activity)
         text = activity['messagePreview'].to_s.strip.gsub(/[\r\n]+/, ' ')
-        text.empty? ? nil : "  #{truncate(text)}"
+        text.empty? ? nil : "  #{Formatters::FormatUtils.truncate(text, MAX_PREVIEW)}"
       end
 
-      def format_source(activity)
+      def format_activity_source(activity)
         topic = activity['sourceThreadTopic']
-        return nil unless topic
-
-        "  #{topic}"
-      end
-
-      def truncate(text)
-        text.length > MAX_PREVIEW ? "#{text[0...MAX_PREVIEW]}..." : text
+        topic ? "  #{output.gray(topic)}" : nil
       end
 
       def describe_action(activity)
-        type = activity['activityType']
-        subtype = activity['activitySubtype']
+        desc = resolve_activity_description(activity['activityType'], activity['activitySubtype'])
+        output.yellow(desc)
+      end
+
+      def resolve_activity_description(type, subtype)
         ACTIVITY_DESCRIPTIONS[[type, subtype]] || ACTIVITY_DESCRIPTIONS[[type]] || subtype || type
       end
 
@@ -69,32 +69,21 @@ module Teems
         start_match, end_match = extract_datetime_matches(location)
         return nil unless start_match
 
-        build_time_range(start_match[1], end_match)
+        Formatters::FormatUtils.build_time_range(start_match[1], end_match)
       rescue ArgumentError
         nil
       end
 
       def extract_datetime_matches(text)
-        [text.match(%r{<StartDateTime>(.+?)</StartDateTime>}),
-         text.match(%r{<EndDateTime>(.+?)</EndDateTime>})]
-      end
-
-      def build_time_range(start_str, end_match)
-        start_time = Time.parse(start_str).getlocal
-        end_time = end_match ? Time.parse(end_match[1]).getlocal : nil
-        [start_time, end_time]
+        [text.match(START_DATETIME_PATTERN),
+         text.match(END_DATETIME_PATTERN)]
       end
 
       def format_time_range(start_time, end_time)
         start_str = start_time.strftime('%b %-d, %-I:%M %p')
         return start_str unless end_time
 
-        "#{start_str} - #{format_end_time(start_time, end_time)}"
-      end
-
-      def format_end_time(start_time, end_time)
-        fmt = (end_time - start_time) >= 86_400 ? '%b %-d, %-I:%M %p' : '%-I:%M %p'
-        end_time.strftime(fmt)
+        "#{start_str} - #{Formatters::FormatUtils.format_end_time(start_time, end_time)}"
       end
 
       def parse_behalf(activity)
@@ -104,14 +93,6 @@ module Teems
         JSON.parse(params)['behalfOf']
       rescue JSON::ParserError
         nil
-      end
-
-      def format_time(composetime)
-        return '' unless composetime
-
-        Time.parse(composetime).getlocal.strftime('[%Y-%m-%d %H:%M]')
-      rescue ArgumentError
-        ''
       end
     end
 
@@ -230,7 +211,10 @@ module Teems
       end
 
       def print_activity_lines(marker, text)
-        text.lines.each_with_index { |line, idx| puts idx.zero? ? "#{marker}#{line.chomp}" : "  #{line.chomp}" }
+        text.lines.each_with_index do |line, idx|
+          trimmed = line.chomp
+          puts idx.zero? ? "#{marker}#{trimmed}" : "  #{trimmed}"
+        end
         puts
       end
     end

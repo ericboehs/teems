@@ -24,11 +24,7 @@ module Teems
       end
 
       def http_get(uri)
-        return @http_client.call(uri) if @http_client
-
-        Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https') do |http|
-          http.request(Net::HTTP::Get.new(uri))
-        end
+        @http_client ? @http_client.call(uri) : Net::HTTP.get_response(uri)
       end
 
       def handle_response(response, limit)

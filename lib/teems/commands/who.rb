@@ -10,22 +10,23 @@ module Teems
       STATUS_LABELS = { 'Available' => 'Available', 'Busy' => 'Busy', 'DoNotDisturb' => 'Do Not Disturb',
                         'BeRightBack' => 'Be Right Back', 'Away' => 'Away', 'Offline' => 'Offline' }.freeze
 
-      # Bundles schedule display parameters
-      ScheduleContext = Data.define(:work_start, :tz_abbrev)
+      # Bundles email + timezone for schedule lookups
+      ScheduleTarget = Data.define(:email, :timezone)
+      # Bundles schedule display parameters including availability view
+      ScheduleContext = Data.define(:view, :work_start, :tz_abbrev)
 
       private
 
-      def fetch_schedule(email, timezone, work_start, work_end)
-        request_schedule(email, timezone, *schedule_time_range(work_start, work_end))
+      def fetch_schedule(target, work_start, work_end)
+        request_schedule(target, schedule_time_range(work_start, work_end))
       rescue ApiError => e
-        debug("Could not fetch schedule for #{email}: #{e.message}")
+        debug("Could not fetch schedule for #{target.email}: #{e.message}")
         nil
       end
 
-      def request_schedule(email, timezone, start_time, end_time)
-        with_token_refresh do
-          runner.users_api.schedule(email, start_time: start_time, end_time: end_time, timezone: timezone)
-        end
+      def request_schedule(target, time_range)
+        tr = { start_time: time_range.first, end_time: time_range.last, timezone: target.timezone }
+        with_token_refresh { runner.users_api.schedule(target.email, time_range: tr) }
       end
 
       def schedule_time_range(work_start, work_end)
@@ -38,7 +39,7 @@ module Teems
 
         puts "  Today       #{render_bitmap(view)}"
         puts "              #{render_hour_labels(view, ctx.work_start)}"
-        render_now_marker(view, ctx)
+        render_now_marker(ctx.with(view: view))
       end
 
       def render_bitmap(view)
@@ -50,29 +51,27 @@ module Teems
         (0...total_hours).map { |idx| format_hour_label(work_start + idx) }.join
       end
 
-      def format_hour_label(hour)
-        display = hour > 12 ? hour - 12 : hour
-        display.to_s.ljust(SLOTS_PER_HOUR)
-      end
+      def format_hour_label(hour) = (((hour - 1) % 12) + 1).to_s.ljust(SLOTS_PER_HOUR)
 
-      def render_now_marker(view, ctx)
+      def render_now_marker(ctx)
         slot_index = slot_for_now(ctx.work_start)
-        return unless slot_index >= 0 && slot_index < view.length
+        return unless slot_index >= 0 && slot_index < ctx.view.length
 
-        pointer = "#{' ' * slot_index}^ now"
+        debug("Now marker at slot #{slot_index}")
         local_time = Time.now.strftime('%-I:%M %p')
-        puts "              #{pointer} #{local_time} #{ctx.tz_abbrev}"
+        puts "              #{' ' * slot_index}^ now #{local_time} #{ctx.tz_abbrev}"
       end
 
       def render_calendar_line(schedule, ctx)
         view = schedule['availabilityView']
         return unless view && !view.empty?
 
-        status_text = compute_cal_status(view, ctx)
+        status_text = compute_cal_status(ctx.with(view: view))
         puts "  Calendar    #{status_text}" if status_text
       end
 
-      def compute_cal_status(view, ctx)
+      def compute_cal_status(ctx)
+        view = ctx.view
         slot = slot_for_now(ctx.work_start)
         return nil unless slot >= 0 && slot < view.length
 
@@ -93,9 +92,8 @@ module Teems
       end
 
       def slot_to_time(work_start, slot_index)
-        minutes = (work_start * 60) + (slot_index * 15)
-        today = Date.today
-        Time.new(today.year, today.month, today.day, minutes / 60, minutes % 60)
+        offset = (work_start * 60) + (slot_index * 15)
+        Date.today.to_time + (offset * 60)
       end
 
       def slot_for_now(work_start)
@@ -104,34 +102,33 @@ module Teems
       end
 
       def find_next_change(view, start_slot)
-        free = view[start_slot] == '0'
-        ((start_slot + 1)...view.length).each do |idx|
-          return idx if free != (view[idx] == '0')
-        end
-        nil
+        offset = start_slot + 1
+        match = search_view(view, offset, change_pattern(view[start_slot]))
+        match && (offset + match)
       end
 
-      def parse_work_hours(schedule)
-        [parse_hour(schedule, 'startTime', 9), parse_hour(schedule, 'endTime', 17)]
-      end
+      def search_view(view, offset, pattern) = view[offset..]&.index(pattern)
+      def change_pattern(slot_char) = free_slot?(slot_char) ? /[^0]/ : /0/
+      def free_slot?(char) = char == '0'
+      def parse_work_hours(schedule) = [parse_hour(schedule, 'startTime', 9), parse_hour(schedule, 'endTime', 17)]
 
       def parse_hour(schedule, key, default)
         value = schedule.dig('workingHours', key)
         value ? value.split(':').first.to_i : default
       end
 
-      def fetch_schedule_for(email, timezone)
-        return nil unless email
+      def fetch_schedule_for(target)
+        return nil unless target.email
 
-        schedule = fetch_schedule(email, timezone, *DEFAULT_WORK_HOURS)
-        schedule && refetch_if_custom_hours(schedule, email, timezone)
+        schedule = fetch_schedule(target, *DEFAULT_WORK_HOURS)
+        schedule && refetch_if_custom_hours(schedule, target)
       end
 
-      def refetch_if_custom_hours(schedule, email, timezone)
+      def refetch_if_custom_hours(schedule, target)
         actual_hours = parse_work_hours(schedule)
         return schedule if actual_hours == DEFAULT_WORK_HOURS
 
-        fetch_schedule(email, timezone, *actual_hours) || schedule
+        fetch_schedule(target, *actual_hours) || schedule
       end
     end
 
@@ -221,7 +218,7 @@ module Teems
       end
 
       def render_schedule_info(email)
-        schedule = fetch_schedule_for(email, detect_timezone)
+        schedule = fetch_schedule_for(WhoSchedule::ScheduleTarget.new(email: email, timezone: detect_timezone))
         return unless schedule
 
         ctx = build_schedule_context(schedule)
@@ -231,10 +228,12 @@ module Teems
 
       def build_schedule_context(schedule)
         work_start, = parse_work_hours(schedule)
-        WhoSchedule::ScheduleContext.new(work_start: work_start, tz_abbrev: short_tz_label)
+        WhoSchedule::ScheduleContext.new(view: schedule['availabilityView'],
+                                         work_start: work_start, tz_abbrev: short_tz_label)
       end
 
-      def render_search_result(name, title, email, index)
+      def render_search_result(profile, index)
+        name, title, email = profile.search_display
         title_suffix = present?(title) ? " (#{title})" : ''
         puts "  #{index + 1}. #{name}#{title_suffix}"
         puts "     #{email}" if present?(email)
@@ -242,7 +241,7 @@ module Teems
 
       def render_search_list(results)
         results.each_with_index do |profile, index|
-          render_search_result(*profile.search_display, index)
+          render_search_result(profile, index)
         end
       end
 
@@ -358,18 +357,20 @@ module Teems
         result&.first
       end
 
+      def schedule_target(email) = WhoSchedule::ScheduleTarget.new(email: email, timezone: detect_timezone)
+
       def json_profile(attrs, user_id)
         presence_data = fetch_presence_data(user_id)
-        schedule = fetch_schedule_for(attrs[:email], detect_timezone)
+        schedule = fetch_schedule_for(schedule_target(attrs[:email]))
         build_json_profile(attrs, presence_data, schedule)
       end
 
       def build_json_profile(attrs, presence_data, schedule)
-        result = attrs.merge(presence: presence_data&.dig('presence', 'availability'))
-        result[:out_of_office] = presence_data&.dig('presence', 'calendarData', 'isOutOfOffice')
-        result[:availability_view] = schedule['availabilityView'] if schedule
-        result[:working_hours] = schedule['workingHours'] if schedule
-        result
+        result = attrs.merge(presence: presence_data&.dig('presence', 'availability'),
+                             out_of_office: presence_data&.dig('presence', 'calendarData', 'isOutOfOffice'))
+        return result unless schedule
+
+        result.merge(availability_view: schedule['availabilityView'], working_hours: schedule['workingHours'])
       end
     end
   end

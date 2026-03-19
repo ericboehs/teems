@@ -11,27 +11,32 @@ module Teems
         presence: 'https://presence.gcc.teams.microsoft.com'
       }.freeze
 
+      TIMEOUTS = { open_timeout: 10, read_timeout: 30, keep_alive_timeout: 30 }.freeze
+
       private
 
       def get_http_for_endpoint(endpoint_key)
-        uri = URI(ENDPOINTS[endpoint_key])
+        uri = URI(resolve_endpoint(endpoint_key))
         cache_key = "#{uri.host}:#{uri.port}"
         (http = @http_cache[cache_key])&.started? ? http : @http_cache[cache_key] = start_http(uri)
       end
 
       def start_http(uri)
-        Net::HTTP.new(uri.host, uri.port).tap do |http|
-          configure_http(http, uri.scheme == 'https')
-          http.start
-        end
+        build_http(uri.host, uri.port, ssl_scheme?(uri)).tap(&:start)
       end
 
-      def configure_http(http, use_ssl)
+      def ssl_scheme?(uri) = uri.scheme == 'https'
+
+      def build_http(host, port, use_ssl)
+        http = Net::HTTP.new(host, port)
+        apply_timeouts(http)
         http.use_ssl = use_ssl
-        http.open_timeout = 10
-        http.read_timeout = 30
-        http.keep_alive_timeout = 30
         configure_ssl(http) if use_ssl
+        http
+      end
+
+      def apply_timeouts(http)
+        TIMEOUTS.each { |attr, val| http.send(:"#{attr}=", val) }
       end
 
       def configure_ssl(http)
@@ -55,7 +60,9 @@ module Teems
         when Net::HTTPUnauthorized   then raise ApiError.new('Invalid token or session expired', status_code: 401)
         when Net::HTTPForbidden      then raise ApiError.new('Access forbidden', status_code: 403)
         when Net::HTTPTooManyRequests then raise_rate_limit(response)
-        else raise ApiError.new("HTTP #{response.code}: #{response.message}", status_code: response.code.to_i)
+        else
+          code = response.code
+          raise ApiError.new("HTTP #{code}: #{response.message}", status_code: code.to_i)
         end
       end
 
@@ -76,7 +83,6 @@ module Teems
     end
 
     # HTTP client for Teams API with connection pooling and multi-endpoint support
-    # :reek:DataClump
     class ApiClient
       include ConnectionPool
       include ResponseHandler
@@ -93,13 +99,23 @@ module Teems
       }.freeze
       DEFAULT_AUTH_HEADER = ->(account) { ['Authorization', account.teams_auth_header] }
 
-      attr_accessor :on_request, :on_response
-      attr_reader :call_count
+      attr_reader :on_request, :on_response, :call_count
 
-      def initialize
+      def initialize(on_request: nil, on_response: nil)
         @call_count = 0
-        @on_request = @on_response = nil
+        @on_request = on_request
+        @on_response = on_response
         @http_cache = {}
+      end
+
+      def on_request=(callback)
+        close_idle_connections
+        @on_request = callback
+      end
+
+      def on_response=(callback)
+        close_idle_connections
+        @on_response = callback
       end
 
       def close
@@ -111,22 +127,28 @@ module Teems
         @http_cache.clear
       end
 
-      def get(endpoint_key, path, account:, **options)
-        req = build_get_request(endpoint_key, path, options)
+      def get(endpoint_key, path, **options)
+        account = options.delete(:account)
+        base_url = resolve_endpoint(endpoint_key)
+        uri = build_request_uri(base_url, path, options.fetch(:params, {}))
+        req = Net::HTTP::Get.new(uri)
+        apply_headers(req, options.fetch(:headers, {}))
         apply_auth(req, account, endpoint_key)
         run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
       end
 
-      def post(endpoint_key, path, account:, body: nil)
+      def post(endpoint_key, path, **options)
+        account = options.delete(:account)
+        body = options.delete(:body)
         req = Net::HTTP::Post.new(URI("#{resolve_endpoint(endpoint_key)}#{path}"))
         apply_auth(req, account, endpoint_key)
         req.body = JSON.generate(body) if body
         run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
       end
 
-      def delete(endpoint_key, path, account:)
-        uri = URI("#{resolve_endpoint(endpoint_key)}#{path}")
-        run_request(path, get_http_for_endpoint(endpoint_key)) do |http|
+      def delete(url, endpoint_key:, account:)
+        uri = URI(url)
+        run_request(uri.path, get_http_for_endpoint(endpoint_key)) do |http|
           req = Net::HTTP::Delete.new(uri)
           apply_auth(req, account, endpoint_key)
           http.request(req)
@@ -135,16 +157,16 @@ module Teems
 
       private
 
-      def build_get_request(endpoint_key, path, options)
-        req = Net::HTTP::Get.new(resolve_uri(endpoint_key, path, options.fetch(:params, {})))
-        apply_headers(req, options.fetch(:headers, {}))
-        req
+      def close_idle_connections
+        @http_cache.select! { |_key, http| http.started? }
       end
 
-      def apply_headers(request, headers) = headers.each { |key, value| request[key] = value }
+      def apply_headers(request, headers)
+        headers.each { |key, value| request[key] = value }
+      end
 
-      def resolve_uri(endpoint_key, path, params)
-        URI(path.start_with?('http') ? path : "#{resolve_endpoint(endpoint_key)}#{path}").tap do |uri|
+      def build_request_uri(base_url, path, params)
+        URI(path.start_with?('http') ? path : "#{base_url}#{path}").tap do |uri|
           uri.query = URI.encode_www_form(params) if params&.any?
         end
       end

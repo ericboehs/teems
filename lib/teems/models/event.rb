@@ -82,6 +82,10 @@ module Teems
 
       def short_hash = Digest::SHA256.hexdigest(id.to_s)[0, 6]
 
+      def to_json_hash
+        to_h.merge(start_time: start_time&.iso8601, end_time: end_time&.iso8601)
+      end
+
       def all_day? = is_all_day
       def cancelled? = is_cancelled
       def recurring? = %w[occurrence exception].include?(event_type)

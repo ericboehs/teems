@@ -91,8 +91,7 @@ module Teems
       end
 
       def self.extract_sender_name(data)
-        data.dig('from', 'user', 'displayName') ||
-          data.dig('from', 'application', 'displayName') || 'Unknown'
+        data.dig('from', 'user', 'displayName') || data.dig('from', 'application', 'displayName') || 'Unknown'
       end
 
       def self.parse_reactions(reactions_data)
@@ -101,23 +100,26 @@ module Teems
         reactions_data.map { |reaction| { type: reaction['reactionType'], count: reaction['user']&.length || 1 } }
       end
 
+      def downloadable_attachments = attachments.grep(Hash).select { |att| att.key?('sharepointIds') }
+
+      def content_with_mentions_highlighted
+        return content if mentions.empty?
+
+        mentions.inject(content) { |text, name| text.gsub(name, yield(name)) }
+      end
+
       def short_hash = Digest::SHA256.hexdigest(id.to_s)[0, 6]
       def timestamp = created_at
       def reply? = !!reply_to_id
       def edited? = !!edited
       def important? = %w[urgent high].include?(importance)
+      def system_message? = message_type && !normal_message_type? && !rich_text_type?
+      def to_s = "[#{created_at&.strftime('%H:%M')}] #{sender_name}: #{content}"
 
-      def system_message?
-        return false unless message_type
-        return false if %w[Message message Text].include?(message_type)
-        return false if message_type.start_with?('RichText')
+      private
 
-        true
-      end
-
-      def to_s
-        "[#{created_at&.strftime('%H:%M')}] #{sender_name}: #{content}"
-      end
+      def normal_message_type? = %w[Message message Text].include?(message_type)
+      def rich_text_type? = message_type.start_with?('RichText')
     end
   end
 end

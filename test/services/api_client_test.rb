@@ -350,35 +350,29 @@ module ApiClientTests
   class ConnectionPoolTest < Minitest::Test
     # Exposes private connection pool and SSL methods for testing
     class ExposedPool < Teems::Services::ApiClient
-      public :get_http_for_endpoint, :start_http, :configure_http, :configure_ssl
+      public :get_http_for_endpoint, :start_http, :build_http, :configure_ssl
     end
 
-    def test_configure_http_sets_timeouts
+    def test_build_http_sets_timeouts
       client = ExposedPool.new
-      http = Net::HTTP.new('example.com', 443)
-
-      client.configure_http(http, false)
+      http = client.build_http('example.com', 443, false)
 
       assert_equal 10, http.open_timeout
       assert_equal 30, http.read_timeout
       assert_equal 30, http.keep_alive_timeout
     end
 
-    def test_configure_http_enables_ssl_when_requested
+    def test_build_http_enables_ssl_when_requested
       client = ExposedPool.new
-      http = Net::HTTP.new('example.com', 443)
-
-      client.configure_http(http, true)
+      http = client.build_http('example.com', 443, true)
 
       assert http.use_ssl?
       assert_equal OpenSSL::SSL::VERIFY_PEER, http.verify_mode
     end
 
-    def test_configure_http_skips_ssl_when_not_requested
+    def test_build_http_skips_ssl_when_not_requested
       client = ExposedPool.new
-      http = Net::HTTP.new('example.com', 80)
-
-      client.configure_http(http, false)
+      http = client.build_http('example.com', 80, false)
 
       refute http.use_ssl?
     end
@@ -428,6 +422,16 @@ module ApiClientTests
 
   # Tests connection cleanup and error handling during close
   class CloseTest < Minitest::Test
+    def test_close_handles_not_started_connection
+      client, cache = build_client_with_cache
+      not_started = Object.new
+      not_started.define_singleton_method(:started?) { false }
+      cache['idle:443'] = not_started
+
+      client.close
+      assert_empty cache
+    end
+
     def test_close_handles_io_error_gracefully
       client, cache = build_client_with_cache
       cache['broken:443'] = build_fake_http { raise IOError, 'stream closed' }
@@ -470,7 +474,7 @@ module ApiClientTests
       account = mock_account
 
       error = assert_raises(ArgumentError) do
-        client.delete(:unknown, '/path', account: account)
+        client.delete('https://example.com/path', endpoint_key: :unknown, account: account)
       end
 
       assert_match(/Unknown endpoint/, error.message)
@@ -480,7 +484,7 @@ module ApiClientTests
       client = StubbedApiClient.new
       account = mock_account
 
-      client.delete(:graph, '/v1.0/me/chats/123', account: account)
+      client.delete('https://graph.microsoft.com/v1.0/me/chats/123', endpoint_key: :graph, account: account)
 
       assert_equal 1, client.call_count
       assert_instance_of Net::HTTP::Delete, client.last_request
@@ -508,38 +512,38 @@ module ApiClientTests
   end
 
   # Tests URI resolution for relative paths, absolute URLs, and query params
-  class ResolveUriTest < Minitest::Test
-    # Exposes private resolve_uri method for testing
+  class BuildRequestUriTest < Minitest::Test
+    # Exposes private build_request_uri method for testing
     class ExposedUri < Teems::Services::ApiClient
-      public :resolve_uri
+      public :build_request_uri
     end
 
-    def test_resolve_uri_prepends_endpoint_for_relative_path
+    def test_build_request_uri_prepends_base_url_for_relative_path
       client = ExposedUri.new
-      uri = client.resolve_uri(:graph, '/v1.0/me', {})
+      uri = client.build_request_uri('https://graph.microsoft.com', '/v1.0/me', {})
 
       assert_equal 'https://graph.microsoft.com/v1.0/me', uri.to_s
     end
 
-    def test_resolve_uri_uses_absolute_url_when_given
+    def test_build_request_uri_uses_absolute_url_when_given
       client = ExposedUri.new
-      uri = client.resolve_uri(:graph, 'https://custom.example.com/api', {})
+      uri = client.build_request_uri('https://graph.microsoft.com', 'https://custom.example.com/api', {})
 
       assert_equal 'https://custom.example.com/api', uri.to_s
     end
 
-    def test_resolve_uri_adds_query_params
+    def test_build_request_uri_adds_query_params
       client = ExposedUri.new
-      uri = client.resolve_uri(:graph, '/v1.0/me', { '$top' => '10', '$skip' => '0' })
+      uri = client.build_request_uri('https://graph.microsoft.com', '/v1.0/me', { '$top' => '10', '$skip' => '0' })
 
       uri_string = uri.to_s
       assert_includes uri_string, '%24top=10'
       assert_includes uri_string, '%24skip=0'
     end
 
-    def test_resolve_uri_skips_params_when_empty
+    def test_build_request_uri_skips_params_when_empty
       client = ExposedUri.new
-      uri = client.resolve_uri(:graph, '/v1.0/me', {})
+      uri = client.build_request_uri('https://graph.microsoft.com', '/v1.0/me', {})
 
       assert_nil uri.query
     end
@@ -598,17 +602,13 @@ module ApiClientTests
 
   # Tests custom header application on HTTP requests
   class ApplyHeadersTest < Minitest::Test
-    # Exposes private apply_headers method for testing
-    class ExposedHeaders < Teems::Services::ApiClient
-      public :apply_headers
-    end
-
     def test_apply_headers_sets_custom_headers_on_request
-      client = ExposedHeaders.new
-      request = Net::HTTP::Get.new('/')
+      client = StubbedApiClient.new
+      account = mock_account
 
-      client.apply_headers(request, { 'X-Custom' => 'value', 'Accept' => 'text/plain' })
+      client.get(:graph, '/v1.0/me', account: account, headers: { 'X-Custom' => 'value', 'Accept' => 'text/plain' })
 
+      request = client.last_request
       assert_equal 'value', request['X-Custom']
       assert_equal 'text/plain', request['Accept']
     end
@@ -677,6 +677,12 @@ module ApiClientTests
 
       def request(req)
         @client.instance_variable_set(:@last_request, req)
+        build_ok_response
+      end
+
+      private
+
+      def build_ok_response
         response = Net::HTTPResponse::CODE_TO_OBJ['200'].new('1.1', '200', 'OK')
         response.instance_variable_set(:@body, '{}')
         response.instance_variable_set(:@read, true)

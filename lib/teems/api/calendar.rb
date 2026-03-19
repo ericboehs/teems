@@ -17,9 +17,9 @@ module Teems
       ].join(',').freeze
 
       # List events in a date range using CalendarView
-      def list_events(start_dt:, end_dt:, timezone:, top: 50)
-        params = calendar_view_params(start_dt, end_dt, top)
-        headers = timezone_header(timezone)
+      def list_events(time_range:, top: 50)
+        params = calendar_view_params(time_range[:start_dt], time_range[:end_dt], top)
+        headers = timezone_header(time_range[:timezone])
         paginate_events('/v1.0/me/calendarView', params: params, headers: headers)
       end
 
@@ -29,33 +29,34 @@ module Teems
         params = { '$select' => EVENT_DETAIL_SELECT }
         headers = timezone_header(timezone)
 
-        response = get(:graph, "/v1.0/me/events/#{encoded_id}", params: params, headers: headers)
+        response = get("/v1.0/me/events/#{encoded_id}", params: params, headers: headers)
         Models::Event.from_api(response)
       end
 
       # Create a new calendar event
       def create_event(body)
-        response = post(:graph, '/v1.0/me/events', body: body)
+        response = post('/v1.0/me/events', body: body)
         Models::Event.from_api(response)
       end
 
       # Delete an event
       def delete_event(event_id:)
         encoded_id = URI.encode_www_form_component(event_id)
-        delete(:graph, "/v1.0/me/events/#{encoded_id}")
+        delete("/v1.0/me/events/#{encoded_id}")
       end
 
       # RSVP to an event (accept, decline, or tentatively accept)
-      def rsvp_event(event_id:, action:, comment: nil, notify: :send)
+      def rsvp_event(event_id:, action:, **opts)
         encoded_id = URI.encode_www_form_component(event_id)
         api_action = action == 'tentative' ? 'tentativelyAccept' : action
-        post(:graph, "/v1.0/me/events/#{encoded_id}/#{api_action}", body: rsvp_body(comment, notify))
+        post("/v1.0/me/events/#{encoded_id}/#{api_action}", body: rsvp_body(opts))
       end
 
       private
 
-      def rsvp_body(comment, notify)
-        body = { sendResponse: notify == :send }
+      def rsvp_body(opts)
+        comment = opts[:comment]
+        body = { sendResponse: opts.fetch(:notify, :send) == :send }
         body[:comment] = comment if comment
         body
       end
@@ -67,7 +68,7 @@ module Teems
 
       def paginate_events(path, params:, headers:)
         events = []
-        response = get(:graph, path, params: params, headers: headers)
+        response = get(path, params: params, headers: headers)
         collect_paginated_events(events, response, headers)
       end
 
@@ -77,7 +78,7 @@ module Teems
           next_link = response['@odata.nextLink']
           break events unless next_link
 
-          response = get(:graph, next_link, headers: headers)
+          response = get(next_link, headers: headers)
         end
       end
 

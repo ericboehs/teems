@@ -33,16 +33,16 @@ module Teems
         raw = normalize_mentions(mentions_json)
         return [] unless raw
 
-        raw.select { |mention| mention['mri'] }
-           .group_by { |mention| mention['mri'] }
+        raw.group_by { |mention| mention['mri'] }
+           .except(nil)
            .each_value.filter_map { |entries| mention_display_name(entries) }
       end
 
       def normalize_mentions(data)
         return nil unless data
 
-        result = data.is_a?(String) ? JSON.parse(data) : data
-        result.is_a?(Array) ? result : nil
+        parsed = data.is_a?(String) ? JSON.parse(data) : data
+        parsed if parsed.is_a?(Array)
       rescue JSON::ParserError
         nil
       end

@@ -243,12 +243,10 @@ module MessageTests
         { 'mri' => '8:orgid:abc', 'displayName' => 'Jane' },
         { 'mri' => '8:orgid:def', 'displayName' => 'Bob' }
       ]
-      data = sample_ng_msg_message.merge(
-        'properties' => { 'mentions' => JSON.generate(mentions_data) }
-      )
-      message = Teems::Models::Message.from_api(data)
-      assert_includes message.mentions, 'Jane'
-      assert_includes message.mentions, 'Bob'
+      props = { 'properties' => { 'mentions' => JSON.generate(mentions_data) } }
+      names = Teems::Models::Message.from_api(sample_ng_msg_message.merge(props)).mentions
+      assert_includes names, 'Jane'
+      assert_includes names, 'Bob'
     end
 
     def test_ng_msg_mentions_empty_without_property
@@ -278,14 +276,81 @@ module MessageTests
 
     def test_short_hash_is_deterministic
       message = Teems::Models::Message.from_api(sample_graph_message)
-      first_call = message.short_hash
-      assert_equal first_call, message.short_hash
+      hash = message.short_hash
+      assert_equal hash, message.short_hash
     end
 
     def test_short_hash_differs_for_different_ids
       original = Teems::Models::Message.from_api(sample_graph_message)
       different = Teems::Models::Message.from_api(sample_graph_message.merge('id' => 'different-id'))
       refute_equal original.short_hash, different.short_hash
+    end
+  end
+
+  # Tests for downloadable_attachments method
+  class DownloadableAttachmentsTest < Minitest::Test
+    def test_returns_attachments_with_sharepoint_ids
+      atts = [{ 'fileName' => 'doc.pdf', 'sharepointIds' => { 'siteId' => 's1' } }]
+      data = sample_graph_message.merge('attachments' => atts)
+      message = Teems::Models::Message.from_api(data)
+      assert_equal 1, message.downloadable_attachments.length
+    end
+
+    def test_excludes_attachments_without_sharepoint_ids
+      atts = [{ 'fileName' => 'doc.pdf' }]
+      data = sample_graph_message.merge('attachments' => atts)
+      message = Teems::Models::Message.from_api(data)
+      assert_empty message.downloadable_attachments
+    end
+
+    def test_excludes_non_hash_attachments
+      atts = ['simple-string-attachment']
+      data = sample_graph_message.merge('attachments' => atts)
+      message = Teems::Models::Message.from_api(data)
+      assert_empty message.downloadable_attachments
+    end
+
+    def test_returns_empty_array_when_no_attachments
+      message = Teems::Models::Message.from_api(sample_graph_message)
+      assert_empty message.downloadable_attachments
+    end
+  end
+
+  # Tests for content_with_mentions_highlighted method
+  class ContentWithMentionsHighlightedTest < Minitest::Test
+    def test_returns_content_when_no_mentions
+      message = Teems::Models::Message.from_api(sample_graph_message)
+      result = message.content_with_mentions_highlighted { |name| "**#{name}**" }
+      assert_equal message.content, result
+    end
+
+    def test_highlights_mentions_with_block
+      data = sample_ng_msg_message.merge(
+        'content' => '<p>Hello Jane and Bob</p>',
+        'properties' => { 'mentions' => JSON.generate(two_person_mentions) }
+      )
+      message = Teems::Models::Message.from_api(data)
+      result = message.content_with_mentions_highlighted { |name| "[#{name}]" }
+      assert_includes result, '[Jane]'
+      assert_includes result, '[Bob]'
+    end
+
+    def test_returns_content_unchanged_when_mention_not_found
+      mentions_data = [{ 'mri' => '8:orgid:abc', 'displayName' => 'Nobody' }]
+      data = sample_ng_msg_message.merge(
+        'content' => '<p>Hello world</p>',
+        'properties' => { 'mentions' => JSON.generate(mentions_data) }
+      )
+      message = Teems::Models::Message.from_api(data)
+      result = message.content_with_mentions_highlighted { |name| "[#{name}]" }
+      assert_equal 'Hello world', result
+    end
+
+    private
+
+    def two_person_mentions
+      [{ 'mri' => '8:orgid:abc', 'displayName' => 'Jane' },
+       { 'mri' => '8:orgid:def', 'displayName' => 'Bob' }]
     end
   end
 end

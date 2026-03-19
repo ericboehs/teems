@@ -42,7 +42,7 @@ module Teems
 
       def display_message(message)
         puts format_message_header(message)
-        puts "  #{highlight_mentions(message.content, message.mentions)}"
+        puts "  #{formatted_content(message)}"
         display_attachments(message)
         display_reactions(message)
         puts
@@ -61,9 +61,7 @@ module Teems
         attachments = message.attachments
         return unless attachments.any?
 
-        names = attachments.map do |att|
-          att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
-        end
+        names = attachments.map { |att| Formatters::FormatUtils.attachment_name(att) }
         puts "  #{output.gray("\u{1F4CE} #{names.join(', ')}")}"
       end
 
@@ -71,17 +69,12 @@ module Teems
         reactions = message.reactions
         return unless reactions.any?
 
-        summary = reactions.map do |reaction|
-          type = reaction[:type]
-          "#{REACTION_EMOJI[type] || type}(#{reaction[:count]})"
-        end.join(' ')
-        puts "  #{output.gray(summary)}"
+        parts = reactions.map { |reaction| Formatters::FormatUtils.format_single_reaction(reaction, REACTION_EMOJI) }
+        puts "  #{output.gray(parts.join(' '))}"
       end
 
-      def highlight_mentions(content, mentions)
-        return content if mentions.empty?
-
-        mentions.inject(content) { |text, name| text.gsub(name, output.bold(name)) }
+      def formatted_content(message)
+        message.content_with_mentions_highlighted { |name| output.bold(name) }
       end
 
       def message_to_hash(message)
@@ -116,23 +109,25 @@ module Teems
         messages.flat_map { |msg| downloadable_from(msg) }
       end
 
-      def downloadable_from(msg)
-        Array(msg.attachments).select { |att| att.is_a?(Hash) && att['sharepointIds'] }
-      end
+      def downloadable_from(msg) = msg.downloadable_attachments
 
       def download_one(att, dir)
-        name = safe_filename(att['fileName'] || att['name'] || 'file')
+        name = Formatters::FormatUtils.safe_filename(att['fileName'] || att['name'] || 'file')
         print "\u{1F4CE} Downloading #{name}..."
         perform_download(att, dir, name)
       rescue StandardError => e
-        warn " failed (#{e.message})"
+        handle_download_error(e)
+      end
+
+      def handle_download_error(err)
+        warn " failed (#{err.message})"
         0
       end
 
       def perform_download(att, dir, name)
         url = resolve_download_url(att['sharepointIds'])
         bytes = file_downloader.download(url, unique_path(dir, name))
-        puts " done (#{format_bytes(bytes)})"
+        puts " done (#{Formatters::FormatUtils.format_bytes(bytes)})"
         1
       end
 
@@ -160,11 +155,6 @@ module Teems
         File.join(Support::XdgPaths.new.data_dir, 'downloads')
       end
 
-      def safe_filename(name)
-        base = File.basename(name)
-        base.empty? ? 'file' : base
-      end
-
       def unique_path(dir, name)
         path = File.join(dir, name)
         return path unless File.exist?(path)
@@ -174,13 +164,6 @@ module Teems
         counter = 1
         counter += 1 while File.exist?(path = File.join(dir, "#{base}-#{counter}#{ext}"))
         path
-      end
-
-      def format_bytes(bytes)
-        if bytes >= 1_048_576 then "#{(bytes / 1_048_576.0).round(1)} MB"
-        elsif bytes >= 1024 then "#{(bytes / 1024.0).round(1)} KB"
-        else "#{bytes} B"
-        end
       end
     end
 

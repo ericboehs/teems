@@ -359,8 +359,9 @@ module MessagesCommandTests
         'properties' => { 'files' => '[{"fileName":"report.pdf"}]' }
       )
       result = run_messages(['19:abc@thread.v2'], stubs: { 'messages' => { 'messages' => [msg] } })
-      assert_includes result[:stdout], 'report.pdf'
-      assert_includes result[:stdout], "\u{1F4CE}"
+      stdout = result[:stdout]
+      assert_includes stdout, 'report.pdf'
+      assert_includes stdout, "\u{1F4CE}"
     end
 
     def test_displays_mentions_highlighted
@@ -402,6 +403,10 @@ module MessagesCommandTests
 
     private
 
+    def with_download_dir(&block)
+      Dir.mktmpdir('teems-dl-test') { |tmpdir| with_temp_config { block.call(tmpdir) } }
+    end
+
     def msg_with_sharepoint_attachment
       msg_with_filename('report.pdf')
     end
@@ -425,12 +430,25 @@ module MessagesCommandTests
 
     def run_download(tmpdir, output:, downloader: nil, msg: nil)
       runner = configured_runner(output: output)
-      runner.api_client.stub('messages', { 'messages' => [msg || msg_with_sharepoint_attachment] })
-      runner.api_client.stub('driveItem', DRIVE_ITEM_STUB)
+      api = runner.api_client
+      api.stub('messages', { 'messages' => [msg || msg_with_sharepoint_attachment] })
+      api.stub('driveItem', DRIVE_ITEM_STUB)
       cmd = Teems::Commands::Messages.new(['--download', '-o', tmpdir, '19:abc@thread.v2'], runner: runner)
       cmd.instance_variable_set(:@file_downloader, downloader) if downloader
       cmd.execute
       runner
+    end
+
+    def capture_download_in_dir(downloader: nil, msg: nil, setup: nil, &block)
+      tmpdir = Dir.mktmpdir('teems-dl-test')
+      setup&.call(tmpdir)
+      result = with_temp_config do
+        capture_output { |out| run_download(tmpdir, output: out, downloader: downloader, msg: msg) }
+      end
+      block&.call(tmpdir)
+      result
+    ensure
+      FileUtils.remove_entry(tmpdir) if tmpdir
     end
   end
 
@@ -488,67 +506,45 @@ module MessagesCommandTests
     include DownloadHelpers
 
     def test_download_resolves_and_downloads
-      Dir.mktmpdir('teems-dl-test') do |tmpdir|
-        with_temp_config do
-          dl = mock_file_downloader_bytes(12)
-          result = capture_output { |out| run_download(tmpdir, output: out, downloader: dl) }
-          assert_includes result[:stdout], 'Downloading report.pdf'
-          assert_includes result[:stdout], 'done'
-        end
-      end
+      dl = mock_file_downloader_bytes(12)
+      stdout = capture_download_in_dir(downloader: dl)[:stdout]
+      assert_includes stdout, 'Downloading report.pdf'
+      assert_includes stdout, 'done'
     end
 
     def test_download_shows_kb_size
-      Dir.mktmpdir('teems-dl-test') do |tmpdir|
-        with_temp_config do
-          dl = mock_file_downloader_bytes(1536)
-          result = capture_output { |out| run_download(tmpdir, output: out, downloader: dl) }
-          assert_includes result[:stdout], '1.5 KB'
-        end
-      end
+      result = capture_download_in_dir(downloader: mock_file_downloader_bytes(1536))
+      assert_includes result[:stdout], '1.5 KB'
     end
 
     def test_download_shows_mb_size
-      Dir.mktmpdir('teems-dl-test') do |tmpdir|
-        with_temp_config do
-          result = capture_output do |out|
-            run_download(tmpdir, output: out, downloader: mock_file_downloader_bytes(2_097_152))
-          end
-          assert_includes result[:stdout], '2.0 MB'
-        end
-      end
+      result = capture_download_in_dir(downloader: mock_file_downloader_bytes(2_097_152))
+      assert_includes result[:stdout], '2.0 MB'
     end
 
     def test_download_handles_file_collision
-      Dir.mktmpdir('teems-dl-test') do |tmpdir|
-        File.write(File.join(tmpdir, 'report.pdf'), 'existing')
-        with_temp_config do
-          capture_output { |out| run_download(tmpdir, output: out, downloader: mock_file_downloader_bytes(12)) }
-          assert File.exist?(File.join(tmpdir, 'report-1.pdf'))
-        end
+      pre = ->(tmpdir) { File.write(File.join(tmpdir, 'report.pdf'), 'existing') }
+      capture_download_in_dir(downloader: mock_file_downloader_bytes(12), setup: pre) do |tmpdir|
+        assert File.exist?(File.join(tmpdir, 'report-1.pdf'))
       end
     end
 
     def test_download_handles_multiple_collisions
-      Dir.mktmpdir('teems-dl-test') do |tmpdir|
+      pre = lambda do |tmpdir|
         File.write(File.join(tmpdir, 'report.pdf'), 'existing')
         File.write(File.join(tmpdir, 'report-1.pdf'), 'existing')
-        with_temp_config do
-          capture_output { |out| run_download(tmpdir, output: out, downloader: mock_file_downloader_bytes(12)) }
-          assert File.exist?(File.join(tmpdir, 'report-2.pdf'))
-        end
+      end
+      capture_download_in_dir(downloader: mock_file_downloader_bytes(12), setup: pre) do |tmpdir|
+        assert File.exist?(File.join(tmpdir, 'report-2.pdf'))
       end
     end
 
     def test_download_sanitizes_path_traversal
-      Dir.mktmpdir('teems-dl-test') do |tmpdir|
-        with_temp_config do
-          dl = mock_file_downloader_bytes(12)
-          evil = msg_with_filename('../../etc/evil.txt')
-          capture_output { |out| run_download(tmpdir, output: out, downloader: dl, msg: evil) }
-          assert File.exist?(File.join(tmpdir, 'evil.txt'))
-          refute File.exist?(File.join(tmpdir, '..', '..', 'etc', 'evil.txt'))
-        end
+      dl = mock_file_downloader_bytes(12)
+      evil = msg_with_filename('../../etc/evil.txt')
+      capture_download_in_dir(downloader: dl, msg: evil) do |tmpdir|
+        assert File.exist?(File.join(tmpdir, 'evil.txt'))
+        refute File.exist?(File.join(tmpdir, '..', '..', 'etc', 'evil.txt'))
       end
     end
 
@@ -570,28 +566,26 @@ module MessagesCommandTests
     private
 
     def run_download_with_error(path, error)
-      Dir.mktmpdir('teems-dl-test') do |tmpdir|
-        with_temp_config do
-          capture_output do |out|
-            runner = configured_runner(output: out)
-            runner.api_client.stub('messages', { 'messages' => [msg_with_sharepoint_attachment] })
-            runner.api_client.stub_error(path, error)
-            Teems::Commands::Messages.new(['--download', '-o', tmpdir, '19:abc@thread.v2'], runner: runner).execute
-          end
-        end
-      end
+      run_download_scenario { |api| api.stub_error(path, error) }
     end
 
     def run_download_with_stub(path, response)
+      run_download_scenario { |api| api.stub(path, response) }
+    end
+
+    def run_download_scenario(&block)
       Dir.mktmpdir('teems-dl-test') do |tmpdir|
-        with_temp_config do
-          capture_output do |out|
-            runner = configured_runner(output: out)
-            runner.api_client.stub('messages', { 'messages' => [msg_with_sharepoint_attachment] })
-            runner.api_client.stub(path, response)
-            Teems::Commands::Messages.new(['--download', '-o', tmpdir, '19:abc@thread.v2'], runner: runner).execute
-          end
-        end
+        with_temp_config { capture_download_output(tmpdir, &block) }
+      end
+    end
+
+    def capture_download_output(tmpdir)
+      capture_output do |out|
+        runner = configured_runner(output: out)
+        api = runner.api_client
+        api.stub('messages', { 'messages' => [msg_with_sharepoint_attachment] })
+        yield api
+        Teems::Commands::Messages.new(['--download', '-o', tmpdir, '19:abc@thread.v2'], runner: runner).execute
       end
     end
   end

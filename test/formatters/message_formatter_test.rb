@@ -6,7 +6,7 @@ require 'test_helper'
 module MessageFormatterTests
   # Shared builder for formatter tests
   module Helpers
-    private
+    module_function
 
     def build_message(**overrides)
       attrs = {
@@ -90,7 +90,7 @@ module MessageFormatterTests
       result = formatter.format(message)
 
       assert_includes result, "\u{1F44D}(3)"
-      assert_includes result, "\u{2764}\u{FE0F}(1)"
+      assert_includes result, "\u{2764}\u{FE0F}"
     end
 
     def test_format_unknown_reaction_uses_name

@@ -54,26 +54,21 @@ module Teems
       end
 
       def prompt_for_token(label)
-        puts "#{label}:"
-        puts '(paste token, then press Enter twice or Ctrl-D)'
-        read_multiline_token
-      end
+        puts "#{label}:\n(paste token, then press Enter twice or Ctrl-D)"
+        lines = []
+        while (input = $stdin.gets)
+          break if input.strip.empty?
 
-      def read_multiline_token
-        clean_token(collect_input_lines.join)
-      end
-
-      def collect_input_lines
-        result = []
-        while (line = $stdin.gets)
-          break if line.strip.empty?
-
-          result << line.chomp
+          lines << input.chomp
         end
-        result
+        clean_token(lines.join)
       end
 
-      def clean_token(token) = token.sub(/^Bearer\s+/i, '').sub(/^skypetoken=/i, '').strip
+      def clean_token(raw)
+        stripped = raw.sub(/^Bearer\s+/i, '').sub(/^skypetoken=/i, '').strip
+        debug("Cleaned token (#{stripped.length} chars)")
+        stripped
+      end
 
       def import_tokens_from_file(file_path)
         return error("File not found: #{file_path}") unless File.exist?(file_path)
@@ -87,7 +82,18 @@ module Teems
 
       def read_and_save_token_file(file_path)
         data = parse_token_file(file_path)
-        data.is_a?(Integer) ? data : build_and_save_file_tokens(data)
+        return data if data.is_a?(Integer)
+
+        validate_and_save_tokens(data)
+      end
+
+      def validate_and_save_tokens(data)
+        auth_token, skype_token, chatsvc = data.values_at('auth_token', 'skype_token', 'chatsvc_token')
+        auth_token ||= data['authtoken']
+        return error('File must contain auth_token key') unless auth_token
+
+        debug('Found auth token in file data')
+        save_extracted_tokens(auth_token, skype_token || data['skypetoken'] || auth_token, chatsvc)
       end
 
       def parse_token_file(file_path)
@@ -95,16 +101,6 @@ module Teems
       rescue JSON::ParserError
         error('Invalid JSON file. Expected: {"auth_token": "..."}')
       end
-
-      def build_and_save_file_tokens(data)
-        auth_token = extract_auth_token(data)
-        return error('File must contain auth_token key') unless auth_token
-
-        save_extracted_tokens(auth_token, extract_skype_token(data, auth_token), data['chatsvc_token'])
-      end
-
-      def extract_auth_token(data) = data['auth_token'] || data['authtoken']
-      def extract_skype_token(data, fallback) = data['skype_token'] || data['skypetoken'] || fallback
 
       def save_extracted_tokens(auth_token, skype_token, chatsvc_token = nil)
         token_store.save(
@@ -122,9 +118,53 @@ module Teems
       'set-tokens' => :set_tokens, 'set' => :set_tokens
     }.freeze
 
+    # Status display helpers for auth command
+    module AuthStatus
+      private
+
+      def status
+        return display_unauthenticated_status unless token_store.configured?
+
+        display_authenticated_status
+      end
+
+      def display_authenticated_status
+        account = token_store.account
+        return display_incomplete_tokens unless account
+
+        puts "#{output.green("\u2713")} Authenticated as: #{account.name}"
+        display_token_age
+        0
+      end
+
+      def display_incomplete_tokens
+        puts "#{output.yellow("\u26A0")} Token file exists but is incomplete"
+        puts 'Run: teems auth login'
+        0
+      end
+
+      def display_token_age
+        age = token_store.token_age
+        return unless age
+
+        hours = (age / 3600).to_i
+        if hours >= 24
+          puts "#{output.yellow("\u26A0")} Tokens are #{hours} hours old (may be expired)"
+        else
+          puts "  Token age: #{hours} hours"
+        end
+      end
+
+      def display_unauthenticated_status
+        puts "#{output.red("\u2717")} Not authenticated\n\nRun: teems auth login"
+        0
+      end
+    end
+
     # Manages authentication with Microsoft Teams
     class Auth < Base
       include AuthTokenInput
+      include AuthStatus
 
       def execute
         result = validate_options
@@ -194,44 +234,6 @@ module Teems
         else
           puts 'No tokens to clear'
         end
-        0
-      end
-
-      def status
-        return display_unauthenticated_status unless token_store.configured?
-
-        display_authenticated_status
-      end
-
-      def display_authenticated_status
-        account = token_store.account
-        return display_incomplete_tokens unless account
-
-        puts "#{output.green('✓')} Authenticated as: #{account.name}"
-        display_token_age
-        0
-      end
-
-      def display_incomplete_tokens
-        puts "#{output.yellow('⚠')} Token file exists but is incomplete"
-        puts 'Run: teems auth login'
-        0
-      end
-
-      def display_token_age
-        age = token_store.token_age
-        return unless age
-
-        hours = (age / 3600).to_i
-        if hours >= 24
-          puts "#{output.yellow('⚠')} Tokens are #{hours} hours old (may be expired)"
-        else
-          puts "  Token age: #{hours} hours"
-        end
-      end
-
-      def display_unauthenticated_status
-        puts "#{output.red('✗')} Not authenticated\n\nRun: teems auth login"
         0
       end
 

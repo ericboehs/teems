@@ -72,6 +72,7 @@ module Teems
   # Output formatters for messages and terminal output
   module Formatters
     autoload :Output, 'teems/formatters/output'
+    autoload :FormatUtils, 'teems/formatters/format_utils'
     autoload :MessageFormatter, 'teems/formatters/message_formatter'
     autoload :MarkdownFormatter, 'teems/formatters/markdown_formatter'
     autoload :CalendarFormatter, 'teems/formatters/calendar_formatter'

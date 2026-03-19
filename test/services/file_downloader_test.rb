@@ -8,8 +8,8 @@ module FileDownloaderTests
   class MockHttp
     attr_accessor :responses
 
-    def initialize
-      @responses = []
+    def initialize(responses: [])
+      @responses = responses
       @call_index = 0
     end
 
@@ -22,6 +22,8 @@ module FileDownloaderTests
 
   # Helper to build mock HTTP responses
   module ResponseBuilder
+    module_function
+
     def success_response(body)
       response = Net::HTTPResponse::CODE_TO_OBJ['200'].new('1.1', '200', 'OK')
       response.instance_variable_set(:@body, body)

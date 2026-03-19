@@ -6,7 +6,7 @@ require 'test_helper'
 module SyncEngineTests
   # Shared builders for engine instances, message stubs, and paginated responses
   module SharedHelpers
-    private
+    module_function
 
     def build_engine
       output = test_output
@@ -116,7 +116,7 @@ module SyncEngineTests
     def test_fetch_all_messages_with_backward_link
       with_temp_config do
         engine = build_engine
-        engine.define_singleton_method(:sleep) { |_| nil }
+        engine.define_singleton_method(:sleep) { |_duration| nil }
         first = messages_response([sample_ng_msg_message],
                                   backward_link: 'https://api.example.com/messages?startTime=123&pageSize=200')
         second = messages_response([])
@@ -266,9 +266,9 @@ module SyncEngineTests
 
     def test_log_and_check_max
       with_temp_config do
-        engine = build_public_engine(:log_and_check_max)
-        refute engine.log_and_check_max(1, ['msg'])
-        assert engine.log_and_check_max(500, ['msg'])
+        engine = build_public_engine(:log_and_check_max?)
+        refute engine.log_and_check_max?(1, ['msg'])
+        assert engine.log_and_check_max?(500, ['msg'])
       end
     end
 
@@ -287,7 +287,9 @@ module SyncEngineTests
 
     def test_advance_link_nil
       with_temp_config do
-        assert_nil build_public_engine(:advance_link).advance_link(nil, Time.now)
+        engine = build_public_engine(:advance_link)
+        engine.instance_variable_set(:@backward_link, nil)
+        assert_nil engine.advance_link(Time.now)
       end
     end
 

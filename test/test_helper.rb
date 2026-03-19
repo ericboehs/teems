@@ -96,6 +96,8 @@ module Teems
 
     XDG_ENV_KEYS = %w[XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME].freeze
 
+    private
+
     def test_output
       Formatters::Output.new(io: StringIO.new, err: StringIO.new, color: false)
     end
@@ -170,8 +172,10 @@ module Teems
       XDG_ENV_KEYS.zip(saved).each { |key, val| ENV[key] = val }
     end
 
-    def mock_token_store(account: nil, configured: true)
-      MockTokenStore.new(account: account, configured: configured)
+    def mock_token_store(account: nil, configured: true, **extra)
+      MockTokenStore.new(account: account, configured: configured).tap do |store|
+        extra.each { |key, val| store.public_send(:"#{key}=", val) }
+      end
     end
 
     def mock_unconfigured_store
@@ -243,7 +247,7 @@ module Teems
 
       # Raise error only for the first N calls matching this path, then succeed
       def stub_transient_error(path, error, times: 1)
-        @stubs[:transient][path] = { error: error, remaining: times }
+        @stubs[:transient][path] = TransientError.new(error, times)
       end
 
       def get(_endpoint, path, account:, **)
@@ -256,8 +260,9 @@ module Teems
         record_and_respond(path, {})
       end
 
-      def delete(_endpoint, path, account:)
-        @calls << { method: :delete, path: path, account: account }
+      def delete(url, endpoint_key:, account:)
+        path = URI(url).path
+        @calls << { method: :delete, path: path, account: account, endpoint_key: endpoint_key }
         @call_count += 1
         check_errors(path)
         nil
@@ -284,14 +289,10 @@ module Teems
       end
 
       def check_transient_errors(path)
-        @stubs[:transient].each do |pattern, info|
+        @stubs[:transient].each do |pattern, transient|
           next unless path.include?(pattern)
 
-          remaining = info[:remaining]
-          next unless remaining.positive?
-
-          info[:remaining] = remaining - 1
-          raise info[:error]
+          transient.attempt
         end
       end
 
@@ -302,15 +303,27 @@ module Teems
       end
 
       def find_response(path)
-        responses = @stubs[:responses]
-        # Try exact match first
-        return responses[path] if responses.key?(path)
+        return @stubs[:responses][path] if @stubs[:responses].key?(path)
 
-        # Try partial match
-        responses.each do |pattern, response|
+        @stubs[:responses].each do |pattern, response|
           return response if path.include?(pattern)
         end
         nil
+      end
+
+      # Tracks a transient error that fires a limited number of times
+      class TransientError
+        def initialize(error, remaining)
+          @error = error
+          @remaining = remaining
+        end
+
+        def attempt
+          return unless @remaining.positive?
+
+          @remaining -= 1
+          raise @error
+        end
       end
     end
   end

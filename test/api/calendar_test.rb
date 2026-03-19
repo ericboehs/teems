@@ -16,8 +16,8 @@ module CalendarApiTests
 
     def list_events_chicago
       @calendar_api.list_events(
-        start_dt: '2026-01-20T00:00:00', end_dt: '2026-01-20T23:59:59',
-        timezone: 'America/Chicago'
+        time_range: { start_dt: '2026-01-20T00:00:00', end_dt: '2026-01-20T23:59:59',
+                      timezone: 'America/Chicago' }
       )
     end
   end
@@ -34,9 +34,7 @@ module CalendarApiTests
 
     def test_list_events_calls_correct_endpoint
       @api_client.stub('calendarView', { 'value' => [] })
-      @calendar_api.list_events(
-        start_dt: '2026-01-20T00:00:00', end_dt: '2026-01-20T23:59:59', timezone: 'America/Chicago'
-      )
+      list_events_chicago
       call = @api_client.calls.first
       assert_equal :get, call[:method]
       assert_includes call[:path], '/v1.0/me/calendarView'
@@ -44,9 +42,7 @@ module CalendarApiTests
 
     def test_list_events_passes_date_params
       @api_client.stub('calendarView', { 'value' => [] })
-      @calendar_api.list_events(
-        start_dt: '2026-01-20T00:00:00', end_dt: '2026-01-20T23:59:59', timezone: 'America/Chicago'
-      )
+      list_events_chicago
       params = @api_client.calls.first[:params]
       assert_equal '2026-01-20T00:00:00', params['startDateTime']
       assert_equal '2026-01-20T23:59:59', params['endDateTime']
@@ -54,17 +50,13 @@ module CalendarApiTests
 
     def test_list_events_passes_timezone_header
       @api_client.stub('calendarView', { 'value' => [] })
-      @calendar_api.list_events(
-        start_dt: '2026-01-20T00:00:00', end_dt: '2026-01-20T23:59:59', timezone: 'America/Chicago'
-      )
+      list_events_chicago
       assert_equal 'outlook.timezone="America/Chicago"', @api_client.calls.first[:headers]['Prefer']
     end
 
     def test_list_events_passes_select_and_orderby
       @api_client.stub('calendarView', { 'value' => [] })
-      @calendar_api.list_events(
-        start_dt: '2026-01-20T00:00:00', end_dt: '2026-01-20T23:59:59', timezone: 'America/Chicago'
-      )
+      list_events_chicago
       params = @api_client.calls.first[:params]
       select_fields = params['$select']
       assert_includes select_fields, 'subject'
@@ -75,7 +67,8 @@ module CalendarApiTests
     def test_list_events_passes_top_param
       @api_client.stub('calendarView', { 'value' => [] })
       @calendar_api.list_events(
-        start_dt: '2026-01-20T00:00:00', end_dt: '2026-01-20T23:59:59', timezone: 'UTC', top: 25
+        time_range: { start_dt: '2026-01-20T00:00:00', end_dt: '2026-01-20T23:59:59',
+                      timezone: 'UTC' }, top: 25
       )
       assert_equal 25, @api_client.calls.first[:params]['$top']
     end

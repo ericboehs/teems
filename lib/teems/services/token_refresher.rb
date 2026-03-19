@@ -46,12 +46,12 @@ module Teems
       end
 
       def build_oidc_result(graph, skype)
-        skype_access_token = skype['access_token']
-        skype_token = exchange_token(skype_access_token)
+        skype_access, skype_refresh = skype.values_at('access_token', 'refresh_token')
+        skype_token = exchange_token(skype_access)
         return nil unless skype_token
 
-        { auth_token: graph['access_token'], skype_spaces_token: skype_access_token,
-          skype_token: skype_token, refresh_token: skype['refresh_token'] }
+        { auth_token: graph['access_token'], skype_spaces_token: skype_access,
+          skype_token: skype_token, refresh_token: skype_refresh }
       end
 
       def oidc_token_request(scope, refresh_token)
@@ -63,16 +63,11 @@ module Teems
 
       def send_oidc_request(scope, refresh_token)
         uri = oidc_token_uri
-        http = Net::HTTP.new(uri.host, uri.port).tap { |conn| configure_http(conn) }
-        http.request(build_oidc_request(uri, scope, refresh_token))
-      end
-
-      def build_oidc_request(uri, scope, token)
-        request = Net::HTTP::Post.new(uri)
-        request['Content-Type'] = 'application/x-www-form-urlencoded'
-        request['Origin'] = 'https://teams.microsoft.com'
-        request.body = oidc_request_body(scope, token)
-        request
+        post = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/x-www-form-urlencoded',
+                                        'Origin' => 'https://teams.microsoft.com')
+        post.body = oidc_request_body(scope, refresh_token)
+        Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 10,
+                                            read_timeout: 30) { |http| http.request(post) }
       end
 
       def oidc_request_body(scope, token)
@@ -140,33 +135,20 @@ module Teems
       end
 
       def exchange_token(skype_spaces_token)
-        http = build_exchange_http
-        request = build_exchange_request(skype_spaces_token)
-        parse_exchange_response(http.request(request))
+        response = post_authsvc_exchange(skype_spaces_token)
+        return log_exchange_failure(response) unless response.is_a?(Net::HTTPSuccess)
+
+        JSON.parse(response.body).dig('tokens', 'skypeToken')
       end
 
-      def build_exchange_http
-        Net::HTTP.new(authsvc_uri.host, authsvc_uri.port).tap { |conn| configure_http(conn) }
-      end
-
-      def configure_http(conn)
-        conn.use_ssl = true
-        conn.open_timeout = 10
-        conn.read_timeout = 30
-      end
-
-      def build_exchange_request(token)
-        request = Net::HTTP::Post.new(authsvc_uri)
-        request['Authorization'] = "Bearer #{token}"
-        request['Content-Type'] = 'application/json'
-        request.body = '{}'
-        request
-      end
-
-      def parse_exchange_response(http_response)
-        return log_exchange_failure(http_response) unless http_response.is_a?(Net::HTTPSuccess)
-
-        JSON.parse(http_response.body).dig('tokens', 'skypeToken')
+      def post_authsvc_exchange(token)
+        post = Net::HTTP::Post.new(authsvc_uri,
+                                   'Authorization' => "Bearer #{token}",
+                                   'Content-Type' => 'application/json')
+        post.body = '{}'
+        Net::HTTP.start(authsvc_uri.host, authsvc_uri.port,
+                        use_ssl: true, open_timeout: 10,
+                        read_timeout: 30) { |http| http.request(post) }
       end
 
       def log_exchange_failure(response)

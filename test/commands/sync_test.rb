@@ -40,7 +40,7 @@ module SyncCommandTests
   module SharedHelpers
     include SharedFixtures
 
-    private
+    module_function
 
     def build_sync_runner
       out = StringIO.new
@@ -61,7 +61,7 @@ module SyncCommandTests
 
     def execute_with_no_sleep(args, runner:)
       cmd = Teems::Commands::Sync.new(args, runner: runner)
-      cmd.define_singleton_method(:sleep) { |_| nil }
+      cmd.define_singleton_method(:sleep) { |_duration| nil }
       cmd.execute
     end
 
@@ -188,9 +188,7 @@ module SyncCommandTests
       [out, configured_runner(output: verbose_output)]
     end
 
-    def setup_verbose_response_logging(runner, _out)
-      api = runner.api_client
-      output = runner.output
+    def setup_verbose_response_logging(api, output)
       api.on_response = lambda { |path, code|
         output.debug("  API <- #{code} #{path[0..80]}") if output.verbose?
       }
@@ -203,7 +201,7 @@ module SyncCommandTests
                                  api_client: Teems::TestHelpers::MockApiClient.new)
       extractor = Object.new
       extractor.define_singleton_method(:extract) { extract_result }
-      runner.instance_variable_set(:@token_extractor, extractor)
+      runner.define_singleton_method(:token_extractor) { extractor }
       runner
     end
 
@@ -214,7 +212,7 @@ module SyncCommandTests
                                  api_client: Teems::TestHelpers::MockApiClient.new)
       extractor = Object.new
       extractor.define_singleton_method(:extract) { { auth_token: 'test-auth', skype_token: 'test-skype' } }
-      runner.instance_variable_set(:@token_extractor, extractor)
+      runner.define_singleton_method(:token_extractor) { extractor }
       runner
     end
 
@@ -669,7 +667,7 @@ module SyncCommandTests
         api = runner.api_client
         api.stub('conversations', { 'conversations' => [sample_ngmsg_chat] })
         api.stub('messages', { 'messages' => [sample_ng_msg_message], '_metadata' => {} })
-        setup_verbose_response_logging(runner, out)
+        setup_verbose_response_logging(api, runner.output)
         Teems::Commands::Sync.new(['-v'], runner: runner).execute
 
         assert_match(/Sync complete/, out.string)
@@ -757,7 +755,7 @@ module SyncCommandTests
 
       def init_sync_state
         super
-        @sync_store.define_singleton_method(:save_state) { |_| raise 'disk full' }
+        @sync_store.define_singleton_method(:save_state) { |_state| raise 'disk full' }
       end
     end
 

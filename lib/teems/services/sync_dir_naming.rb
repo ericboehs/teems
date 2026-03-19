@@ -17,7 +17,9 @@ module Teems
 
       private
 
-      def sanitize_id(id) = id.gsub(/[:@]/, '_')
+      def sanitize_id(id)
+        id.gsub(/[:@]/, '_')
+      end
 
       def sanitize_display_name(name)
         return nil if name.to_s.strip.empty?
