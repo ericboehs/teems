@@ -15,8 +15,8 @@ module Teems
       def backup_corrupt_file(path)
         backup_path = "#{path}.corrupt.#{Time.now.strftime('%Y%m%d%H%M%S')}"
         File.rename(path, backup_path)
-      rescue StandardError
-        nil
+      rescue SystemCallError, IOError => e
+        warn "teems: Could not back up corrupt file #{path}: #{e.message}"
       end
 
       def load_json_or_default(path, default)
@@ -31,19 +31,18 @@ module Teems
 
     # Chat state query operations for SyncStore
     module SyncStateQuery
-      def last_synced_time(state, chat_id)
-        ts = state.dig('chats', chat_id, 'last_synced_at')
-        return nil unless ts && sync_dir
+      private
 
-        Time.parse(ts)
+      def parse_synced_at(timestamp)
+        return nil unless timestamp
+
+        Time.parse(timestamp)
       rescue ArgumentError
         nil
       end
 
-      def chat_unavailable?(state, chat_id)
-        return false unless sync_dir
-
-        state.dig('chats', chat_id, 'unavailable') == true
+      def chat_entry_unavailable?(entry)
+        entry&.dig('unavailable') == true
       end
     end
 
@@ -163,6 +162,15 @@ module Teems
       end
 
       def sync_dir = @sync_dir ||= File.join(@xdg_paths.data_dir, SYNC_DIR)
+
+      def last_synced_time(state, chat_id)
+        parse_synced_at(state.dig('chats', chat_id, 'last_synced_at'))
+      end
+
+      def chat_unavailable?(state, chat_id)
+        chat_entry = state.dig('chats', chat_id)
+        chat_entry_unavailable?(chat_entry)
+      end
 
       def load_state
         load_json_or_default(File.join(sync_dir, STATE_FILE), {})

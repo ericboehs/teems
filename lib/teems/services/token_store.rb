@@ -50,7 +50,8 @@ module Teems
 
       def save(**tokens)
         @paths.ensure_config_dir
-        write_token_file(tokens.transform_keys(&:to_s).merge('saved_at' => Time.now.iso8601).compact)
+        data = tokens.transform_keys(&:to_s).merge('saved_at' => Time.now.iso8601).compact
+        write_token_file(data)
       rescue SystemCallError, IOError => e
         warn "teems: Could not save tokens: #{e.message}"
         false

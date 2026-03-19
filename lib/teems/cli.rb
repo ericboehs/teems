@@ -30,7 +30,7 @@ module Teems
       output.debug("Total API calls: #{count}") if @output && count.positive?
     end
 
-    def log_error(error) = (@output || true) && Support::ErrorLogger.log(error)
+    def log_error(error) = Support::ErrorLogger.log(error)
   end
 
   # Command-line interface entry point that dispatches to commands

@@ -161,7 +161,6 @@ module Teems
 
       def presence_label(presence_data)
         availability = presence_data.dig('presence', 'availability')
-        debug("Presence availability: #{availability}")
         WhoSchedule::STATUS_LABELS[availability] || availability
       end
 
@@ -247,13 +246,10 @@ module Teems
       end
 
       def search_results_json(results)
-        debug("Converting #{results.length} results to JSON")
-        debug('Serializing search results')
         results.map(&:to_h)
       end
 
       def present?(value)
-        debug('Checking field presence')
         value && !value.empty?
       end
     end
@@ -370,12 +366,10 @@ module Teems
       end
 
       def build_json_profile(attrs, presence_data, schedule)
-        debug('Building JSON profile')
         result = attrs.merge(presence: presence_data&.dig('presence', 'availability'),
                              out_of_office: presence_data&.dig('presence', 'calendarData', 'isOutOfOffice'))
         return result unless schedule
 
-        debug('Including schedule data in JSON profile')
         result.merge(availability_view: schedule['availabilityView'], working_hours: schedule['workingHours'])
       end
     end

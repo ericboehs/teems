@@ -88,7 +88,7 @@ module Teems
 
       def parse_behalf(activity)
         params = activity.dig('activityContext', 'templateParameters')
-        return nil unless params.is_a?(String) && output
+        return nil unless params.is_a?(String)
 
         JSON.parse(params)['behalfOf']
       rescue JSON::ParserError

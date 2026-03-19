@@ -152,8 +152,7 @@ module Teems
       end
 
       def default_download_dir
-        subdir = @options[:output_dir] || 'downloads'
-        File.join(Support::XdgPaths.new.data_dir, File.basename(subdir))
+        File.join(Support::XdgPaths.new.data_dir, 'downloads')
       end
 
       def unique_path(dir, name)

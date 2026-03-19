@@ -106,7 +106,9 @@ module Teems
 
       def poll_decrypt_result
         read_js = READ_DECRYPT_RESULT_JS.gsub('{{result_key}}', DECRYPT_RESULT_KEY)
-        poll_decrypt_attempts(read_js) || (log('Timed out waiting for v2 token decryption') && nil)
+        result = poll_decrypt_attempts(read_js)
+        log('Timed out waiting for v2 token decryption') unless result
+        result
       end
 
       def poll_decrypt_attempts(read_js)

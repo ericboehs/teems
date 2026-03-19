@@ -76,9 +76,17 @@ module Teems
     module OrgRenderer
       # Groups org chart data: managers chain, target user, and reports tree
       OrgData = Struct.new(:managers, :target, :reports) do
-        def to_json_hash(reporter)
+        def to_json_hash
           { managers: managers.map(&:to_h), target: target.to_h,
-            direct_reports: reporter.send(:json_reports, reports[:reports]) }
+            direct_reports: self.class.json_reports(reports[:reports]) }
+        end
+
+        def self.json_reports(reports)
+          reports.map { |report| json_report(*report.values_at(:user, :reports)) }
+        end
+
+        def self.json_report(user, sub_reports)
+          user.to_h.merge(direct_reports: json_reports(sub_reports))
         end
       end
 
@@ -86,7 +94,7 @@ module Teems
 
       def render_org(org_data)
         if @options[:json]
-          output_json(org_data.to_json_hash(self))
+          output_json(org_data.to_json_hash)
         else
           render_tree(org_data)
         end
@@ -111,14 +119,6 @@ module Teems
         title = profile.job_title
         name = profile.best_name
         title && !title.empty? ? "#{name} (#{title})" : name.to_s
-      end
-
-      def json_reports(reports)
-        reports.map { |report| json_report(*report.values_at(:user, :reports)) }
-      end
-
-      def json_report(user, sub_reports)
-        user.to_h.merge(direct_reports: json_reports(sub_reports))
       end
     end
 

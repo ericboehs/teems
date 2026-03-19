@@ -349,7 +349,6 @@ module Teems
       end
 
       def event_to_hash(event)
-        debug("Serializing event: verbose=#{@options[:verbose]}") if @options[:json]
         event.to_h.merge(start_time: event.start_time&.iso8601, end_time: event.end_time&.iso8601)
       end
     end
@@ -478,28 +477,26 @@ module Teems
       end
 
       def split_time_input(raw)
-        @time_raw = raw
-        debug("Parsing time: #{@time_raw}") if @options[:verbose]
-        @time_base = Date.today
-        split_tomorrow_time || split_today_time || split_absolute_time
+        base = Date.today
+        split_tomorrow_time(raw, base) || split_today_time(raw, base) || split_absolute_time(raw)
       end
 
-      def split_tomorrow_time
-        return unless @time_raw.start_with?('tomorrow ')
+      def split_tomorrow_time(raw, base)
+        return unless raw.start_with?('tomorrow ')
 
-        [@time_base + 1, @time_raw.delete_prefix('tomorrow ')]
+        [base + 1, raw.delete_prefix('tomorrow ')]
       end
 
-      def split_today_time
-        return unless @time_raw.match?(/\A(?:today\s+)?\d{1,2}:\d{2}\z/)
+      def split_today_time(raw, base)
+        return unless raw.match?(/\A(?:today\s+)?\d{1,2}:\d{2}\z/)
 
-        [@time_base, @time_raw.delete_prefix('today ')]
+        [base, raw.delete_prefix('today ')]
       end
 
-      def split_absolute_time
-        return unless @time_raw.match?(/\A\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\z/)
+      def split_absolute_time(raw)
+        return unless raw.match?(/\A\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\z/)
 
-        @time_raw.split(/\s+/, 2)
+        raw.split(/\s+/, 2)
       end
 
       def parse_relative_time(date, time_str)
