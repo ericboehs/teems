@@ -49,6 +49,7 @@ module Teems
       'sync' => Commands::Sync,
       'who' => Commands::Who,
       'org' => Commands::Org,
+      'status' => Commands::Status,
       'help' => Commands::Help
     }.freeze
 

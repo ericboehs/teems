@@ -1,9 +1,13 @@
 # frozen_string_literal: true
 
+require_relative 'users_presence'
+
 module Teems
   module Api
     # API wrapper for Microsoft Graph user endpoints
     class Users < Client
+      include UsersPresence
+
       USER_SELECT = %w[
         id displayName mail userPrincipalName jobTitle
         department officeLocation businessPhones mobilePhone

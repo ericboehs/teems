@@ -52,6 +52,7 @@ module Teems
     autoload :Parsing, 'teems/models/parsing'
     autoload :User, 'teems/models/user'
     autoload :UserProfile, 'teems/models/user_profile'
+    autoload :Duration, 'teems/models/duration'
   end
 
   # Application services for configuration, caching, and API communication
@@ -91,6 +92,7 @@ module Teems
     autoload :Help, 'teems/commands/help'
     autoload :Who, 'teems/commands/who'
     autoload :Org, 'teems/commands/org'
+    autoload :Status, 'teems/commands/status'
   end
 
   # Thin wrappers around Teams API endpoints

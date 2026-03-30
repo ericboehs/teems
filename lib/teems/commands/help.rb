@@ -49,7 +49,8 @@ module Teems
          ['messages', 'Read messages from a channel or chat'],
          ['sync', 'Sync chat history locally'],
          ['who', "Look up a user's profile"],
-         ['org', 'Show org chart for a user']]
+         ['org', 'Show org chart for a user'],
+         ['status', 'View and manage your presence status']]
       end
 
       def build_options_section
