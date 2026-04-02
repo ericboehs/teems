@@ -57,7 +57,7 @@ module Teems
       end
 
       def run_applescript(script)
-        output, status = Open3.capture2('osascript', '-e', script)
+        output, _stderr, status = Open3.capture3('osascript', '-e', script)
         return applescript_failure(status) unless status.success?
 
         output.strip

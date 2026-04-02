@@ -24,8 +24,9 @@ module Teems
 
       def compile_helper(source, binary)
         log('Compiling headless token helper...')
-        result = Open3.capture2(*swiftc_command(source, binary))
-        result.last.success? ? binary : log_and_nil('Failed to compile helper')
+        _stdout, stderr, status = Open3.capture3(*swiftc_command(source, binary))
+        log_helper_stderr(stderr)
+        status.success? ? binary : log_and_nil('Failed to compile helper')
       rescue Errno::ENOENT
         log_and_nil('swiftc not found')
       end
@@ -38,6 +39,10 @@ module Teems
       def log_and_nil(message)
         log(message)
         nil
+      end
+
+      def log_helper_stderr(stderr)
+        stderr.each_line { |line| log("[helper] #{line.chomp}") }
       end
 
       def helper_source_path
@@ -112,7 +117,8 @@ module Teems
         return nil unless binary
 
         log('Trying headless token extraction...')
-        output, status = Open3.capture2(binary, *build_helper_args)
+        output, stderr, status = Open3.capture3(binary, *build_helper_args)
+        log_helper_stderr(stderr)
         handle_helper_result(output, status.exitstatus)
       rescue StandardError => e
         log("Headless extraction error: #{e.message}")

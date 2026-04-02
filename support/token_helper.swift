@@ -146,10 +146,26 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
 
     // MARK: - WKNavigationDelegate
 
+    // Domains that are part of the normal OAuth/login flow
+    private static let allowedDomains = [
+        "login.microsoftonline.com",
+        "login.microsoft.com",
+        "login.live.com",
+        "device.login.microsoftonline.com",
+        "certauth.login.microsoftonline.com",
+        "teams.microsoft.com",
+        "aadcdn.msftauth.net",
+        "aadcdn.msauth.net",
+    ]
+
+    private func isAllowedDomain(_ host: String) -> Bool {
+        Self.allowedDomains.contains(where: { host == $0 || host.hasSuffix(".\($0)") })
+    }
+
     func webView(_ webView: WKWebView,
                  decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let url = navigationAction.request.url else {
+        guard let url = navigationAction.request.url, let host = url.host else {
             decisionHandler(.allow)
             return
         }
@@ -161,18 +177,32 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
             return
         }
 
+        // Detect Conditional Access / MDM enrollment redirects (e.g. portal.manage.microsoft.com,
+        // workspaceone) that WKWebView can't handle — fall back to Safari immediately.
+        if !isAllowedDomain(host) {
+            log("Redirected to \(host) (Conditional Access / MDM?) — Safari required")
+            decisionHandler(.cancel)
+            needsSafari()
+            return
+        }
+
         decisionHandler(.allow)
     }
 
     func webView(_ webView: WKWebView,
                  didReceive challenge: URLAuthenticationChallenge,
                  completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        let host = challenge.protectionSpace.host
         if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodClientCertificate {
-            log("Client cert requested from \(challenge.protectionSpace.host)")
-            if let credential = findPIVCredential() {
+            log("Client cert requested from \(host)")
+            // Only provide PIV cert to the CBA endpoint (certauth.login.microsoftonline.com).
+            // device.login.microsoftonline.com also requests certs for Desktop SSO, but that
+            // probe hangs off-VPN when the server can't reach on-prem AD to validate.
+            if host.hasSuffix(".certauth.login.microsoftonline.com"), let credential = findPIVCredential() {
                 completionHandler(.useCredential, credential)
                 return
             }
+            log("Skipping cert for \(host) (not certauth endpoint)")
         }
         completionHandler(.performDefaultHandling, nil)
     }
