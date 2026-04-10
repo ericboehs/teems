@@ -232,9 +232,9 @@ module OooCommandTests
       assert_equal 'Config OOO', patch_call[:body][:automaticRepliesSetting][:internalReplyMessage]
     end
 
-    def test_enable_creates_event_when_notify_configured
+    def test_enable_creates_event_with_event_flag
       ooo_config = { 'notify' => ['mgr@test.com'] }
-      runner = run_ooo_runner(['on'], config_ooo: ooo_config)
+      runner = run_ooo_runner(['on', '--event'], config_ooo: ooo_config)
       calls = runner.api_client.calls
       event_call = calls.find { |c| c[:path] == '/v1.0/me/events' }
       assert event_call
@@ -242,16 +242,16 @@ module OooCommandTests
       assert_equal 'mgr@test.com', event_call[:body][:attendees].first[:emailAddress][:address]
     end
 
-    def test_enable_skips_event_without_notify
-      runner = run_ooo_runner(['on'])
+    def test_enable_skips_event_by_default
+      ooo_config = { 'notify' => ['mgr@test.com'] }
+      runner = run_ooo_runner(['on'], config_ooo: ooo_config)
       calls = runner.api_client.calls
       event_call = calls.find { |c| c[:path] == '/v1.0/me/events' }
       assert_nil event_call
     end
 
-    def test_enable_skips_event_with_no_event_flag
-      ooo_config = { 'notify' => ['mgr@test.com'] }
-      runner = run_ooo_runner(['on', '--no-event'], config_ooo: ooo_config)
+    def test_enable_skips_event_without_notify_even_with_flag
+      runner = run_ooo_runner(['on', '--event'])
       calls = runner.api_client.calls
       event_call = calls.find { |c| c[:path] == '/v1.0/me/events' }
       assert_nil event_call
@@ -382,7 +382,7 @@ module OooCommandTests
     end
 
     def test_enable_handles_event_creation_failure
-      result = run_ooo_with_error(['on'], '/v1.0/me/events', config_ooo: { 'notify' => ['mgr@test.com'] })
+      result = run_ooo_with_error(['on', '--event'], '/v1.0/me/events', config_ooo: { 'notify' => ['mgr@test.com'] })
       assert_match(/calendar event/, result[:stderr])
     end
 

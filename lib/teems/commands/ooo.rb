@@ -17,7 +17,7 @@ module Teems
         --message TEXT       Auto-reply and status message
         --start DATE         Schedule start (YYYY-MM-DD), enables scheduled mode
         --end DATE           Schedule end (YYYY-MM-DD), required with --start
-        --no-event           Skip creating a calendar event
+        --event              Create an all-day OOO calendar event for notify list
         --no-status          Skip setting Teams status/presence
 
       CONFIGURATION:
@@ -151,7 +151,7 @@ module Teems
         results = {}
         results[:auto_reply] = set_auto_reply
         results[:status] = set_ooo_status unless @options[:no_status]
-        results[:event] = create_ooo_event unless @options[:no_event] || notify_list.empty?
+        results[:event] = create_ooo_event if @options[:event] && !notify_list.empty?
         results
       end
 
@@ -295,7 +295,7 @@ module Teems
         '--message' => ->(opts, args) { opts[:message] = args.shift },
         '--start' => ->(opts, args) { opts[:start] = args.shift },
         '--end' => ->(opts, args) { opts[:end] = args.shift },
-        '--no-event' => ->(opts, _args) { opts[:no_event] = true },
+        '--event' => ->(opts, _args) { opts[:event] = true },
         '--no-status' => ->(opts, _args) { opts[:no_status] = true }
       }.freeze
 
