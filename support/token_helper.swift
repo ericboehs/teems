@@ -35,10 +35,13 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
     private static let safariUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15"
 
-    init(timeout: Int, loginHint: String?, tenantId: String?) {
+    private let useCertAuth: Bool
+
+    init(timeout: Int, loginHint: String?, tenantId: String?, certAuth: Bool = false) {
         self.timeoutSeconds = timeout
         self.loginHint = loginHint
         self.tenantId = tenantId
+        self.useCertAuth = certAuth
         let config = WKWebViewConfiguration()
         config.websiteDataStore = WKWebsiteDataStore.default()
         self.webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: config)
@@ -195,14 +198,12 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
         let host = challenge.protectionSpace.host
         if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodClientCertificate {
             log("Client cert requested from \(host)")
-            // Only provide PIV cert to the CBA endpoint (certauth.login.microsoftonline.com).
-            // device.login.microsoftonline.com also requests certs for Desktop SSO, but that
-            // probe hangs off-VPN when the server can't reach on-prem AD to validate.
-            if host.hasSuffix(".certauth.login.microsoftonline.com"), let credential = findPIVCredential() {
+            if useCertAuth, host.hasSuffix(".certauth.login.microsoftonline.com"),
+               let credential = findPIVCredential() {
                 completionHandler(.useCredential, credential)
                 return
             }
-            log("Skipping cert for \(host) (not certauth endpoint)")
+            log("Skipping cert for \(host)")
         }
         completionHandler(.performDefaultHandling, nil)
     }
@@ -457,6 +458,7 @@ class TokenExtractor: NSObject, WKNavigationDelegate {
 var timeout = 90
 var loginHint: String?
 var tenantId: String?
+var certAuth = false
 var args = CommandLine.arguments.dropFirst()
 
 while let arg = args.first {
@@ -471,11 +473,13 @@ while let arg = args.first {
     case "--tenant-id":
         tenantId = String(args.first ?? "")
         args = args.dropFirst()
+    case "--certauth":
+        certAuth = true
     default:
         break
     }
 }
 
-let extractor = TokenExtractor(timeout: timeout, loginHint: loginHint, tenantId: tenantId)
+let extractor = TokenExtractor(timeout: timeout, loginHint: loginHint, tenantId: tenantId, certAuth: certAuth)
 extractor.run()
 RunLoop.main.run()

@@ -4,6 +4,7 @@ require 'open3'
 require_relative 'token_extractor_scripts'
 require_relative 'token_exchange_scripts'
 require_relative 'headless_extract'
+require_relative 'safari_oauth'
 
 module Teems
   module Services
@@ -285,18 +286,26 @@ module Teems
       include TokenExchanger
       include TokenPolling
       include HeadlessExtract
+      include SafariOAuth
 
       TEAMS_URL = 'https://teams.microsoft.com'
 
-      def initialize(output: nil)
+      def initialize(output: nil, auth_mode: :default)
         @output = output
+        @auth_mode = auth_mode
       end
 
       def extract
-        tokens = try_headless_extract
-        return tokens if tokens&.dig(:auth_token) && tokens[:skype_token]
+        try_headless_extract || try_safari_oauth || safari_extract
+      end
 
-        safari_extract
+      def manual_instructions = MANUAL_TOKEN_INSTRUCTIONS
+
+      private
+
+      def try_headless_extract
+        tokens = super
+        tokens if tokens&.dig(:auth_token) && tokens[:skype_token]
       end
 
       def safari_extract
@@ -309,10 +318,6 @@ module Teems
         open_teams_in_safari
         extract_and_close
       end
-
-      def manual_instructions = MANUAL_TOKEN_INSTRUCTIONS
-
-      private
 
       def extract_and_close
         log('Waiting for login to complete...')

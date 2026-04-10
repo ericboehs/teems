@@ -344,7 +344,7 @@ module HeadlessExtractTests
       obj = TestableHeadless.new
       obj.define_singleton_method(:stored_login_hint) { [nil, nil] }
 
-      assert_equal ['--timeout', '60'], obj.build_helper_args
+      assert_equal ['--timeout', '15'], obj.build_helper_args
     end
 
     def test_build_helper_args_with_hint_and_tenant

@@ -198,7 +198,7 @@ module AuthCommandTests
                                  api_client: Teems::TestHelpers::MockApiClient.new)
       extractor = Object.new
       extractor.define_singleton_method(:extract) { tokens }
-      runner.define_singleton_method(:token_extractor) { extractor }
+      runner.define_singleton_method(:token_extractor) { |**_| extractor }
       runner
     end
   end

@@ -15,10 +15,14 @@ module Teems
         manual      Show manual token extraction instructions
         set-tokens  Manually enter tokens from browser
 
+      OPTIONS:
+        --certauth  Use PIV certificate authentication (requires VPN)
+
       EXAMPLES:
-        teems auth login      # Open Safari and extract tokens
-        teems auth status     # Check if authenticated
-        teems auth logout     # Clear stored tokens
+        teems auth login              # Authenticate (headless or Safari OAuth)
+        teems auth login --certauth   # Use PIV cert auth (on VPN)
+        teems auth status             # Check if authenticated
+        teems auth logout             # Clear stored tokens
     HELP
 
     # Token input methods for manual token entry and file import
@@ -166,6 +170,15 @@ module Teems
       include AuthTokenInput
       include AuthStatus
 
+      AUTH_OPTIONS = {
+        '--certauth' => ->(opts, _args) { opts[:certauth] = true }
+      }.freeze
+
+      def initialize(args, runner:)
+        @options = {}
+        super
+      end
+
       def execute
         result = validate_options
         return result if result
@@ -174,6 +187,13 @@ module Teems
       end
 
       protected
+
+      def handle_option(arg, pending)
+        handler = AUTH_OPTIONS[arg]
+        return super unless handler
+
+        handler.call(@options, pending)
+      end
 
       def help_text = AUTH_HELP
 
@@ -194,7 +214,8 @@ module Teems
 
       def login
         print_login_banner
-        tokens = runner.token_extractor.extract
+        mode = @options[:certauth] ? :certauth : :default
+        tokens = runner.token_extractor(auth_mode: mode).extract
         handle_login_result(tokens)
       end
 

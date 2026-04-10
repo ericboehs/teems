@@ -56,8 +56,8 @@ module Teems
     end
 
     # Token extractor for Safari automation
-    def token_extractor
-      Services::TokenExtractor.new(output: @output)
+    def token_extractor(auth_mode: :default)
+      Services::TokenExtractor.new(output: @output, auth_mode: auth_mode)
     end
 
     # Token refresher for automatic token refresh

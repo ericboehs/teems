@@ -106,7 +106,7 @@ module Teems
       include HelperBinary
       include HttpSkypeExchange
 
-      HELPER_TIMEOUT = 60
+      HELPER_TIMEOUT = 15
       NEEDS_SAFARI_EXIT = 2
 
       private
@@ -137,7 +137,8 @@ module Teems
         hint, tenant = stored_login_hint
         ['--timeout', HELPER_TIMEOUT.to_s,
          *(hint ? ['--login-hint', hint] : []),
-         *(tenant ? ['--tenant-id', tenant] : [])]
+         *(tenant ? ['--tenant-id', tenant] : []),
+         *(@auth_mode == :certauth ? ['--certauth'] : [])]
       end
 
       # :reek:UtilityFunction

@@ -21,6 +21,10 @@ module TokenExtractorTests
       nil # Skip headless in tests, always use Safari path
     end
 
+    def try_safari_oauth
+      nil # Skip Safari OAuth in tests, always use legacy Safari path
+    end
+
     def run_applescript(_script)
       @applescript_call_count += 1
       @applescript_results.shift
