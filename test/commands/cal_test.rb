@@ -622,6 +622,94 @@ module CalCommandTests
     end
   end
 
+  # Tests for new event creation options: attendee types, display settings, meeting flags
+  class CreateEnhancedOptionsTest < Minitest::Test
+    include SharedHelpers
+
+    def test_create_includes_transaction_id
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00'])
+      assert_match(/\A\h{8}-/, runner.api_client.calls.first[:body][:transactionId])
+    end
+
+    def test_create_with_html_body
+      runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00', '--html', '<b>Bold</b>'])
+      assert_equal({ contentType: 'HTML', content: '<b>Bold</b>' },
+                   runner.api_client.calls.first[:body][:body])
+    end
+
+    def test_create_html_takes_precedence_over_body
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--body', 'plain', '--html', '<b>html</b>'])
+      assert_equal 'HTML', runner.api_client.calls.first[:body][:body][:contentType]
+    end
+
+    def test_create_with_optional_attendees
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--optional', 'opt@example.com'])
+      attendee = runner.api_client.calls.first[:body][:attendees].first
+      assert_equal 'optional', attendee[:type]
+      assert_equal 'opt@example.com', attendee[:emailAddress][:address]
+    end
+
+    def test_create_with_room_attendees
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--room', 'room@example.com'])
+      attendee = runner.api_client.calls.first[:body][:attendees].first
+      assert_equal 'resource', attendee[:type]
+    end
+
+    def test_create_with_mixed_attendee_types
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00',
+                                  '--attendees', 'a@x.com', '--optional', 'b@x.com', '--room', 'c@x.com'])
+      types = runner.api_client.calls.first[:body][:attendees].map { |a| a[:type] }
+      assert_equal %w[required optional resource], types
+    end
+
+    def test_create_with_no_teams
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--no-teams'])
+      assert_equal false, runner.api_client.calls.first[:body][:isOnlineMeeting]
+    end
+
+    def test_create_with_show_as
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--show-as', 'oof'])
+      assert_equal 'oof', runner.api_client.calls.first[:body][:showAs]
+    end
+
+    def test_create_with_importance
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--importance', 'high'])
+      assert_equal 'high', runner.api_client.calls.first[:body][:importance]
+    end
+
+    def test_create_with_sensitivity
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--sensitivity', 'private'])
+      assert_equal 'private', runner.api_client.calls.first[:body][:sensitivity]
+    end
+
+    def test_create_with_reminder
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--reminder', '15'])
+      body = runner.api_client.calls.first[:body]
+      assert_equal true, body[:isReminderOn]
+      assert_equal 15, body[:reminderMinutesBeforeStart]
+    end
+
+    def test_create_with_no_reminder
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--no-reminder'])
+      assert_equal false, runner.api_client.calls.first[:body][:isReminderOn]
+    end
+
+    def test_create_with_no_rsvp
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--no-rsvp'])
+      assert_equal false, runner.api_client.calls.first[:body][:responseRequested]
+    end
+
+    def test_create_with_no_time_proposals
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--no-time-proposals'])
+      assert_equal false, runner.api_client.calls.first[:body][:allowNewTimeProposals]
+    end
+
+    def test_create_with_hide_attendees
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--hide-attendees'])
+      assert_equal true, runner.api_client.calls.first[:body][:hideAttendees]
+    end
+  end
+
   # Tests for event creation output display
   class CreateDisplayTest < Minitest::Test
     include SharedHelpers

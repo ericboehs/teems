@@ -36,9 +36,21 @@ module Teems
         --duration MIN       Duration in minutes (alternative to --end)
         --all-day            Create an all-day event (use with --date)
         --location TEXT      Event location
-        --body TEXT          Event description
-        --attendees EMAILS   Comma-separated email addresses
+        --body TEXT          Event description (plain text)
+        --html TEXT          Event description (HTML)
+        --attendees EMAILS   Comma-separated required attendee emails
+        --optional EMAILS    Comma-separated optional attendee emails
+        --room EMAILS        Comma-separated room/resource emails
         --teams              Add a Teams online meeting link
+        --no-teams           Explicitly disable Teams meeting
+        --show-as STATUS     free, tentative, busy, oof, workingElsewhere
+        --importance LEVEL   low, normal, high
+        --sensitivity LEVEL  normal, personal, private, confidential
+        --reminder MIN       Reminder minutes before start
+        --no-reminder        Disable reminder
+        --no-rsvp            Don't request responses from attendees
+        --no-time-proposals  Don't allow new time proposals
+        --hide-attendees     Hide attendee list from other attendees
 
       EXAMPLES:
         teems cal                        # Interactive agenda (TTY)
@@ -515,9 +527,83 @@ module Teems
       end
     end
 
+    # Builds the event body hash fields for create requests
+    module CalEventFields
+      private
+
+      def add_optional_event_fields(body)
+        add_location_field(body)
+        add_body_field(body)
+        add_all_attendees(body)
+        add_meeting_flags(body)
+        add_display_fields(body)
+        body
+      end
+
+      def add_location_field(body)
+        location = @options[:location]
+        body[:location] = { displayName: location } if location
+      end
+
+      def add_body_field(body)
+        html = @options[:html]
+        text = @options[:body]
+        body[:body] = { contentType: 'HTML', content: html } if html
+        body[:body] = { contentType: 'text', content: text } if text && !html
+      end
+
+      def add_all_attendees(body)
+        list = collect_attendees
+        body[:attendees] = list unless list.empty?
+      end
+
+      def collect_attendees
+        entries = []
+        entries.concat(typed_attendees(@options[:attendees], 'required'))
+        entries.concat(typed_attendees(@options[:optional], 'optional'))
+        entries.concat(typed_attendees(@options[:rooms], 'resource'))
+        entries
+      end
+
+      def typed_attendees(emails, type)
+        return [] unless emails
+
+        emails.map { |email| { emailAddress: { address: email }, type: type } }
+      end
+
+      def add_meeting_flags(body)
+        apply_teams_setting(body)
+        body[:responseRequested] = false if @options[:no_rsvp]
+        body[:allowNewTimeProposals] = false if @options[:no_time_proposals]
+        body[:hideAttendees] = true if @options[:hide_attendees]
+      end
+
+      def apply_teams_setting(body)
+        teams = @options[:teams]
+        return unless teams || @options[:no_teams]
+
+        body[:isOnlineMeeting] = teams || false
+        body[:onlineMeetingProvider] = 'teamsForBusiness' if teams
+      end
+
+      def add_display_fields(body)
+        { showAs: @options[:show_as], importance: @options[:importance],
+          sensitivity: @options[:sensitivity] }.each { |key, val| body[key] = val if val }
+        apply_reminder(body)
+      end
+
+      def apply_reminder(body)
+        reminder = @options[:reminder]
+        return body.merge!(isReminderOn: false) if @options[:no_reminder]
+
+        body.merge!(isReminderOn: true, reminderMinutesBeforeStart: reminder) if reminder
+      end
+    end
+
     # Event creation subcommand
     module CalCreateActions
       include CalTimeParsing
+      include CalEventFields
 
       private
 
@@ -606,45 +692,56 @@ module Teems
         body = { subject: @create_subject,
                  start: { dateTime: start_dt, timeZone: tz },
                  end: { dateTime: end_dt, timeZone: tz },
-                 isAllDay: @options[:all_day] || false }
+                 isAllDay: @options[:all_day] || false,
+                 transactionId: SecureRandom.uuid }
         add_optional_event_fields(body)
       end
 
-      def add_optional_event_fields(body)
-        add_location_field(body)
-        add_body_field(body)
-        add_attendees_field(body)
-        add_teams_meeting(body) if @options[:teams]
-        body
-      end
-
-      def add_location_field(body)
-        location = @options[:location]
-        body[:location] = { displayName: location } if location
-      end
-
-      def add_body_field(body)
-        content = @options[:body]
-        body[:body] = { contentType: 'text', content: content } if content
-      end
-
-      def add_attendees_field(body)
-        emails = @options[:attendees]
-        body[:attendees] = emails.map { |email| attendee_entry(email) } if emails
-      end
-
-      def add_teams_meeting(body)
-        debug('Adding Teams meeting link') if @options[:verbose]
-        body[:isOnlineMeeting] = true
-        body[:onlineMeetingProvider] = 'teamsForBusiness'
-      end
-
-      def attendee_entry(email) = { emailAddress: { address: email }, type: 'required' }
-
       def display_create_result(event)
         success("Created: \"#{event.subject}\"")
+        warn_auto_teams(event)
         event.create_summary_lines.each { |line| puts "  #{line}" }
       end
+
+      def warn_auto_teams(event)
+        return unless @options[:no_teams] && event.online_meeting_url
+
+        output.warn('Note: Teams meeting was auto-added by your org settings.')
+        output.warn('Disable in Outlook: Settings > Calendar > Events > "Add online meeting to all meetings"')
+      end
+    end
+
+    # Option definitions for the cal command, extracted to keep class under line limit
+    module CalOptionDefs
+      SPLIT_EMAILS = ->(raw) { raw&.split(',')&.map(&:strip) || [] }
+      ALL = {
+        '--days' => ->(opts, args) { opts[:days] = args.shift.to_i },
+        '--week' => ->(opts, _args) { opts[:week] = true },
+        '--date' => ->(opts, args) { opts[:date] = args.shift },
+        '--no-interactive' => ->(opts, _args) { opts[:no_interactive] = true },
+        '--comment' => ->(opts, args) { opts[:comment] = args.shift },
+        '--no-send' => ->(opts, _args) { opts[:no_send] = true },
+        '--start' => ->(opts, args) { opts[:start] = args.shift },
+        '--end' => ->(opts, args) { opts[:end] = args.shift },
+        '--duration' => ->(opts, args) { opts[:duration] = args.shift.to_i },
+        '--all-day' => ->(opts, _args) { opts[:all_day] = true },
+        '--location' => ->(opts, args) { opts[:location] = args.shift },
+        '--body' => ->(opts, args) { opts[:body] = args.shift },
+        '--html' => ->(opts, args) { opts[:html] = args.shift },
+        '--attendees' => ->(opts, args) { opts[:attendees] = SPLIT_EMAILS.call(args.shift) },
+        '--optional' => ->(opts, args) { opts[:optional] = SPLIT_EMAILS.call(args.shift) },
+        '--room' => ->(opts, args) { opts[:rooms] = SPLIT_EMAILS.call(args.shift) },
+        '--teams' => ->(opts, _args) { opts[:teams] = true },
+        '--no-teams' => ->(opts, _args) { opts[:no_teams] = true },
+        '--show-as' => ->(opts, args) { opts[:show_as] = args.shift },
+        '--importance' => ->(opts, args) { opts[:importance] = args.shift },
+        '--sensitivity' => ->(opts, args) { opts[:sensitivity] = args.shift },
+        '--reminder' => ->(opts, args) { opts[:reminder] = args.shift.to_i },
+        '--no-reminder' => ->(opts, _args) { opts[:no_reminder] = true },
+        '--no-rsvp' => ->(opts, _args) { opts[:no_rsvp] = true },
+        '--no-time-proposals' => ->(opts, _args) { opts[:no_time_proposals] = true },
+        '--hide-attendees' => ->(opts, _args) { opts[:hide_attendees] = true }
+      }.freeze
     end
 
     # List calendar events and view event details
@@ -676,22 +773,7 @@ module Teems
 
       protected
 
-      CAL_OPTIONS = {
-        '--days' => ->(opts, args) { opts[:days] = args.shift.to_i },
-        '--week' => ->(opts, _args) { opts[:week] = true },
-        '--date' => ->(opts, args) { opts[:date] = args.shift },
-        '--no-interactive' => ->(opts, _args) { opts[:no_interactive] = true },
-        '--comment' => ->(opts, args) { opts[:comment] = args.shift },
-        '--no-send' => ->(opts, _args) { opts[:no_send] = true },
-        '--start' => ->(opts, args) { opts[:start] = args.shift },
-        '--end' => ->(opts, args) { opts[:end] = args.shift },
-        '--duration' => ->(opts, args) { opts[:duration] = args.shift.to_i },
-        '--all-day' => ->(opts, _args) { opts[:all_day] = true },
-        '--location' => ->(opts, args) { opts[:location] = args.shift },
-        '--body' => ->(opts, args) { opts[:body] = args.shift },
-        '--attendees' => ->(opts, args) { opts[:attendees] = args.shift&.split(',')&.map(&:strip) || [] },
-        '--teams' => ->(opts, _args) { opts[:teams] = true }
-      }.freeze
+      CAL_OPTIONS = CalOptionDefs::ALL
 
       def handle_option(arg, pending)
         handler = CAL_OPTIONS[arg]
