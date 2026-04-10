@@ -260,6 +260,11 @@ module Teems
         record_and_respond(path, {})
       end
 
+      def patch(_endpoint, path, account:, body: nil)
+        @calls << { method: :patch, path: path, body: body, account: account }
+        record_and_respond(path, {})
+      end
+
       def delete(url, endpoint_key:, account:)
         path = URI(url).path
         @calls << { method: :delete, path: path, account: account, endpoint_key: endpoint_key }

@@ -23,8 +23,12 @@ module Teems
         @api.post(endpoint, path, account: @account, body: body)
       end
 
-      def post_to(target_endpoint, path, body: nil)
-        @api.post(target_endpoint, path, account: @account, body: body)
+      def patch(path, body: nil)
+        @api.patch(endpoint, path, account: @account, body: body)
+      end
+
+      def post_to(target_endpoint, request)
+        @api.post(target_endpoint, request[:path], account: @account, body: request[:body])
       end
 
       def delete(path)

@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
 require_relative 'users_presence'
+require_relative 'users_mailbox'
 
 module Teems
   module Api
     # API wrapper for Microsoft Graph user endpoints
     class Users < Client
       include UsersPresence
+      include UsersMailbox
 
       USER_SELECT = %w[
         id displayName mail userPrincipalName jobTitle
@@ -64,7 +66,7 @@ module Teems
       end
 
       def teams_presence(mri)
-        post_to(:presence, '/v1/presence/getpresence/', body: [{ mri: mri }])
+        post_to(:presence, path: '/v1/presence/getpresence/', body: [{ mri: mri }])
       end
 
       def schedule(email, time_range:)

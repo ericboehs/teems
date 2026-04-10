@@ -45,6 +45,27 @@ module Teems
       end
     end
 
+    # POST/PATCH request methods, extracted to manage class size
+    module WriteRequests
+      def post(endpoint_key, path, **options)
+        account = options.delete(:account)
+        body = options.delete(:body)
+        req = Net::HTTP::Post.new(URI("#{resolve_endpoint(endpoint_key)}#{path}"))
+        apply_auth(req, account, endpoint_key)
+        req.body = JSON.generate(body) if body
+        run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
+      end
+
+      def patch(endpoint_key, path, **options)
+        account = options.delete(:account)
+        body = options.delete(:body)
+        req = Net::HTTP::Patch.new(URI("#{resolve_endpoint(endpoint_key)}#{path}"))
+        apply_auth(req, account, endpoint_key)
+        req.body = JSON.generate(body) if body
+        run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
+      end
+    end
+
     # HTTP response handling for API client
     module ResponseHandler
       private
@@ -86,6 +107,7 @@ module Teems
     class ApiClient
       include ConnectionPool
       include ResponseHandler
+      include WriteRequests
 
       NETWORK_ERRORS = [
         SocketError, Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ETIMEDOUT,
@@ -134,15 +156,6 @@ module Teems
         req = Net::HTTP::Get.new(uri)
         apply_headers(req, options.fetch(:headers, {}))
         apply_auth(req, account, endpoint_key)
-        run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
-      end
-
-      def post(endpoint_key, path, **options)
-        account = options.delete(:account)
-        body = options.delete(:body)
-        req = Net::HTTP::Post.new(URI("#{resolve_endpoint(endpoint_key)}#{path}"))
-        apply_auth(req, account, endpoint_key)
-        req.body = JSON.generate(body) if body
         run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
       end
 

@@ -2,6 +2,20 @@
 
 module Teems
   module Commands
+    COMMAND_DESCRIPTIONS = [
+      ['activity', 'Show activity feed (mentions, reactions, calendar)'],
+      ['auth', 'Authenticate with Teams'],
+      ['cal', 'List calendar events and view details'],
+      ['channels', 'List joined teams and channels'],
+      ['chats', 'List recent chats'],
+      ['messages', 'Read messages from a channel or chat'],
+      ['sync', 'Sync chat history locally'],
+      ['who', "Look up a user's profile"],
+      ['org', 'Show org chart for a user'],
+      ['ooo', 'Manage out-of-office status'],
+      ['status', 'View and manage your presence status']
+    ].freeze
+
     # Displays help information for commands
     class Help < Base
       def execute
@@ -40,18 +54,7 @@ module Teems
         "#{output.bold('COMMANDS:')}\n#{lines.join("\n")}\n\n"
       end
 
-      def command_descriptions
-        [['activity', 'Show activity feed (mentions, reactions, calendar)'],
-         ['auth', 'Authenticate with Teams'],
-         ['cal', 'List calendar events and view details'],
-         ['channels', 'List joined teams and channels'],
-         ['chats', 'List recent chats'],
-         ['messages', 'Read messages from a channel or chat'],
-         ['sync', 'Sync chat history locally'],
-         ['who', "Look up a user's profile"],
-         ['org', 'Show org chart for a user'],
-         ['status', 'View and manage your presence status']]
-      end
+      def command_descriptions = COMMAND_DESCRIPTIONS
 
       def build_options_section
         <<~OPTIONS

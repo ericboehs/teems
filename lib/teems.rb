@@ -91,6 +91,7 @@ module Teems
     autoload :Sync, 'teems/commands/sync'
     autoload :Help, 'teems/commands/help'
     autoload :Who, 'teems/commands/who'
+    autoload :Ooo, 'teems/commands/ooo'
     autoload :Org, 'teems/commands/org'
     autoload :Status, 'teems/commands/status'
   end
