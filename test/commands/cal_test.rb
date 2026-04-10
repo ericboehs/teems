@@ -616,9 +616,10 @@ module CalCommandTests
     def test_create_without_optional_fields_omits_them
       runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00'])
       body = runner.api_client.calls.first[:body]
-      refute body.key?(:location)
-      refute body.key?(:body)
-      refute body.key?(:attendees)
+      %i[location body attendees showAs importance sensitivity
+         isReminderOn responseRequested allowNewTimeProposals hideAttendees].each do |key|
+        refute body.key?(key), "Expected #{key} to be absent"
+      end
     end
   end
 
@@ -633,13 +634,15 @@ module CalCommandTests
 
     def test_create_with_html_body
       runner = run_create_runner(['Meeting', '--start', '2026-03-20 09:00', '--html', '<b>Bold</b>'])
-      assert_equal({ contentType: 'HTML', content: '<b>Bold</b>' },
+      assert_equal({ contentType: 'html', content: '<b>Bold</b>' },
                    runner.api_client.calls.first[:body][:body])
     end
 
     def test_create_html_takes_precedence_over_body
       runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--body', 'plain', '--html', '<b>html</b>'])
-      assert_equal 'HTML', runner.api_client.calls.first[:body][:body][:contentType]
+      body_field = runner.api_client.calls.first[:body][:body]
+      assert_equal 'html', body_field[:contentType]
+      assert_equal '<b>html</b>', body_field[:content]
     end
 
     def test_create_with_optional_attendees
@@ -663,8 +666,9 @@ module CalCommandTests
     end
 
     def test_create_with_no_teams
-      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--no-teams'])
-      assert_equal false, runner.api_client.calls.first[:body][:isOnlineMeeting]
+      body = run_create_runner(['M', '--start', '2026-03-20 09:00', '--no-teams']).api_client.calls.first[:body]
+      assert_equal false, body[:isOnlineMeeting]
+      refute body.key?(:onlineMeetingProvider)
     end
 
     def test_create_with_show_as
@@ -707,6 +711,85 @@ module CalCommandTests
     def test_create_with_hide_attendees
       runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--hide-attendees'])
       assert_equal true, runner.api_client.calls.first[:body][:hideAttendees]
+    end
+  end
+
+  # Tests for create option validation: enums, conflicts, and value ranges
+  class CreateValidationTest2 < Minitest::Test
+    include SharedHelpers
+
+    def test_invalid_show_as_returns_error
+      result = run_create(['M', '--start', '2026-03-20 09:00', '--show-as', 'banana'])
+      assert_match(/Invalid --show-as/, result[:stderr])
+      assert_match(/free, tentative/, result[:stderr])
+    end
+
+    def test_invalid_importance_returns_error
+      result = run_create(['M', '--start', '2026-03-20 09:00', '--importance', 'medium'])
+      assert_match(/Invalid --importance/, result[:stderr])
+    end
+
+    def test_invalid_sensitivity_returns_error
+      result = run_create(['M', '--start', '2026-03-20 09:00', '--sensitivity', 'secret'])
+      assert_match(/Invalid --sensitivity/, result[:stderr])
+    end
+
+    def test_teams_and_no_teams_conflict
+      result = run_create(['M', '--start', '2026-03-20 09:00', '--teams', '--no-teams'])
+      assert_match(/Cannot use --teams and --no-teams/, result[:stderr])
+    end
+
+    def test_negative_reminder_returns_error
+      result = run_create(['M', '--start', '2026-03-20 09:00', '--reminder', '-5'])
+      assert_match(/positive number/, result[:stderr])
+    end
+
+    def test_zero_reminder_returns_error
+      result = run_create(['M', '--start', '2026-03-20 09:00', '--reminder', '0'])
+      assert_match(/positive number/, result[:stderr])
+    end
+
+    def test_valid_enums_accepted
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00',
+                                  '--show-as', 'oof', '--importance', 'high', '--sensitivity', 'private'])
+      body = runner.api_client.calls.first[:body]
+      assert_equal 'oof', body[:showAs]
+      assert_equal 'high', body[:importance]
+      assert_equal 'private', body[:sensitivity]
+    end
+
+    def test_trailing_comma_in_attendees_ignored
+      runner = run_create_runner(['M', '--start', '2026-03-20 09:00', '--attendees', 'a@x.com,'])
+      attendees = runner.api_client.calls.first[:body][:attendees]
+      assert_equal 1, attendees.length
+      assert_equal 'a@x.com', attendees.first[:emailAddress][:address]
+    end
+  end
+
+  # Tests for warn_auto_teams behavior
+  class CreateAutoTeamsWarningTest < Minitest::Test
+    include SharedHelpers
+
+    def test_warn_when_no_teams_but_org_adds_meeting
+      event_data = sample_event_data.merge(
+        'onlineMeeting' => { 'joinUrl' => 'https://teams.microsoft.com/l/meetup-join/test' }
+      )
+      result = run_create(['M', '--start', '2026-03-20 14:00', '--no-teams'], stub_response: event_data)
+      assert_match(/auto-added by your org/, result[:stderr])
+    end
+
+    def test_no_warn_without_no_teams_flag
+      event_data = sample_event_data.merge(
+        'onlineMeeting' => { 'joinUrl' => 'https://teams.microsoft.com/l/meetup-join/test' }
+      )
+      result = run_create(['M', '--start', '2026-03-20 14:00'], stub_response: event_data)
+      refute_match(/auto-added/, result[:stderr])
+    end
+
+    def test_no_warn_when_no_online_meeting
+      event_data = sample_event_data.merge('onlineMeeting' => nil)
+      result = run_create(['M', '--start', '2026-03-20 14:00', '--no-teams'], stub_response: event_data)
+      refute_match(/auto-added/, result[:stderr])
     end
   end
 

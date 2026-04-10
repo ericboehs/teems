@@ -548,7 +548,7 @@ module Teems
       def add_body_field(body)
         html = @options[:html]
         text = @options[:body]
-        body[:body] = { contentType: 'HTML', content: html } if html
+        body[:body] = { contentType: 'html', content: html } if html
         body[:body] = { contentType: 'text', content: text } if text && !html
       end
 
@@ -600,10 +600,49 @@ module Teems
       end
     end
 
+    # Validates create option values before building the API request
+    module CalCreateValidation
+      private
+
+      def validate_create_options
+        validate_conflicting_flags ||
+          validate_enum(:show_as, CalOptionDefs::SHOW_AS_VALUES) ||
+          validate_enum(:importance, CalOptionDefs::IMPORTANCE_VALUES) ||
+          validate_enum(:sensitivity, CalOptionDefs::SENSITIVITY_VALUES) ||
+          validate_positive_reminder
+      end
+
+      def validate_conflicting_flags
+        conflict_error('--teams', '--no-teams') if @options[:teams] && @options[:no_teams]
+      end
+
+      def conflict_error(flag_a, flag_b)
+        error("Cannot use #{flag_a} and #{flag_b} together")
+        1
+      end
+
+      def validate_enum(option, valid_values)
+        value = @options[option]
+        return unless value && !valid_values.include?(value)
+
+        error("Invalid --#{option.to_s.tr('_', '-')} value: #{value}. Valid: #{valid_values.join(', ')}")
+        1
+      end
+
+      def validate_positive_reminder
+        reminder = @options[:reminder]
+        return unless reminder && !reminder.positive?
+
+        error('Reminder must be a positive number of minutes')
+        1
+      end
+    end
+
     # Event creation subcommand
     module CalCreateActions
       include CalTimeParsing
       include CalEventFields
+      include CalCreateValidation
 
       private
 
@@ -616,6 +655,9 @@ module Teems
       end
 
       def validated_create_event
+        validation = validate_create_options
+        return validation if validation
+
         times = resolve_create_times
         return times if times.is_a?(Integer)
 
@@ -711,9 +753,12 @@ module Teems
       end
     end
 
-    # Option definitions for the cal command, extracted to keep class under line limit
+    # Option definitions and validation for the cal command
     module CalOptionDefs
-      SPLIT_EMAILS = ->(raw) { raw&.split(',')&.map(&:strip) || [] }
+      SHOW_AS_VALUES = %w[free tentative busy oof workingElsewhere].freeze
+      IMPORTANCE_VALUES = %w[low normal high].freeze
+      SENSITIVITY_VALUES = %w[normal personal private confidential].freeze
+      SPLIT_EMAILS = ->(raw) { raw ? raw.split(',').map(&:strip).reject(&:empty?) : [] }
       ALL = {
         '--days' => ->(opts, args) { opts[:days] = args.shift.to_i },
         '--week' => ->(opts, _args) { opts[:week] = true },
