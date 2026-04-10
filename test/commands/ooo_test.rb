@@ -96,6 +96,30 @@ module OooCommandTests
         'organizer' => { 'emailAddress' => { 'name' => 'Test', 'address' => 'test@test.com' } },
         'attendees' => [], 'location' => { 'displayName' => '' } }
     end
+
+    def run_ooo_with_error(args, error_path, config_ooo: nil)
+      with_temp_config do |dir|
+        write_ooo_config(dir, config_ooo) if config_ooo
+        capture_output do |output|
+          runner = configured_runner(output: output)
+          stub_ooo_apis(runner)
+          runner.api_client.stub_error(error_path, Teems::ApiError.new('Error', status_code: 403))
+          Teems::Commands::Ooo.new(args, runner: runner).execute
+        end
+      end
+    end
+
+    def run_ooo_with_dual_errors
+      with_temp_config do
+        capture_output do |output|
+          runner = configured_runner(output: output)
+          err = Teems::ApiError.new('Forbidden', status_code: 403)
+          runner.api_client.stub_error('/v1.0/me/mailboxSettings/automaticRepliesSetting', err)
+          runner.api_client.stub_error('/v1.0/me/presence', err)
+          Teems::Commands::Ooo.new([], runner: runner).execute
+        end
+      end
+    end
   end
 
   # Tests for OOO status display
@@ -187,6 +211,7 @@ module OooCommandTests
       calls = runner.api_client.calls
       patch_call = calls.find { |c| c[:path] == '/v1.0/me/mailboxSettings' }
       assert patch_call
+      assert_equal :patch, patch_call[:method]
       settings = patch_call[:body][:automaticRepliesSetting]
       assert_equal 'alwaysEnabled', settings[:status]
     end
@@ -386,41 +411,41 @@ module OooCommandTests
       assert_match(/calendar event/, result[:stderr])
     end
 
-    def test_start_without_end_returns_error
-      result = run_ooo(['on', '--start', '2026-04-14'])
-      assert_match(/--end is required/, result[:stderr])
-    end
-
     def test_show_status_api_error
       result = run_ooo_with_dual_errors
       assert_match(/permission denied/, result[:stdout])
     end
+  end
 
-    private
+  # Tests for input validation: dates, schedule conflicts
+  class ValidationTest < Minitest::Test
+    include Helpers
 
-    def run_ooo_with_error(args, error_path, config_ooo: nil)
-      with_temp_config do |dir|
-        write_ooo_config(dir, config_ooo) if config_ooo
-        capture_output do |output|
-          runner = configured_runner(output: output)
-          stub_ooo_apis(runner)
-          runner.api_client.stub_error(error_path, Teems::ApiError.new('Error', status_code: 403))
-          Teems::Commands::Ooo.new(args, runner: runner).execute
-        end
-      end
+    def test_start_without_end_halts_execution
+      runner = run_ooo_runner(['on', '--start', '2026-04-14'])
+      assert_empty runner.api_client.calls, 'No API calls should be made after validation error'
     end
 
-    def run_ooo_with_dual_errors
-      with_temp_config do
-        capture_output do |output|
-          runner = configured_runner(output: output)
-          err = Teems::ApiError.new('Forbidden', status_code: 403)
-          runner.api_client.stub_error('/v1.0/me/mailboxSettings/automaticRepliesSetting', err)
-          runner.api_client.stub_error('/v1.0/me/presence', err)
-          Teems::Commands::Ooo.new([], runner: runner).execute
-        end
-      end
+    def test_start_without_end_shows_error
+      result = run_ooo(['on', '--start', '2026-04-14'])
+      assert_match(/--end is required/, result[:stderr])
     end
+
+    def test_invalid_start_date_shows_error
+      result = run_ooo(['on', '--start', 'not-a-date', '--end', '2026-04-18'])
+      assert_match(/Invalid date for --start/, result[:stderr])
+    end
+
+    def test_invalid_end_date_shows_error
+      result = run_ooo(['on', '--start', '2026-04-14', '--end', 'bogus'])
+      assert_match(/Invalid date for --end/, result[:stderr])
+    end
+  end
+
+  # Tests for dispatch and help
+  # Tests for dispatch, help, and misc flags
+  class DispatchTest < Minitest::Test
+    include Helpers
 
     def test_disable_with_no_status_flag
       runner = run_ooo_runner(['off', '--no-status'])
@@ -428,11 +453,6 @@ module OooCommandTests
       refute(calls.any? { |c| c[:path].include?('setStatusMessage') })
       refute(calls.any? { |c| c[:path].include?('clearPresence') })
     end
-  end
-
-  # Tests for dispatch and help
-  class DispatchTest < Minitest::Test
-    include Helpers
 
     def test_unknown_action_returns_error
       result = run_ooo(['bogus'])

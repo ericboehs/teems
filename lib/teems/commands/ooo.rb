@@ -51,9 +51,6 @@ module Teems
         presence = fetch_presence
         render_ooo_status(replies, presence)
         0
-      rescue ApiError => e
-        error("Failed to fetch OOO status: #{e.message}")
-        1
       end
 
       def fetch_auto_replies
@@ -100,7 +97,7 @@ module Teems
 
       def format_dt(raw)
         Time.parse(raw).strftime('%Y-%m-%d %H:%M')
-      rescue StandardError
+      rescue ArgumentError
         raw.to_s
       end
 
@@ -126,7 +123,9 @@ module Teems
       private
 
       def enable_ooo
-        validate_schedule_dates
+        result = validate_create_options
+        return result if result
+
         results = execute_ooo_steps
         summarize_results(results)
         results.values.all? ? 0 : 1
@@ -140,10 +139,25 @@ module Teems
         results.values.all? ? 0 : 1
       end
 
+      def validate_create_options
+        validate_schedule_dates || validate_date_format(:start) || validate_date_format(:end)
+      end
+
       def validate_schedule_dates
         return unless @options[:start] && !@options[:end]
 
         error('--end is required when using --start')
+        1
+      end
+
+      def validate_date_format(key)
+        value = @options[key]
+        return unless value
+
+        Date.parse(value)
+        nil
+      rescue ArgumentError
+        error("Invalid date for --#{key}: #{value}. Expected format: YYYY-MM-DD")
         1
       end
 
@@ -287,10 +301,15 @@ module Teems
 
     # Manage out-of-office: auto-reply, status, presence, and calendar event
     class Ooo < Base
-      include CalDateRange
+      include Support::Timezone
       include OooDisplay
       include OooActions
       include OooBuildHelpers
+
+      def initialize(args, runner:)
+        @options = {}
+        super
+      end
 
       OOO_OPTIONS = {
         '--message' => ->(opts, args) { opts[:message] = args.shift },
@@ -304,11 +323,6 @@ module Teems
         'on' => :enable_ooo, 'off' => :disable_ooo,
         'config' => :show_config
       }.freeze
-
-      def initialize(args, runner:)
-        @options = {}
-        super
-      end
 
       def execute
         result = validate_options
@@ -354,11 +368,15 @@ module Teems
       end
 
       def summarize_results(results)
-        debug("OOO enabled: #{count_successes(results)}/#{results.size} steps succeeded")
+        return if results.values.all?
+
+        output.warn("OOO partially enabled: #{count_successes(results)}/#{results.size} steps succeeded")
       end
 
       def summarize_disable_results(results)
-        debug("OOO disabled: #{count_successes(results)}/#{results.size} steps succeeded")
+        return if results.values.all?
+
+        output.warn("OOO partially disabled: #{count_successes(results)}/#{results.size} steps succeeded")
       end
 
       def count_successes(results) = results.values.count(true)
