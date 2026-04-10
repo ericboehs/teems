@@ -28,7 +28,7 @@ module Teems
     def sample_ng_msg_message
       { 'id' => '1768935087318', 'content' => '<p>Hello from ng.msg</p>',
         'imdisplayname' => 'Jane Smith',
-        'from' => 'https://ng.msg.gcc.teams.microsoft.com/v1/users/ME/contacts/8:orgid:abc123',
+        'from' => 'https://amer.ng.msg.teams.microsoft.com/v1/users/ME/contacts/8:orgid:abc123',
         'composetime' => '2026-01-20T12:00:00.000Z', 'messagetype' => 'RichText/Html',
         'properties' => { 'emotions' => [{ 'key' => 'like', 'users' => [{ 'mri' => 'user1' }] }] } }
     end

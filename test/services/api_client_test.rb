@@ -6,12 +6,13 @@ require 'test_helper'
 module ApiClientTests
   # Tests basic ApiClient initialization, constants, and callbacks
   class BasicTest < Minitest::Test
-    def test_endpoints_constant_defined
-      endpoints = Teems::Services::ApiClient::ENDPOINTS
+    def test_default_endpoints_constant_defined
+      endpoints = Teems::Services::ApiClient::DEFAULT_ENDPOINTS
 
       assert_equal 'https://graph.microsoft.com', endpoints[:graph]
       assert_equal 'https://teams.microsoft.com', endpoints[:teams]
-      assert_equal 'https://ng.msg.gcc.teams.microsoft.com', endpoints[:msgservice]
+      assert_equal 'https://amer.ng.msg.teams.microsoft.com', endpoints[:msgservice]
+      assert_equal 'https://presence.teams.microsoft.com', endpoints[:presence]
     end
 
     def test_network_errors_constant_defined

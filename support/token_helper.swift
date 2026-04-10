@@ -5,7 +5,7 @@ import CommonCrypto
 
 // Headless WKWebView token extractor for Microsoft Teams
 // Uses OAuth2 implicit flow with redirect interception (inspired by fossteams/teams-token)
-// PIV/smart card cert from macOS Keychain for TLS client auth
+// Optional certificate auth from macOS Keychain for TLS client auth
 // Outputs JSON to stdout, logs to stderr
 // Exit codes: 0 = success, 1 = error, 2 = needs Safari
 

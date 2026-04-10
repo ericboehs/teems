@@ -33,7 +33,7 @@ teems requires authentication tokens from Teams. The easiest way is Safari autom
 teems auth login
 ```
 
-This opens Safari to teams.microsoft.com, waits for you to log in (PIV/Entra ID), then extracts the tokens.
+This opens Safari to teams.microsoft.com, waits for you to log in, then extracts the tokens.
 
 Alternatively, extract tokens manually:
 
@@ -97,6 +97,21 @@ Configuration is stored in XDG-compliant directories:
 
 - Config: `~/.config/teems/`
 - Cache: `~/.cache/teems/`
+
+### Custom Endpoints
+
+By default, teems connects to commercial Microsoft Teams endpoints. To use a different environment (e.g., GCC, GCC High), add an `endpoints` section to `~/.config/teems/config.json`:
+
+```json
+{
+  "endpoints": {
+    "msgservice": "https://ng.msg.gcc.teams.microsoft.com",
+    "presence": "https://presence.gcc.teams.microsoft.com"
+  }
+}
+```
+
+Available endpoint keys: `graph`, `teams`, `msgservice`, `presence`.
 
 ## Token Expiration
 

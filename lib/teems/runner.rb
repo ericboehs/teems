@@ -21,9 +21,10 @@ module Teems
       output: Formatters::Output.new,
       config: Services::Configuration.new,
       token_store: Services::TokenStore.new,
-      api_client: Services::ApiClient.new,
+      api_client: nil,
       cache_store: Services::CacheStore.new
     )
+      api_client ||= Services::ApiClient.new(endpoints: config['endpoints'] || {})
       @output = output
       @config = config
       @token_store = token_store

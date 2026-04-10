@@ -16,11 +16,11 @@ module Teems
         set-tokens  Manually enter tokens from browser
 
       OPTIONS:
-        --certauth  Use PIV certificate authentication (requires VPN)
+        --certauth  Use certificate authentication (requires VPN)
 
       EXAMPLES:
         teems auth login              # Authenticate (headless or Safari OAuth)
-        teems auth login --certauth   # Use PIV cert auth (on VPN)
+        teems auth login --certauth   # Use cert auth (on VPN)
         teems auth status             # Check if authenticated
         teems auth logout             # Clear stored tokens
     HELP
@@ -222,7 +222,7 @@ module Teems
       def print_login_banner
         puts 'Starting Teams authentication...'
         puts 'Safari will open to teams.microsoft.com'
-        puts 'Please complete the login process (PIV/Entra ID)'
+        puts 'Please complete the login process'
         puts
       end
 

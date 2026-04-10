@@ -4,11 +4,11 @@ module Teems
   module Services
     # HTTP connection pool management for API endpoints
     module ConnectionPool
-      ENDPOINTS = {
+      DEFAULT_ENDPOINTS = {
         graph: 'https://graph.microsoft.com',
         teams: 'https://teams.microsoft.com',
-        msgservice: 'https://ng.msg.gcc.teams.microsoft.com',
-        presence: 'https://presence.gcc.teams.microsoft.com'
+        msgservice: 'https://amer.ng.msg.teams.microsoft.com',
+        presence: 'https://presence.teams.microsoft.com'
       }.freeze
 
       TIMEOUTS = { open_timeout: 10, read_timeout: 30, keep_alive_timeout: 30 }.freeze
@@ -121,23 +121,26 @@ module Teems
       }.freeze
       DEFAULT_AUTH_HEADER = ->(account) { ['Authorization', account.teams_auth_header] }
 
-      attr_reader :on_request, :on_response, :call_count
+      attr_reader :call_count
 
-      def initialize(on_request: nil, on_response: nil)
+      def initialize(on_request: nil, on_response: nil, endpoints: {})
         @call_count = 0
-        @on_request = on_request
-        @on_response = on_response
+        @callbacks = { on_request: on_request, on_response: on_response }
         @http_cache = {}
+        @endpoints = DEFAULT_ENDPOINTS.merge(endpoints.transform_keys(&:to_sym))
       end
+
+      def on_request = @callbacks[:on_request]
+      def on_response = @callbacks[:on_response]
 
       def on_request=(callback)
         close_idle_connections
-        @on_request = callback
+        @callbacks[:on_request] = callback
       end
 
       def on_response=(callback)
         close_idle_connections
-        @on_response = callback
+        @callbacks[:on_response] = callback
       end
 
       def close
@@ -184,7 +187,7 @@ module Teems
         end
       end
 
-      def resolve_endpoint(key) = ENDPOINTS[key] || raise(ArgumentError, "Unknown endpoint: #{key}")
+      def resolve_endpoint(key) = @endpoints[key] || raise(ArgumentError, "Unknown endpoint: #{key}")
 
       def apply_auth(request, account, endpoint_key)
         request['Content-Type'] = 'application/json'
@@ -202,11 +205,11 @@ module Teems
 
       def track_request(path)
         @call_count += 1
-        @on_request&.call(path, @call_count)
+        @callbacks[:on_request]&.call(path, @call_count)
       end
 
       def process_response(path, response)
-        @on_response&.call(path, response.code)
+        @callbacks[:on_response]&.call(path, response.code)
         handle_response(response)
       end
     end

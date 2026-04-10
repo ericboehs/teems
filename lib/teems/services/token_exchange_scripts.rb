@@ -31,7 +31,7 @@ module Teems
         To manually extract tokens:
 
         1. Open https://teams.microsoft.com in your browser
-        2. Log in with your credentials (PIV/Entra ID)
+        2. Log in with your credentials
         3. Open Developer Tools (F12 or Cmd+Option+I)
         4. Go to Console tab and run:
 
