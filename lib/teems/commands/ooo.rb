@@ -257,7 +257,7 @@ module Teems
           start: ooo_event_time(:start),
           end: ooo_event_time(:end),
           isAllDay: true,
-          showAs: 'oof',
+          showAs: 'free',
           isReminderOn: false,
           isOnlineMeeting: false,
           transactionId: SecureRandom.uuid,

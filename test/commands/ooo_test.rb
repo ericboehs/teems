@@ -238,7 +238,7 @@ module OooCommandTests
       calls = runner.api_client.calls
       event_call = calls.find { |c| c[:path] == '/v1.0/me/events' }
       assert event_call
-      assert_equal 'oof', event_call[:body][:showAs]
+      assert_equal 'free', event_call[:body][:showAs]
       assert_equal 'mgr@test.com', event_call[:body][:attendees].first[:emailAddress][:address]
     end
 
