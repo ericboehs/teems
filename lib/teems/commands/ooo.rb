@@ -287,6 +287,7 @@ module Teems
 
     # Manage out-of-office: auto-reply, status, presence, and calendar event
     class Ooo < Base
+      include CalDateRange
       include OooDisplay
       include OooActions
       include OooBuildHelpers
@@ -361,13 +362,6 @@ module Teems
       end
 
       def count_successes(results) = results.values.count(true)
-
-      def detect_timezone
-        tz = ENV.fetch('TZ', '')
-        return tz unless tz.empty?
-
-        Time.now.strftime('%Z')
-      end
     end
   end
 end
