@@ -92,18 +92,45 @@ module Teems
       end
     end
 
-    # Downloads DASH segments and assembles track data
+    # Downloads DASH segments in parallel and assembles track data
     module SegmentDownloader
+      PARALLEL_DOWNLOADS = 5
+
       private
 
       def download_track_segments(track, base_url)
-        data = String.new(fetch_segment(resolve_url(base_url, track.init_url)))
-        track.segments.each_with_index do |seg, idx|
-          path = track.media_template.gsub('$Time$', seg.start.to_s)
-          data << fetch_segment(resolve_url(base_url, path))
-          print "\r  Downloading: #{idx + 1}/#{track.segment_count} segments"
+        urls = track.segments.map { |seg| resolve_url(base_url, segment_path(track, seg)) }
+        init = fetch_segment(resolve_url(base_url, track.init_url))
+        results = parallel_fetch(urls, track.segment_count)
+        String.new(init).tap { |data| results.each { |seg| data << seg } }
+      end
+
+      def segment_path(track, seg)
+        track.media_template.gsub('$Time$', seg.start.to_s)
+      end
+
+      def parallel_fetch(urls, total)
+        @seg_results = Array.new(urls.length)
+        @seg_queue = Queue.new
+        @seg_total = total
+        @seg_mutex = Mutex.new
+        urls.each_with_index { |url, idx| @seg_queue << [url, idx] }
+        PARALLEL_DOWNLOADS.times.map { start_fetch_thread }.each(&:join)
+        @seg_results
+      end
+
+      def start_fetch_thread
+        Thread.new { fetch_from_queue }
+      end
+
+      def fetch_from_queue
+        loop do
+          item = @seg_queue.pop(true)
+          @seg_results[item[1]] = fetch_segment(item[0])
+          @seg_mutex.synchronize { print "\r  Downloading: #{@seg_results.count { _1 }}/#{@seg_total} segments" }
+        rescue ThreadError
+          break
         end
-        data
       end
 
       def resolve_url(base_url, path)
