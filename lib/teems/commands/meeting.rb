@@ -18,6 +18,7 @@ module Teems
       OPTIONS:
         --transcript     Download meeting transcript (WebVTT)
         --recording      Download meeting recording (MP4, requires ffmpeg)
+                         Combine with --transcript to embed subtitles
         --chat           Show meeting chat messages
         -o, --output-dir Directory for downloads (default: current directory)
         -v, --verbose    Show debug output
@@ -30,6 +31,7 @@ module Teems
         teems meeting 19:meeting_abc123@thread.v2 --chat
         teems meeting 19:meeting_abc123@thread.v2 --transcript
         teems meeting 19:meeting_abc123@thread.v2 --recording -o ~/Downloads
+        teems meeting 19:meeting_abc123@thread.v2 --recording --transcript -o ~/Downloads
         teems meeting AAMkAGVmMDEz...        # By calendar event ID
     HELP
 
@@ -450,11 +452,16 @@ module Teems
           display_meeting_chat(classified[:chat_messages])
           return 0
         end
+        return download_recording_with_transcript(target, classified) if @options[:recording]
         return download_transcript(target, classified) || 0 if @options[:transcript]
-        return download_recording(target, classified) || 0 if @options[:recording]
 
         display_meeting_summary(target, classified)
         0
+      end
+
+      def download_recording_with_transcript(target, classified)
+        download_transcript(target, classified) if @options[:transcript]
+        download_recording(target, classified) || 0
       end
     end
   end

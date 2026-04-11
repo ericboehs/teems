@@ -1200,7 +1200,7 @@ module MeetingCommandTests
               'composetime' => '2026-01-20T11:00:00.000Z',
               'content' => '<div>No link here</div>' }
       result = run_no_link_recording(msg)
-      assert_match(/No recording sharing link found/, result[:stderr])
+      assert_match(/No recordings found/, result[:stderr])
     end
 
     def test_recording_embed_url_failure
@@ -1298,14 +1298,6 @@ module MeetingCommandTests
       end
     end
 
-    def test_recording_subtitle_embed_failure_still_succeeds
-      Dir.mktmpdir('teems-rec') do |dir|
-        File.write(File.join(dir, 'transcript.vtt'), 'WEBVTT')
-        result = run_recording_with_subtitle_failure(dir)
-        assert_match(/Recording saved/, result[:stdout])
-      end
-    end
-
     def test_recording_manifest_without_base_url
       manifest = sample_manifest.gsub(%r{<BaseURL>[^<]+</BaseURL>}, '')
       Dir.mktmpdir('teems-rec') do |dir|
@@ -1314,22 +1306,45 @@ module MeetingCommandTests
         assert_match(/Recording saved/, result[:stdout])
       end
     end
+  end
+
+  # Tests for recording edge cases (subtitle embedding, combined mode)
+  class RecordingEdgeCaseTest < Minitest::Test
+    include RecordingTestHelpers
+
+    def test_recording_subtitle_embed_failure_still_succeeds
+      Dir.mktmpdir('teems-rec') do |dir|
+        File.write(File.join(dir, 'transcript.vtt'), 'WEBVTT')
+        result = run_recording_subtitle_fail(dir)
+        assert_match(/Recording saved/, result[:stdout])
+      end
+    end
+
+    def test_recording_with_transcript_downloads_both
+      Dir.mktmpdir('teems-rec') do |dir|
+        result = run_combined_recording(dir)
+        assert_match(/Transcript saved/, result[:stdout])
+        assert_match(/Recording saved/, result[:stdout])
+        assert_match(/Embedding transcript/, result[:stdout])
+      end
+    end
 
     private
 
-    def run_recording_with_subtitle_failure(dir)
+    def run_recording_subtitle_fail(dir)
       safari = RecordingMockSafari.new(file_info: valid_recording_file_info)
       with_temp_config do
         capture_output do |out|
           runner = build_recording_runner(out, safari, :ok, [sample_recording_message])
           cmd = Teems::Commands::Meeting.new(build_recording_args(dir), runner: runner)
-          stub_recording_methods_subtitle_fail(cmd, sample_manifest)
+          stub_subtitle_fail(cmd)
           cmd.execute
         end
       end
     end
 
-    def stub_recording_methods_subtitle_fail(cmd, manifest)
+    def stub_subtitle_fail(cmd)
+      manifest = sample_manifest
       cmd.define_singleton_method(:ffmpeg?) { true }
       cmd.define_singleton_method(:poll_sleep) { nil }
       cmd.define_singleton_method(:fetch_manifest_content) { |_url| manifest }
@@ -1339,6 +1354,29 @@ module MeetingCommandTests
         call_count += 1
         call_count == 1 ? File.binwrite(a.last, 'MP4') || true : false
       end
+    end
+
+    def run_combined_recording(dir)
+      transcript_fi = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
+      safari = CombinedMockSafari.new(recording_info: valid_recording_file_info, transcript_info: transcript_fi)
+      with_temp_config do
+        capture_output do |out|
+          runner = build_recording_runner(out, safari, :ok, [])
+          cmd = Teems::Commands::Meeting.new([recap_url, '--recording', '--transcript', '-o', dir], runner: runner)
+          stub_combined(cmd)
+          cmd.execute
+        end
+      end
+    end
+
+    def stub_combined(cmd)
+      manifest = sample_manifest
+      cmd.define_singleton_method(:ffmpeg?) { true }
+      cmd.define_singleton_method(:poll_sleep) { nil }
+      cmd.define_singleton_method(:fetch_manifest_content) { |_url| manifest }
+      cmd.define_singleton_method(:fetch_segment) { |_url| 'FAKEDATA' }
+      cmd.define_singleton_method(:fetch_transcript_content) { |_url| 'WEBVTT' }
+      cmd.define_singleton_method(:run_ffmpeg) { |*a| File.binwrite(a.last, 'MP4DATA') || true }
     end
   end
 
@@ -1360,6 +1398,41 @@ module MeetingCommandTests
 
     def segment_downloader_instance
       Object.new.tap { |obj| obj.extend(Teems::Commands::SegmentDownloader) }
+    end
+  end
+
+  # Mock Safari for combined transcript+recording tests (returns different file info per navigate)
+  class CombinedMockSafari < MockSafari
+    def initialize(recording_info:, transcript_info:)
+      super(js_results: {})
+      @infos = [transcript_info, recording_info]
+      @navigate_count = 0
+      @title = nil
+    end
+
+    def navigate(url)
+      @navigated_urls << url
+      @navigate_count += 1
+    end
+
+    def execute_js(code)
+      @executed_js << code
+      return @infos[[@navigate_count - 1, 1].min] if code.include?('g_fileInfo')
+
+      handle_title_state(code)
+    end
+
+    private
+
+    def handle_title_state(code)
+      if code.include?('TEEMS_LOADING')
+        @title = nil
+      elsif code.include?('fetch(')
+        @title = '{"value":[{"temporaryDownloadUrl":"https://cdn.example.com/t.vtt","name":"t.vtt"}]}'
+      elsif code.include?('document.title')
+        return @title
+      end
+      nil
     end
   end
 
