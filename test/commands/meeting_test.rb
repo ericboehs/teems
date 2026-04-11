@@ -411,6 +411,12 @@ module MeetingCommandTests
       end
     end
 
+    def test_transcript_save_handles_write_error
+      result = run_transcript(file_info_js: valid_file_info, transcript_js: valid_transcript,
+                              output_dir: '/dev/null/bad')
+      assert_match(/Could not save transcript/, result[:stderr])
+    end
+
     private
 
     def run_transcript(embed_response: :ok, file_info_js: nil, transcript_js: nil, output_dir: nil)
@@ -578,6 +584,59 @@ module MeetingCommandTests
       elsif code.include?('document.title')
         code.include?('TEEMS_LOADING') ? @title = nil : @title
       end
+    end
+  end
+
+  # Tests for transcript JSON-to-VTT conversion through the pipeline
+  class TranscriptJsonConversionTest < Minitest::Test
+    include Helpers
+
+    def test_json_transcript_converts_to_vtt_with_speakers
+      Dir.mktmpdir('teems-vtt') do |dir|
+        result = run_json_transcript(dir)
+        assert_match(/Transcript saved/, result[:stdout])
+        assert_includes File.read(File.join(dir, 'meeting.vtt')), '<v Alice>'
+      end
+    end
+
+    private
+
+    def run_json_transcript(dir)
+      safari = TranscriptMockSafari.new(file_info: valid_file_info, transcript: valid_transcript)
+      with_temp_config do
+        capture_output do |out|
+          runner = build_runner(out, safari)
+          cmd = Teems::Commands::Meeting.new([recap_url, '--transcript', '-o', dir], runner: runner)
+          stub_json_transcript(cmd)
+          cmd.execute
+        end
+      end
+    end
+
+    def stub_json_transcript(cmd)
+      json = json_transcript
+      cmd.define_singleton_method(:poll_sleep) { nil }
+      cmd.define_singleton_method(:fetch_transcript_content) { |_url| json }
+    end
+
+    def build_runner(out, safari)
+      runner = configured_runner(output: out)
+      runner.api_client.stub('messages', meeting_messages_response([]))
+      runner.api_client.stub('shares', { 'getUrl' => 'https://embed.example.com' })
+      runner.define_singleton_method(:safari_js_runner) { safari }
+      runner
+    end
+
+    def json_transcript
+      '{"entries":[{"speakerDisplayName":"Alice","text":"Hi","startOffset":"00:00:01.000","endOffset":"00:00:02.000"}]}'
+    end
+
+    def valid_file_info = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
+    def valid_transcript = '{"value":[{"temporaryDownloadUrl":"https://cdn.example.com/t.vtt","name":"meeting.vtt"}]}'
+
+    def recap_url
+      encoded = URI.encode_www_form_component(thread_id)
+      "https://teams.microsoft.com/l/meetingrecap?threadId=#{encoded}&fileUrl=https%3A%2F%2Fsp.example.com%2Ffile"
     end
   end
 
@@ -1329,6 +1388,14 @@ module MeetingCommandTests
       end
     end
 
+    def test_recording_warns_when_transcript_fails
+      Dir.mktmpdir('teems-rec') do |dir|
+        result = run_combined_recording(dir, transcript_fail: true)
+        assert_match(/Transcript download failed/, result[:stderr])
+        assert_match(/Recording saved/, result[:stdout])
+      end
+    end
+
     private
 
     def run_recording_subtitle_fail(dir)
@@ -1356,17 +1423,22 @@ module MeetingCommandTests
       end
     end
 
-    def run_combined_recording(dir)
-      transcript_fi = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
-      safari = CombinedMockSafari.new(recording_info: valid_recording_file_info, transcript_info: transcript_fi)
+    def run_combined_recording(dir, transcript_fail: false)
+      safari = transcript_fail ? RecordingMockSafari.new(file_info: valid_recording_file_info) : build_combined_safari
       with_temp_config do
         capture_output do |out|
           runner = build_recording_runner(out, safari, :ok, [])
+          runner.api_client.stub_transient_error('shares', Teems::ApiError.new('fail')) if transcript_fail
           cmd = Teems::Commands::Meeting.new([recap_url, '--recording', '--transcript', '-o', dir], runner: runner)
           stub_combined(cmd)
           cmd.execute
         end
       end
+    end
+
+    def build_combined_safari
+      transcript_fi = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
+      CombinedMockSafari.new(recording_info: valid_recording_file_info, transcript_info: transcript_fi)
     end
 
     def stub_combined(cmd)
