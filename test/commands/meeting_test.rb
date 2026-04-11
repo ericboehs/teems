@@ -545,6 +545,46 @@ module MeetingCommandTests
     end
   end
 
+  # Tests for TranscriptFormatter VTT conversion
+  class TranscriptFormatterTest < Minitest::Test
+    def test_converts_entries_to_vtt
+      entries = [{ 'speakerDisplayName' => 'Alice', 'text' => 'Hello',
+                   'startOffset' => '00:00:03.305', 'endOffset' => '00:00:05.971' }]
+      vtt = Teems::Commands::TranscriptFormatter.new(entries).to_vtt
+      assert_includes vtt, 'WEBVTT'
+      assert_includes vtt, '<v Alice>Hello</v>'
+      assert_includes vtt, '00:00:03.305 --> 00:00:05.971'
+    end
+
+    def test_multiple_entries_numbered
+      entries = [
+        { 'speakerDisplayName' => 'A', 'text' => 'Hi', 'startOffset' => '00:00:00.000', 'endOffset' => '00:00:01.000' },
+        { 'speakerDisplayName' => 'B', 'text' => 'Hey', 'startOffset' => '00:00:01.000', 'endOffset' => '00:00:02.000' }
+      ]
+      vtt = Teems::Commands::TranscriptFormatter.new(entries).to_vtt
+      assert_includes vtt, "1\n00:00:00.000"
+      assert_includes vtt, "2\n00:00:01.000"
+    end
+
+    def test_empty_entries
+      vtt = Teems::Commands::TranscriptFormatter.new([]).to_vtt
+      assert_equal "WEBVTT\n\n", vtt
+    end
+
+    def test_nil_offset_defaults_to_zero
+      entries = [{ 'speakerDisplayName' => 'X', 'text' => 'Y', 'startOffset' => nil, 'endOffset' => nil }]
+      vtt = Teems::Commands::TranscriptFormatter.new(entries).to_vtt
+      assert_includes vtt, '00:00:00.000 --> 00:00:00.000'
+    end
+
+    def test_long_offset_truncated_to_12_chars
+      entries = [{ 'speakerDisplayName' => 'X', 'text' => 'Y',
+                   'startOffset' => '01:00:00.0000000', 'endOffset' => '01:00:01.0000000' }]
+      vtt = Teems::Commands::TranscriptFormatter.new(entries).to_vtt
+      assert_includes vtt, '01:00:00.000 --> 01:00:01.000'
+    end
+  end
+
   # Tests for API error handling
   class ErrorHandlingTest < Minitest::Test
     include Helpers
@@ -610,6 +650,26 @@ module MeetingCommandTests
       result = run_meeting([thread_id],
                            stubs: { 'messages' => meeting_messages_response([msg]) })
       assert_match(/Recordings: 1/, result[:stdout])
+    end
+
+    def test_transcript_with_nil_properties
+      msg = { 'id' => '300', 'messagetype' => 'RichText/Media_CallTranscript',
+              'composetime' => '2026-01-20T11:00:00.000Z',
+              'content' => '<div>Transcript</div>',
+              'properties' => {} }
+      result = run_meeting([thread_id],
+                           stubs: { 'messages' => meeting_messages_response([msg]) })
+      assert_match(/Transcripts: 1/, result[:stdout])
+    end
+
+    def test_transcript_with_numeric_properties
+      msg = { 'id' => '300', 'messagetype' => 'RichText/Media_CallTranscript',
+              'composetime' => '2026-01-20T11:00:00.000Z',
+              'content' => '<div>Transcript</div>',
+              'properties' => { 'callTranscript' => 42 } }
+      result = run_meeting([thread_id],
+                           stubs: { 'messages' => meeting_messages_response([msg]) })
+      assert_match(/Transcripts: 1/, result[:stdout])
     end
 
     def test_transcript_with_invalid_json_properties
@@ -775,7 +835,24 @@ module MeetingCommandTests
       assert_match(/Call Event/, result[:stdout])
     end
 
+    def test_ical_uid_no_match_shows_all
+      msgs = [call_event_with_call_id('aaa-111')]
+      url = build_recap_url_with_ical('no-match-ical')
+      result = run_with_url(url, msgs)
+      assert_match(/Call Event/, result[:stdout])
+    end
+
     private
+
+    def run_with_url(url, messages)
+      with_temp_config do
+        capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', meeting_messages_response(messages))
+          Teems::Commands::Meeting.new([url], runner: runner).execute
+        end
+      end
+    end
 
     def run_recap_meeting(messages: [], call_id: 'call-1')
       url = build_recap_url(call_id: call_id, organizer_id: 'org-uuid')
@@ -800,6 +877,11 @@ module MeetingCommandTests
         'content' => '<partlist><part identity="8:orgid:u1"><name>8:orgid:u1</name>' \
                      '<displayName>Alice</displayName><duration>600</duration></part></partlist>' \
                      "<callId>#{call_id}</callId>" }
+    end
+
+    def build_recap_url_with_ical(ical_uid)
+      encoded = URI.encode_www_form_component(thread_id)
+      "https://teams.microsoft.com/l/meetingrecap?threadId=#{encoded}&iCalUid=#{ical_uid}"
     end
 
     def organizer_profile

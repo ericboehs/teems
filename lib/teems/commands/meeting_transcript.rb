@@ -71,6 +71,34 @@ module Teems
       end
     end
 
+    # Converts JSON transcript entries to WebVTT with speaker names
+    class TranscriptFormatter
+      def initialize(entries)
+        @entries = entries
+        @cue = nil
+      end
+
+      def to_vtt
+        cues = @entries.each_with_index.map { |entry, idx| format_cue(entry, idx) }
+        "WEBVTT\n\n#{cues.join}"
+      end
+
+      private
+
+      def format_cue(entry, idx)
+        @cue = entry
+        "#{idx + 1}\n#{cue_timestamps}\n<v #{@cue['speakerDisplayName']}>#{@cue['text']}</v>\n\n"
+      end
+
+      def cue_timestamps
+        "#{truncate_ts(@cue['startOffset'])} --> #{truncate_ts(@cue['endOffset'])}"
+      end
+
+      def truncate_ts(offset)
+        offset ? offset.to_s[0, 12] : '00:00:00.000'
+      end
+    end
+
     # Downloads meeting transcripts via SharePoint API using Safari for auth
     module MeetingTranscript
       include TranscriptEmbed
@@ -167,11 +195,29 @@ module Teems
         path = File.join(dir, transcript[:name])
 
         info("Downloading transcript to #{path}...")
-        content = fetch_transcript_content(transcript[:url])
-        return error('Failed to download transcript content') unless content
+        vtt = fetch_and_convert_transcript(transcript[:url])
+        return error('Failed to download transcript content') unless vtt
 
-        File.write(path, content)
+        File.write(path, vtt)
         success("Transcript saved to #{path}")
+      end
+
+      def fetch_and_convert_transcript(url)
+        json_content = fetch_transcript_json(url)
+        return fetch_transcript_content(url) unless json_content
+
+        TranscriptFormatter.new(json_content['entries']).to_vtt
+      end
+
+      def fetch_transcript_json(url)
+        json_url = url.include?('?') ? "#{url}&format=json" : "#{url}?format=json"
+        raw = fetch_transcript_content(json_url)
+        return nil unless raw
+
+        data = JSON.parse(raw)
+        data['entries'] ? data : nil
+      rescue JSON::ParserError
+        nil
       end
 
       def fetch_transcript_content(url)
