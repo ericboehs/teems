@@ -426,14 +426,13 @@ module MeetingCommandTests
       assert_match(/Call Event/, result[:stdout])
     end
 
-    def test_empty_participants_not_displayed
+    def test_empty_participants_call_event_filtered_out
       call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
                    'composetime' => '2026-01-20T10:00:00.000Z',
                    'content' => '<partlist></partlist>' }
       result = run_meeting([thread_id],
                            stubs: { 'messages' => meeting_messages_response([call_msg]) })
-      assert_match(/Call Event/, result[:stdout])
-      refute_match(/Participants/, result[:stdout])
+      assert_match(/No call events found/, result[:stdout])
     end
 
     def test_non_meeting_join_url_returns_nil

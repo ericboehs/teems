@@ -158,6 +158,7 @@ module Teems
       def classify_meeting_messages(messages_data)
         result = empty_classification
         messages_data.each { |msg| classify_single_message(msg, result) }
+        result[:call_events].reject! { |evt| evt[:participants].empty? }
         result
       end
 
