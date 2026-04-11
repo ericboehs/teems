@@ -145,6 +145,22 @@ module MeetingCommandTests
       assert_match(/Meeting Details/, result[:stdout])
     end
 
+    def test_resolves_chat_url
+      url = "https://teams.microsoft.com/l/chat/#{URI.encode_www_form_component(thread_id)}/conversations" \
+            '?context=%7B%22contextType%22%3A%22chat%22%7D'
+      result = run_meeting([url],
+                           stubs: { 'messages' => meeting_messages_response([]) })
+      assert_match(/Meeting Details/, result[:stdout])
+    end
+
+    def test_resolves_recap_url
+      url = "https://teams.microsoft.com/l/meetingrecap?threadId=#{URI.encode_www_form_component(thread_id)}" \
+            '&driveId=b%21abc&driveItemId=01XYZ'
+      result = run_meeting([url],
+                           stubs: { 'messages' => meeting_messages_response([]) })
+      assert_match(/Meeting Details/, result[:stdout])
+    end
+
     def test_rejects_invalid_url
       result = run_meeting(['https://example.com/invalid'])
       assert_match(/Could not parse meeting URL/, result[:stderr])

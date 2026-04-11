@@ -46,6 +46,7 @@ module Teems
       MEETING_THREAD_PREFIX = '19:meeting_'
       EVENT_ID_PREFIX = 'AAMk'
       JOIN_URL_PATTERN = %r{/l/meetup-join/([^/?]+)}
+      CHAT_URL_PATTERN = %r{/l/chat/([^/?]+)}
 
       private
 
@@ -67,7 +68,7 @@ module Teems
       end
 
       def resolve_url_target(url)
-        thread_id = extract_thread_from_join_url(url)
+        thread_id = extract_meeting_thread(url)
         return { thread_id: thread_id } if thread_id
 
         parsed = Services::TeamsUrlParser.parse(url)
@@ -77,12 +78,32 @@ module Teems
         nil
       end
 
-      def extract_thread_from_join_url(url)
-        match = url.match(JOIN_URL_PATTERN)
-        return unless match
+      def extract_meeting_thread(url)
+        extract_thread_from_path(url) || extract_thread_from_query(url)
+      end
 
-        decoded = URI.decode_www_form_component(match[1])
+      def extract_thread_from_path(url)
+        [JOIN_URL_PATTERN, CHAT_URL_PATTERN].each do |pattern|
+          match = url.match(pattern)
+          next unless match
+
+          decoded = URI.decode_www_form_component(match[1])
+          return decoded if decoded.start_with?(MEETING_THREAD_PREFIX)
+        end
+        nil
+      end
+
+      def extract_thread_from_query(url)
+        query = URI.parse(url).query
+        return unless query
+
+        thread_param = URI.decode_www_form(query).to_h['threadId']
+        return unless thread_param
+
+        decoded = URI.decode_www_form_component(thread_param)
         decoded if decoded.start_with?(MEETING_THREAD_PREFIX)
+      rescue URI::InvalidURIError
+        nil
       end
 
       def resolve_event_target(event_id)
@@ -90,7 +111,7 @@ module Teems
         join_url = fetch_event_join_url(event_id)
         return nil unless join_url
 
-        thread_id = extract_thread_from_join_url(join_url)
+        thread_id = extract_meeting_thread(join_url)
         return error('Could not extract thread ID from meeting link') && nil unless thread_id
 
         { thread_id: thread_id, event_id: event_id }
