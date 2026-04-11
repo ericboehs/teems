@@ -110,26 +110,39 @@ module Teems
       end
 
       def parallel_fetch(urls, total)
-        @seg_results = Array.new(urls.length)
-        @seg_queue = Queue.new
-        @seg_total = total
-        @seg_mutex = Mutex.new
-        urls.each_with_index { |url, idx| @seg_queue << [url, idx] }
-        PARALLEL_DOWNLOADS.times.map { start_fetch_thread }.each(&:join)
-        @seg_results
+        init_seg_state(urls.length, total)
+        urls.each_with_index { |url, idx| @seg_state[:queue] << [url, idx] }
+        PARALLEL_DOWNLOADS.times.map { Thread.new { fetch_from_queue } }.each(&:join)
+        check_seg_errors
+        @seg_state[:results]
       end
 
-      def start_fetch_thread
-        Thread.new { fetch_from_queue }
+      def init_seg_state(count, total)
+        @seg_state = { results: Array.new(count), errors: [],
+                       queue: Queue.new, total: total, mutex: Mutex.new }
+      end
+
+      def check_seg_errors
+        first_error = @seg_state[:errors].first
+        raise first_error if first_error
       end
 
       def fetch_from_queue
         loop do
-          item = @seg_queue.pop(true)
-          @seg_results[item[1]] = fetch_segment(item[0])
-          @seg_mutex.synchronize { print "\r  Downloading: #{@seg_results.count { _1 }}/#{@seg_total} segments" }
+          item = @seg_state[:queue].pop(true)
+          @seg_state[:results][item[1]] = fetch_segment(item[0])
+          record_progress
         rescue ThreadError
           break
+        rescue StandardError => e
+          @seg_state[:mutex].synchronize { @seg_state[:errors] << e }
+          break
+        end
+      end
+
+      def record_progress
+        @seg_state[:mutex].synchronize do
+          print "\r  Downloading: #{@seg_state[:results].count { _1 }}/#{@seg_state[:total]} segments"
         end
       end
 
@@ -247,7 +260,7 @@ module Teems
 
         debug("Manifest download failed: HTTP #{result.code}")
         nil
-      rescue IOError, SystemCallError, SocketError => e
+      rescue IOError, SystemCallError, SocketError, Timeout::Error, OpenSSL::SSL::SSLError => e
         debug("Manifest download error: #{e.message}")
         nil
       end

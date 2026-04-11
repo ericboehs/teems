@@ -227,7 +227,7 @@ module Teems
 
         debug("Transcript download failed: HTTP #{response.code}")
         nil
-      rescue IOError, SystemCallError, SocketError => e
+      rescue IOError, SystemCallError, SocketError, Timeout::Error, OpenSSL::SSL::SSLError => e
         debug("Transcript download error: #{e.message}")
         nil
       end

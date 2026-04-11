@@ -460,7 +460,10 @@ module Teems
       end
 
       def download_recording_with_transcript(target, classified)
-        download_transcript(target, classified) if @options[:transcript]
+        if @options[:transcript]
+          result = download_transcript(target, classified)
+          warn('Transcript download failed; proceeding with recording') if result == 1
+        end
         download_recording(target, classified) || 0
       end
     end

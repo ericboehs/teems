@@ -78,7 +78,8 @@ module Teems
         return nil unless status.success?
 
         out.strip
-      rescue IOError, SystemCallError
+      rescue IOError, SystemCallError => e
+        log("AppleScript execution failed: #{e.message}")
         nil
       end
 
