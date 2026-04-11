@@ -32,8 +32,7 @@ module Teems
       end
 
       def delete(path)
-        base_url = Services::ConnectionPool::DEFAULT_ENDPOINTS[endpoint]
-        @api.delete("#{base_url}#{path}", endpoint_key: endpoint, account: @account)
+        @api.delete(endpoint, path, account: @account)
       end
     end
   end

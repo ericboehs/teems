@@ -276,9 +276,8 @@ module Teems
         record_and_respond(path, {})
       end
 
-      def delete(url, endpoint_key:, account:)
-        path = URI(url).path
-        @calls << { method: :delete, path: path, account: account, endpoint_key: endpoint_key }
+      def delete(_endpoint, path, account:)
+        @calls << { method: :delete, path: path, account: account }
         @call_count += 1
         check_errors(path)
         nil

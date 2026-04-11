@@ -162,9 +162,9 @@ module Teems
         run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
       end
 
-      def delete(url, endpoint_key:, account:)
-        uri = URI(url)
-        run_request(uri.path, get_http_for_endpoint(endpoint_key)) do |http|
+      def delete(endpoint_key, path, account:)
+        uri = URI("#{resolve_endpoint(endpoint_key)}#{path}")
+        run_request(path, get_http_for_endpoint(endpoint_key)) do |http|
           req = Net::HTTP::Delete.new(uri)
           apply_auth(req, account, endpoint_key)
           http.request(req)

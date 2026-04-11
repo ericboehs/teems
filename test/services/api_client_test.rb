@@ -482,7 +482,7 @@ module ApiClientTests
       account = mock_account
 
       error = assert_raises(ArgumentError) do
-        client.delete('https://example.com/path', endpoint_key: :unknown, account: account)
+        client.delete(:unknown, '/path', account: account)
       end
 
       assert_match(/Unknown endpoint/, error.message)
@@ -492,7 +492,7 @@ module ApiClientTests
       client = StubbedApiClient.new
       account = mock_account
 
-      client.delete('https://graph.microsoft.com/v1.0/me/chats/123', endpoint_key: :graph, account: account)
+      client.delete(:graph, '/v1.0/me/chats/123', account: account)
 
       assert_equal 1, client.call_count
       assert_instance_of Net::HTTP::Delete, client.last_request
