@@ -1010,6 +1010,37 @@ module MeetingCommandTests
     end
   end
 
+  # Tests for DASH template decoding and representation handling
+  class DashTemplateTest < Minitest::Test
+    def test_decodes_xml_entities_and_rep_id_in_templates
+      mpd = '<MPD><Period><AdaptationSet contentType="video">' \
+            '<SegmentTemplate initialization="t?a=1&amp;q=$RepresentationID$" media="t?a=1&amp;t=$Time$">' \
+            '<SegmentTimeline><S t="0" d="1000"/></SegmentTimeline></SegmentTemplate>' \
+            '<Representation id="vcopy"/></AdaptationSet></Period></MPD>'
+      track = Teems::Commands::DashManifestParser.new(mpd).parse.first
+      assert_equal 't?a=1&q=vcopy', track.init_url
+      assert_includes track.media_template, 'a=1&t=$Time$'
+    end
+
+    def test_adaptation_without_representation_uses_empty_rep_id
+      mpd = '<MPD><Period><AdaptationSet contentType="audio">' \
+            '<SegmentTemplate initialization="init_$RepresentationID$.mp4" media="s_$Time$.m4s">' \
+            '<SegmentTimeline><S t="0" d="1000"/></SegmentTimeline>' \
+            '</SegmentTemplate></AdaptationSet></Period></MPD>'
+      track = Teems::Commands::DashManifestParser.new(mpd).parse.first
+      assert_equal 'init_.mp4', track.init_url
+    end
+
+    def test_missing_initialization_attr_returns_empty_string
+      mpd = '<MPD><Period><AdaptationSet contentType="video">' \
+            '<SegmentTemplate media="s_$Time$.m4s" timescale="1000">' \
+            '<SegmentTimeline><S t="0" d="1000"/></SegmentTimeline>' \
+            '</SegmentTemplate></AdaptationSet></Period></MPD>'
+      track = Teems::Commands::DashManifestParser.new(mpd).parse.first
+      assert_equal '', track.init_url
+    end
+  end
+
   # Shared helpers for recording pipeline tests
   module RecordingTestHelpers
     include MeetingCommandTests::Helpers
@@ -1288,6 +1319,11 @@ module MeetingCommandTests
       obj = segment_downloader_instance
       result = obj.send(:resolve_url, 'https://base.example.com/dir/file', 'segment.m4s')
       assert_equal 'https://base.example.com/dir/segment.m4s', result
+    end
+
+    def test_fetch_segment_raises_on_error_response
+      obj = segment_downloader_instance
+      assert_raises(Teems::Error) { obj.send(:fetch_segment, 'https://httpbin.org/status/404') }
     end
 
     private

@@ -14,9 +14,12 @@ module Teems
       TEMPLATE_RE = /<SegmentTemplate[^>]*/
       TIMELINE_RE = %r{<SegmentTimeline>(.*?)</SegmentTimeline>}m
       SEGMENT_RE = /<S\s[^>]*>/
+      REP_RE = /<Representation[^>]*id="([^"]+)"/
 
       def initialize(mpd_xml)
         @xml = mpd_xml
+        @attrs = nil
+        @rep_id = nil
       end
 
       def parse
@@ -34,20 +37,28 @@ module Teems
         template_match = body.match(TEMPLATE_RE)
         return nil unless template_match
 
-        attrs = template_match[0]
+        @attrs = template_match[0]
+        @rep_id = body.match(REP_RE)&.then { _1[1] } || ''
         segments = parse_timeline(body)
         return nil if segments.empty?
 
-        build_track(type, attrs, segments)
+        build_track(type, segments)
       end
 
-      def build_track(type, attrs, segments)
-        timescale_val = extract_attr(attrs, 'timescale').to_i
-        Track.new(type: type, init_url: extract_attr(attrs, 'initialization'),
-                  media_template: extract_attr(attrs, 'media'),
+      def build_track(type, segments)
+        timescale_val = extract_attr(@attrs, 'timescale').to_i
+        Track.new(type: type,
+                  init_url: decode_template(extract_attr(@attrs, 'initialization')),
+                  media_template: decode_template(extract_attr(@attrs, 'media')),
                   segment_count: segments.length,
                   timescale: timescale_val.positive? ? timescale_val : 1,
                   segments: segments)
+      end
+
+      def decode_template(url)
+        return '' unless url
+
+        url.gsub('&amp;', '&').gsub('$RepresentationID$', @rep_id.to_s)
       end
 
       def parse_timeline(body)
@@ -155,10 +166,10 @@ module Teems
       end
 
       def extract_transform_url(data)
-        transform_url = data['transformUrl']
+        transform_url = data['.transformUrl'] || data['transformUrl']
         return nil unless transform_url
 
-        { transform_url: transform_url, name: data['fileName'] || 'recording.mp4' }
+        { transform_url: transform_url, name: data['name'] || 'recording.mp4' }
       end
     end
 
@@ -167,7 +178,7 @@ module Teems
       include RecordingResolver
       include SegmentDownloader
 
-      MANIFEST_PARAMS = 'format=dash&useScf=True&pretranscode=0&playbackContext=brand'
+      MANIFEST_PARAMS = 'format=dash&part=index'
 
       private
 
@@ -200,8 +211,9 @@ module Teems
       end
 
       def build_manifest_url(transform_url)
-        base = transform_url.sub(%r{/thumbnail.*}, '/videomanifest')
-        "#{base}?#{MANIFEST_PARAMS}"
+        url = transform_url.sub('/thumbnail', '/videomanifest')
+        separator = url.include?('?') ? '&' : '?'
+        "#{url}#{separator}#{MANIFEST_PARAMS}"
       end
 
       def fetch_manifest_content(url)
