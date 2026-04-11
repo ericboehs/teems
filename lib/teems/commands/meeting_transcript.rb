@@ -194,7 +194,7 @@ module Teems
       def save_transcript(transcript)
         dir = @options[:output_dir] || '.'
         FileUtils.mkdir_p(dir)
-        path = File.join(dir, transcript[:name])
+        path = File.join(dir, File.basename(transcript[:name]))
 
         info("Downloading transcript to #{path}...")
         vtt = fetch_and_convert_transcript(transcript[:url])
