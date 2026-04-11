@@ -182,6 +182,17 @@ module Teems
       MockTokenStore.new(configured: false)
     end
 
+    def unconfigured_runner(output: test_output)
+      runner = Runner.new(output: output, token_store: mock_unconfigured_store)
+      runner.define_singleton_method(:token_extractor) { |**| NullExtractor.new }
+      runner
+    end
+
+    # Returns nil from extract, preventing real Safari/headless auth in tests
+    class NullExtractor
+      def extract = nil
+    end
+
     # Mock token store class
     class MockTokenStore
       attr_accessor :save_result

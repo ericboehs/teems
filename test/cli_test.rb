@@ -8,12 +8,20 @@ module CLITests
   module Helpers
     module_function
 
-    def capture_cli_output(argv)
+    def capture_cli_output(argv, unconfigured: false)
       out = StringIO.new
       e = StringIO.new
       output = Teems::Formatters::Output.new(io: out, err: e, color: false)
-      exit_code = Teems::CLI.new(argv, output: output).run
+      runner = unconfigured ? build_unconfigured_runner(output) : nil
+      exit_code = Teems::CLI.new(argv, output: output, runner: runner).run
       { stdout: out.string, stderr: e.string, exit_code: exit_code }
+    end
+
+    def build_unconfigured_runner(output)
+      store = Teems::TestHelpers::MockTokenStore.new(configured: false)
+      runner = Teems::Runner.new(output: output, token_store: store)
+      runner.define_singleton_method(:token_extractor) { |**| Teems::TestHelpers::NullExtractor.new }
+      runner
     end
   end
 
@@ -103,7 +111,7 @@ module CLITests
 
     def test_dispatches_to_channels_command_requires_auth
       with_temp_config do
-        result = capture_cli_output(['channels'])
+        result = capture_cli_output(['channels'], unconfigured: true)
         assert_equal 1, result[:exit_code]
         assert_match(/Not authenticated/, result[:stderr])
       end
@@ -111,7 +119,7 @@ module CLITests
 
     def test_dispatches_to_chats_command_requires_auth
       with_temp_config do
-        result = capture_cli_output(['chats'])
+        result = capture_cli_output(['chats'], unconfigured: true)
         assert_equal 1, result[:exit_code]
         assert_match(/Not authenticated/, result[:stderr])
       end
@@ -119,7 +127,7 @@ module CLITests
 
     def test_dispatches_to_messages_command_requires_auth
       with_temp_config do
-        result = capture_cli_output(%w[messages some-id])
+        result = capture_cli_output(%w[messages some-id], unconfigured: true)
         assert_equal 1, result[:exit_code]
         assert_match(/Not authenticated/, result[:stderr])
       end
@@ -127,7 +135,7 @@ module CLITests
 
     def test_handles_config_error
       with_temp_config do
-        result = capture_cli_output(['channels'])
+        result = capture_cli_output(['channels'], unconfigured: true)
         assert_equal 1, result[:exit_code]
         assert_match(/Not authenticated/, result[:stderr])
       end
@@ -388,7 +396,7 @@ module CLITests
 
     def test_dispatch_catches_config_error_from_command
       with_temp_config do
-        result = capture_cli_output(['channels'])
+        result = capture_cli_output(['channels'], unconfigured: true)
         assert_equal 1, result[:exit_code]
       end
     end

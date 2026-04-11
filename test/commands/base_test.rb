@@ -194,8 +194,7 @@ module BaseCommandTests
     def test_require_auth_returns_error_when_not_configured
       with_temp_config do
         result = capture_output do |output|
-          store = mock_unconfigured_store
-          runner = Teems::Runner.new(output: output, token_store: store)
+          runner = unconfigured_runner(output: output)
           OutputTestCommand.new([], runner: runner).test_require_auth
         end
         assert_match(/Not authenticated/, result[:stderr])
@@ -313,6 +312,7 @@ module BaseCommandTests
       write_tokens_file(dir, tokens)
       runner = Teems::Runner.new(output: test_output)
       runner.define_singleton_method(:refresh_tokens) { refresh_succeeds }
+      runner.define_singleton_method(:token_extractor) { |**| Teems::TestHelpers::NullExtractor.new }
       cmd = RefreshTestCommand.new([], runner: runner)
       call_count = { n: 0 }
       [cmd, call_count]

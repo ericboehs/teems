@@ -8,6 +8,8 @@ module Teems
     def verbose_mode? = @argv.include?('-v') || @argv.include?('--verbose')
 
     def build_runner
+      return @runner_override if @runner_override
+
       out = verbose_mode? ? @output.with_verbose : @output
       Runner.new(output: out).tap { |new_runner| setup_verbose_logging(new_runner, out) if out.verbose? }
     end
@@ -54,9 +56,10 @@ module Teems
       'help' => Commands::Help
     }.freeze
 
-    def initialize(argv, output: Formatters::Output.new)
+    def initialize(argv, output: Formatters::Output.new, runner: nil)
       @argv = argv.dup
       @output = output
+      @runner_override = runner
     end
 
     def run

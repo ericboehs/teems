@@ -78,8 +78,7 @@ module OrgCommandTests
 
     def test_requires_auth
       result = capture_output do |output|
-        store = mock_unconfigured_store
-        runner = Teems::Runner.new(output: output, token_store: store)
+        runner = unconfigured_runner(output: output)
         assert_equal 1, Teems::Commands::Org.new([], runner: runner).execute
       end
       assert_match(/Not authenticated/, result[:stderr])

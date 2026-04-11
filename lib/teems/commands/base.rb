@@ -119,6 +119,7 @@ module Teems
 
       def require_auth
         return nil if runner.configured?
+        return nil if auto_login
 
         error('Not authenticated. Run: teems auth login')
         1
@@ -137,9 +138,21 @@ module Teems
 
       def attempt_token_refresh
         debug('Token expired, attempting refresh...')
-        raise ApiError, 'Token refresh failed' unless runner.refresh_tokens
+        return debug('Token refreshed, retrying request...') if runner.refresh_tokens
 
-        debug('Token refreshed, retrying request...')
+        debug('Token refresh failed, re-authenticating...')
+        raise ApiError, 'Re-authentication failed' unless auto_login
+      end
+
+      def auto_login
+        tokens = runner.token_extractor.extract
+        return unless tokens&.[](:auth_token) && tokens[:skype_token]
+
+        runner.token_store.save(**tokens)
+        true
+      rescue StandardError => e
+        debug("Auto-login failed: #{e.message}")
+        nil
       end
     end
   end

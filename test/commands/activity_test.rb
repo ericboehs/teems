@@ -72,8 +72,7 @@ module ActivityCommandTests
     def test_requires_auth
       with_temp_config do
         result = capture_output do |out|
-          store = mock_token_store(configured: false)
-          runner = Teems::Runner.new(output: out, token_store: store)
+          runner = unconfigured_runner(output: out)
           assert_equal 1, Teems::Commands::Activity.new([], runner: runner).execute
         end
         assert_match(/Not authenticated/, result[:stderr])

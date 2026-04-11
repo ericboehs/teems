@@ -251,8 +251,7 @@ module SyncCommandTests
     def test_requires_auth
       with_temp_config do
         result = capture_output do |output|
-          store = mock_unconfigured_store
-          runner = Teems::Runner.new(output: output, token_store: store)
+          runner = unconfigured_runner(output: output)
           Teems::Commands::Sync.new([], runner: runner).execute
         end
 
