@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'meeting_transcript'
+require_relative 'meeting_recording'
 
 module Teems
   module Commands
@@ -390,6 +391,7 @@ module Teems
       include MeetingChatDisplay
       include MeetingCallFilter
       include MeetingTranscript
+      include MeetingRecording
 
       def initialize(args, runner:)
         @options = {}
@@ -447,22 +449,11 @@ module Teems
         elsif @options[:transcript]
           download_transcript(target, classified)
         elsif @options[:recording]
-          download_recording(classified)
+          download_recording(target, classified)
         else
           display_meeting_summary(target, classified)
         end
         0
-      end
-
-      def download_recording(classified)
-        recordings = classified[:recordings]
-        if recordings.empty?
-          error('No recordings found for this meeting')
-          return
-        end
-
-        info('Recording download requires DASH manifest parsing (Phase 3)')
-        info("Found #{recordings.length} recording(s)")
       end
     end
   end

@@ -326,10 +326,17 @@ module MeetingCommandTests
       assert_match(/No recordings found/, result[:stderr])
     end
 
-    def test_recording_flag_with_recordings
-      result = run_meeting([thread_id, '--recording'],
-                           stubs: { 'messages' => meeting_messages_response([sample_recording_message]) })
-      assert_match(/Phase 3/, result[:stdout])
+    def test_recording_flag_without_ffmpeg
+      with_temp_config do
+        result = capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', meeting_messages_response([sample_recording_message]))
+          cmd = Teems::Commands::Meeting.new([thread_id, '--recording'], runner: runner)
+          cmd.define_singleton_method(:ffmpeg?) { false }
+          cmd.execute
+        end
+        assert_match(/ffmpeg is required/, result[:stderr])
+      end
     end
   end
 
@@ -895,6 +902,417 @@ module MeetingCommandTests
     def organizer_profile
       { 'id' => 'org-uuid', 'displayName' => 'Tori Compton',
         'mail' => 'tori@example.com', 'userPrincipalName' => 'tori@example.com' }
+    end
+  end
+
+  # Tests for DASH manifest parsing
+  class DashManifestParserTest < Minitest::Test
+    def test_parses_video_and_audio_tracks
+      tracks = Teems::Commands::DashManifestParser.new(sample_mpd).parse
+      assert_equal 2, tracks.length
+      assert_equal 'video', tracks[0].type
+      assert_equal 'audio', tracks[1].type
+    end
+
+    def test_parses_segment_template_attributes
+      tracks = Teems::Commands::DashManifestParser.new(sample_mpd).parse
+      video = tracks.first
+      assert_equal 'video_init.mp4', video.init_url
+      assert_equal 'video_$Time$.m4s', video.media_template
+      assert_equal 10_000_000, video.timescale
+    end
+
+    def test_parses_segment_timeline
+      tracks = Teems::Commands::DashManifestParser.new(sample_mpd).parse
+      video = tracks.first
+      assert_equal 3, video.segment_count
+      assert_equal 0, video.segments[0].start
+      assert_equal 20_000_000, video.segments[0].duration
+    end
+
+    def test_handles_repeat_attribute
+      mpd = '<MPD><Period><AdaptationSet contentType="video">' \
+            '<SegmentTemplate initialization="init.mp4" media="seg_$Time$.m4s" timescale="1000">' \
+            '<SegmentTimeline><S t="0" d="2000" r="2"/></SegmentTimeline>' \
+            '</SegmentTemplate></AdaptationSet></Period></MPD>'
+      segments = Teems::Commands::DashManifestParser.new(mpd).parse.first.segments
+      assert_equal 3, segments.length
+      assert_equal [0, 2000, 4000], segments.map(&:start)
+    end
+
+    def test_segment_with_explicit_start_time
+      mpd = '<MPD><Period><AdaptationSet contentType="video">' \
+            '<SegmentTemplate initialization="i.mp4" media="s_$Time$.m4s" timescale="1000">' \
+            '<SegmentTimeline><S t="0" d="1000"/><S t="5000" d="1000"/></SegmentTimeline>' \
+            '</SegmentTemplate></AdaptationSet></Period></MPD>'
+      segments = Teems::Commands::DashManifestParser.new(mpd).parse.first.segments
+      assert_equal [0, 5000], segments.map(&:start)
+    end
+
+    def test_returns_empty_for_invalid_xml
+      tracks = Teems::Commands::DashManifestParser.new('not xml').parse
+      assert_empty tracks
+    end
+
+    def test_skips_adaptation_without_timeline
+      mpd = '<MPD><Period><AdaptationSet contentType="video">' \
+            '<SegmentTemplate initialization="i.mp4" media="s.m4s"/>' \
+            '</AdaptationSet></Period></MPD>'
+      tracks = Teems::Commands::DashManifestParser.new(mpd).parse
+      assert_empty tracks
+    end
+
+    def test_skips_adaptation_without_segment_template
+      mpd = '<MPD><Period><AdaptationSet contentType="video">' \
+            '<Representation id="1" bandwidth="500000"/>' \
+            '</AdaptationSet></Period></MPD>'
+      tracks = Teems::Commands::DashManifestParser.new(mpd).parse
+      assert_empty tracks
+    end
+
+    def test_default_timescale_is_one
+      mpd = <<~XML
+        <MPD><Period><AdaptationSet contentType="audio">
+          <SegmentTemplate initialization="init.mp4" media="seg_$Time$.m4s">
+            <SegmentTimeline><S t="0" d="1000"/></SegmentTimeline>
+          </SegmentTemplate>
+        </AdaptationSet></Period></MPD>
+      XML
+      tracks = Teems::Commands::DashManifestParser.new(mpd).parse
+      assert_equal 1, tracks.first.timescale
+    end
+
+    private
+
+    def sample_mpd
+      <<~XML
+        <MPD><Period>
+          <BaseURL>https://cdn.example.com/media/</BaseURL>
+          <AdaptationSet contentType="video">
+            <SegmentTemplate initialization="video_init.mp4" media="video_$Time$.m4s" timescale="10000000">
+              <SegmentTimeline>
+                <S t="0" d="20000000"/>
+                <S d="20000000"/>
+                <S d="20000000"/>
+              </SegmentTimeline>
+            </SegmentTemplate>
+          </AdaptationSet>
+          <AdaptationSet contentType="audio">
+            <SegmentTemplate initialization="audio_init.mp4" media="audio_$Time$.m4s" timescale="44100">
+              <SegmentTimeline>
+                <S t="0" d="88200"/>
+                <S d="88200"/>
+              </SegmentTimeline>
+            </SegmentTemplate>
+          </AdaptationSet>
+        </Period></MPD>
+      XML
+    end
+  end
+
+  # Shared helpers for recording pipeline tests
+  module RecordingTestHelpers
+    include MeetingCommandTests::Helpers
+
+    private
+
+    def recording_defaults
+      { messages: nil, embed_response: :ok, safari_available: true,
+        file_info_js: nil, manifest: nil, output_dir: nil, ffmpeg_success: true }
+    end
+
+    def run_recording(opts = {})
+      opts = recording_defaults.merge(opts)
+      messages = opts[:messages] || [sample_recording_message]
+      safari = RecordingMockSafari.new(available: opts[:safari_available], file_info: opts[:file_info_js])
+      with_temp_config do
+        capture_output do |out|
+          runner = build_recording_runner(out, safari, opts[:embed_response], messages)
+          execute_recording_cmd(build_recording_args(opts[:output_dir]), runner, opts[:manifest], opts[:ffmpeg_success])
+        end
+      end
+    end
+
+    def run_no_link_recording(msg)
+      with_temp_config do
+        capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', meeting_messages_response([msg]))
+          cmd = Teems::Commands::Meeting.new([thread_id, '--recording'], runner: runner)
+          cmd.define_singleton_method(:ffmpeg?) { true }
+          cmd.execute
+        end
+      end
+    end
+
+    def build_recording_args(output_dir)
+      args = [recap_url, '--recording']
+      args.push('-o', output_dir) if output_dir
+      args
+    end
+
+    def execute_recording_cmd(args, runner, manifest, ffmpeg_success)
+      cmd = Teems::Commands::Meeting.new(args, runner: runner)
+      cmd.define_singleton_method(:ffmpeg?) { true }
+      cmd.define_singleton_method(:poll_sleep) { nil }
+      cmd.define_singleton_method(:fetch_manifest_content) { |_url| manifest }
+      cmd.define_singleton_method(:fetch_segment) { |_url| 'FAKEDATA' }
+      cmd.define_singleton_method(:run_ffmpeg) do |*a|
+        File.binwrite(a.last, 'MP4DATA') if ffmpeg_success
+        ffmpeg_success
+      end
+      cmd.execute
+    end
+
+    def build_recording_runner(out, safari, embed_response, messages)
+      runner = configured_runner(output: out)
+      runner.api_client.stub('messages', meeting_messages_response(messages))
+      apply_recording_embed_stub(runner, embed_response)
+      runner.define_singleton_method(:safari_js_runner) { safari }
+      runner
+    end
+
+    def apply_recording_embed_stub(runner, response)
+      if response == :error
+        runner.api_client.stub_error('shares', Teems::ApiError.new('Not found'))
+      else
+        runner.api_client.stub('shares', { 'getUrl' => 'https://embed.example.com' })
+      end
+    end
+
+    def recap_url
+      encoded = URI.encode_www_form_component(thread_id)
+      "https://teams.microsoft.com/l/meetingrecap?threadId=#{encoded}" \
+        '&fileUrl=https%3A%2F%2Fsp.example.com%2Frecording'
+    end
+
+    def valid_recording_file_info
+      '{"transformUrl":"https://cdn.example.com/transform/thumbnail?tempauth=xyz","fileName":"rec.mp4"}'
+    end
+
+    def sample_manifest
+      <<~XML
+        <MPD><Period>
+          <BaseURL>https://cdn.example.com/media/</BaseURL>
+          <AdaptationSet contentType="video">
+            <SegmentTemplate initialization="v_init.mp4" media="v_$Time$.m4s" timescale="1000">
+              <SegmentTimeline><S t="0" d="2000"/><S d="2000"/></SegmentTimeline>
+            </SegmentTemplate>
+          </AdaptationSet>
+          <AdaptationSet contentType="audio">
+            <SegmentTemplate initialization="a_init.mp4" media="a_$Time$.m4s" timescale="1000">
+              <SegmentTimeline><S t="0" d="2000"/><S d="2000"/></SegmentTimeline>
+            </SegmentTemplate>
+          </AdaptationSet>
+        </Period></MPD>
+      XML
+    end
+
+    def absolute_url_manifest
+      <<~XML
+        <MPD><Period>
+          <AdaptationSet contentType="video">
+            <SegmentTemplate initialization="https://cdn.example.com/v_init.mp4" media="https://cdn.example.com/v_$Time$.m4s" timescale="1000">
+              <SegmentTimeline><S t="0" d="2000"/></SegmentTimeline>
+            </SegmentTemplate>
+          </AdaptationSet>
+          <AdaptationSet contentType="audio">
+            <SegmentTemplate initialization="https://cdn.example.com/a_init.mp4" media="https://cdn.example.com/a_$Time$.m4s" timescale="1000">
+              <SegmentTimeline><S t="0" d="2000"/></SegmentTimeline>
+            </SegmentTemplate>
+          </AdaptationSet>
+        </Period></MPD>
+      XML
+    end
+  end
+
+  # Tests for recording download error paths
+  class RecordingErrorTest < Minitest::Test
+    include RecordingTestHelpers
+
+    def test_recording_no_sharing_link
+      msg = { 'id' => '200', 'messagetype' => 'RichText/Media_CallRecording',
+              'composetime' => '2026-01-20T11:00:00.000Z',
+              'content' => '<div>No link here</div>' }
+      result = run_no_link_recording(msg)
+      assert_match(/No recording sharing link found/, result[:stderr])
+    end
+
+    def test_recording_embed_url_failure
+      result = run_recording(embed_response: :error)
+      assert_match(/Could not get embed URL/, result[:stderr])
+    end
+
+    def test_recording_safari_unavailable
+      result = run_recording(safari_available: false)
+      assert_match(/Safari is required/, result[:stderr])
+    end
+
+    def test_recording_file_info_extraction_failure
+      result = run_recording(file_info_js: 'null')
+      assert_match(/Could not extract recording file info/, result[:stderr])
+    end
+
+    def test_recording_file_info_without_transform_url
+      result = run_recording(file_info_js: '{"fileName":"test.mp4"}')
+      assert_match(/Could not extract recording file info/, result[:stderr])
+    end
+
+    def test_recording_manifest_fetch_failure
+      fi = '{"transformUrl":"https://cdn.example.com/thumbnail?tempauth=xyz","fileName":"rec.mp4"}'
+      result = run_recording(file_info_js: fi, manifest: nil)
+      assert_match(/Could not fetch DASH manifest/, result[:stderr])
+    end
+
+    def test_recording_manifest_missing_tracks
+      fi = '{"transformUrl":"https://cdn.example.com/thumbnail?tempauth=xyz","fileName":"rec.mp4"}'
+      result = run_recording(file_info_js: fi, manifest: '<MPD></MPD>')
+      assert_match(%r{No video/audio tracks found}, result[:stderr])
+    end
+
+    def test_recording_file_info_invalid_json
+      result = run_recording(file_info_js: '{broken')
+      assert_match(/Could not extract recording file info/, result[:stderr])
+    end
+
+    def test_recording_file_info_non_hash_json
+      result = run_recording(file_info_js: '[1,2,3]')
+      assert_match(/Could not extract recording file info/, result[:stderr])
+    end
+
+    def test_recording_file_info_empty_response
+      result = run_recording(file_info_js: '')
+      assert_match(/Could not extract recording file info/, result[:stderr])
+    end
+  end
+
+  # Tests for recording download success paths
+  class RecordingSuccessTest < Minitest::Test
+    include RecordingTestHelpers
+
+    def test_recording_full_pipeline_success
+      Dir.mktmpdir('teems-rec') do |dir|
+        result = run_recording(file_info_js: valid_recording_file_info,
+                               manifest: sample_manifest, output_dir: dir)
+        assert_match(/Recording saved/, result[:stdout])
+        assert File.exist?(File.join(dir, 'recording.mp4'))
+      end
+    end
+
+    def test_recording_ffmpeg_merge_failure
+      Dir.mktmpdir('teems-rec') do |dir|
+        result = run_recording(file_info_js: valid_recording_file_info,
+                               manifest: sample_manifest, output_dir: dir, ffmpeg_success: false)
+        assert_match(/ffmpeg merge failed/, result[:stderr])
+      end
+    end
+
+    def test_recording_embeds_subtitle_when_vtt_present
+      Dir.mktmpdir('teems-rec') do |dir|
+        File.write(File.join(dir, 'transcript.vtt'), "WEBVTT\n\n1\n00:00:00.000 --> 00:00:01.000\nHello")
+        result = run_recording(file_info_js: valid_recording_file_info,
+                               manifest: sample_manifest, output_dir: dir)
+        assert_match(/Embedding transcript as subtitle/, result[:stdout])
+      end
+    end
+
+    def test_recording_with_absolute_segment_urls
+      manifest = absolute_url_manifest
+      Dir.mktmpdir('teems-rec') do |dir|
+        result = run_recording(file_info_js: valid_recording_file_info,
+                               manifest: manifest, output_dir: dir)
+        assert_match(/Recording saved/, result[:stdout])
+      end
+    end
+
+    def test_recording_subtitle_embed_failure_still_succeeds
+      Dir.mktmpdir('teems-rec') do |dir|
+        File.write(File.join(dir, 'transcript.vtt'), 'WEBVTT')
+        result = run_recording_with_subtitle_failure(dir)
+        assert_match(/Recording saved/, result[:stdout])
+      end
+    end
+
+    def test_recording_manifest_without_base_url
+      manifest = sample_manifest.gsub(%r{<BaseURL>[^<]+</BaseURL>}, '')
+      Dir.mktmpdir('teems-rec') do |dir|
+        result = run_recording(file_info_js: valid_recording_file_info,
+                               manifest: manifest, output_dir: dir)
+        assert_match(/Recording saved/, result[:stdout])
+      end
+    end
+
+    private
+
+    def run_recording_with_subtitle_failure(dir)
+      safari = RecordingMockSafari.new(file_info: valid_recording_file_info)
+      with_temp_config do
+        capture_output do |out|
+          runner = build_recording_runner(out, safari, :ok, [sample_recording_message])
+          cmd = Teems::Commands::Meeting.new(build_recording_args(dir), runner: runner)
+          stub_recording_methods_subtitle_fail(cmd, sample_manifest)
+          cmd.execute
+        end
+      end
+    end
+
+    def stub_recording_methods_subtitle_fail(cmd, manifest)
+      cmd.define_singleton_method(:ffmpeg?) { true }
+      cmd.define_singleton_method(:poll_sleep) { nil }
+      cmd.define_singleton_method(:fetch_manifest_content) { |_url| manifest }
+      cmd.define_singleton_method(:fetch_segment) { |_url| 'FAKEDATA' }
+      call_count = 0
+      cmd.define_singleton_method(:run_ffmpeg) do |*a|
+        call_count += 1
+        call_count == 1 ? File.binwrite(a.last, 'MP4') || true : false
+      end
+    end
+  end
+
+  # Unit tests for SegmentDownloader and MeetingRecording HTTP methods
+  class RecordingHttpTest < Minitest::Test
+    def test_fetch_manifest_content_returns_body_on_success
+      obj = recording_module_instance
+      obj.define_singleton_method(:debug) { |_| nil }
+      body = obj.send(:fetch_manifest_content, 'https://httpbin.org/robots.txt')
+      assert_kind_of String, body if body
+    end
+
+    def test_resolve_url_returns_absolute_url_unchanged
+      obj = segment_downloader_instance
+      result = obj.send(:resolve_url, 'https://base.example.com/dir/file', 'https://other.example.com/init.mp4')
+      assert_equal 'https://other.example.com/init.mp4', result
+    end
+
+    def test_resolve_url_joins_relative_path
+      obj = segment_downloader_instance
+      result = obj.send(:resolve_url, 'https://base.example.com/dir/file', 'segment.m4s')
+      assert_equal 'https://base.example.com/dir/segment.m4s', result
+    end
+
+    private
+
+    def recording_module_instance
+      Object.new.tap { |obj| obj.extend(Teems::Commands::MeetingRecording) }
+    end
+
+    def segment_downloader_instance
+      Object.new.tap { |obj| obj.extend(Teems::Commands::SegmentDownloader) }
+    end
+  end
+
+  # Mock Safari for recording tests (returns transformUrl from g_fileInfo)
+  class RecordingMockSafari < MockSafari
+    def initialize(available: true, file_info: nil)
+      super(available: available, js_results: {})
+      @file_info = file_info
+    end
+
+    def execute_js(code)
+      @executed_js << code
+      return @file_info if code.include?('g_fileInfo')
+
+      nil
     end
   end
 end
