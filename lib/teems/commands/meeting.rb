@@ -189,8 +189,8 @@ module Teems
       end
 
       def extract_partlist(content)
-        content.scan(PART_RE).map do |identity, _name, display, duration|
-          build_participant(identity, display, duration)
+        content.scan(PART_RE).filter_map do |identity, _name, display, duration|
+          build_participant(identity, display, duration) unless identity.start_with?('28:')
         end
       end
 
@@ -286,8 +286,6 @@ module Teems
       end
 
       def resolve_participant_name(identity)
-        return 'Bot' if identity.start_with?('28:')
-
         uuid = identity.match(/8:orgid:(.+)/)&.captures&.first
         return identity unless uuid
 
