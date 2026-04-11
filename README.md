@@ -78,6 +78,20 @@ teems ooo off                      # Disable OOO
 teems ooo config                   # Show OOO configuration
 ```
 
+### Meetings
+
+```bash
+teems meeting <thread-id>                          # View meeting summary
+teems meeting <thread-id> --chat                   # Show meeting chat
+teems meeting <thread-id> --transcript -o ~/Downloads  # Download transcript (VTT)
+teems meeting <thread-id> --recording -o ~/Downloads   # Download recording (MP4)
+teems meeting <thread-id> --recording --transcript -o ~/Downloads  # Both, with embedded subtitles
+teems meeting <event-id>                           # By calendar event ID (AAMk...)
+teems meeting "https://teams.microsoft.com/..."    # By Teams URL or recap link
+```
+
+Transcript download requires Safari (for SharePoint authentication). Recording download requires `ffmpeg` (`brew install ffmpeg`) and downloads via DASH streaming with 5 parallel threads.
+
 ### People
 
 ```bash
