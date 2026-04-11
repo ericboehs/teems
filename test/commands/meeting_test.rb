@@ -375,6 +375,14 @@ module MeetingCommandTests
       end
     end
 
+    def test_file_info_with_sp_item_url
+      fi = JSON.generate('.spItemUrl' => 'https://example.com:443/personal/user/_api/v2.0/drives/drv1/items/itm1?v=1')
+      Dir.mktmpdir('teems-vtt') do |dir|
+        result = run_transcript(file_info_js: fi, transcript_js: valid_transcript, output_dir: dir)
+        assert_match(/Transcript saved/, result[:stdout])
+      end
+    end
+
     private
 
     def run_transcript(embed_response: :ok, file_info_js: nil, transcript_js: nil, output_dir: nil)
@@ -444,6 +452,12 @@ module MeetingCommandTests
       assert_match(/Could not extract file info/, result[:stderr])
     end
 
+    def test_parse_file_info_with_invalid_sp_item_url
+      fi = JSON.generate('.spItemUrl' => 'https://example.com/not-an-api-url')
+      result = run_transcript(file_info_js: fi)
+      assert_match(/Could not extract file info/, result[:stderr])
+    end
+
     def test_file_info_extraction_timeout
       safari = TranscriptMockSafari.new(file_info: nil, transcript: nil, raise_on_load: true)
       with_temp_config do
@@ -506,6 +520,7 @@ module MeetingCommandTests
       @file_info = file_info
       @transcript = transcript
       @raise_on_load = raise_on_load
+      @title = nil
     end
 
     def wait_for_load(**)
@@ -515,9 +530,18 @@ module MeetingCommandTests
     def execute_js(code)
       @executed_js << code
       return @file_info if code.include?('g_fileInfo')
-      return @transcript if code.include?('fetch(')
 
-      nil
+      handle_fetch_or_title(code)
+    end
+
+    private
+
+    def handle_fetch_or_title(code)
+      if code.include?('fetch(')
+        @title = @transcript
+      elsif code.include?('document.title')
+        code.include?('TEEMS_LOADING') ? @title = nil : @title
+      end
     end
   end
 
