@@ -34,10 +34,12 @@ module Teems
           result = try_extract_file_info(safari)
           return result if result
 
-          Kernel.sleep 1 if attempt.positive?
+          poll_sleep if attempt.positive?
         end
         nil
       end
+
+      def poll_sleep = Kernel.sleep(1)
 
       def try_extract_file_info(safari)
         parse_file_info(safari.execute_js(FILE_INFO_JS).to_s)
@@ -169,7 +171,7 @@ module Teems
 
       def poll_title_result(safari)
         10.times do |attempt|
-          Kernel.sleep 1 if attempt.positive?
+          poll_sleep if attempt.positive?
           title = safari.execute_js('document.title').to_s
           return title if title_has_result?(title)
         end

@@ -405,6 +405,7 @@ module MeetingCommandTests
     def execute_transcript_cmd(args, runner)
       cmd = Teems::Commands::Meeting.new(args, runner: runner)
       cmd.define_singleton_method(:fetch_transcript_content) { |_url| 'WEBVTT' }
+      cmd.define_singleton_method(:poll_sleep) { nil } # skip sleeps in tests
       cmd.execute
     end
 
@@ -499,7 +500,9 @@ module MeetingCommandTests
       with_temp_config do
         capture_output do |out|
           runner = build_transcript_runner(out, safari)
-          Teems::Commands::Meeting.new([recap_url, '--transcript'], runner: runner).execute
+          cmd = Teems::Commands::Meeting.new([recap_url, '--transcript'], runner: runner)
+          cmd.define_singleton_method(:poll_sleep) { nil }
+          cmd.execute
         end
       end
     end
