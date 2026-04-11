@@ -1,8 +1,8 @@
 # teems
 
-A command-line interface for Microsoft Teams. Read messages, list channels and chats from the terminal.
+A command-line interface for Microsoft Teams. Read messages, manage your calendar, set out-of-office, and more — all from the terminal.
 
-Pure Ruby, no dependencies.
+Pure Ruby, no runtime dependencies. macOS only (uses Safari for authentication).
 
 ## Installation
 
@@ -22,63 +22,84 @@ gem install teems-*.gem
 ## Requirements
 
 - Ruby 3.2+
-- macOS (for Safari token extraction)
+- macOS (for Safari/WKWebView token extraction)
 - Microsoft Teams account
 
 ## Authentication
 
-teems requires authentication tokens from Teams. The easiest way is Safari automation:
-
 ```bash
-teems auth login
+teems auth login     # Authenticate (headless or Safari)
+teems auth status    # Check if authenticated
+teems auth logout    # Clear stored tokens
 ```
 
-This opens Safari to teams.microsoft.com, waits for you to log in, then extracts the tokens.
+Tokens refresh automatically when you run commands. If they expire (~24 hours of inactivity), just run `teems auth login` again.
 
-Alternatively, extract tokens manually:
+## Commands
+
+### Calendar
 
 ```bash
-teems auth manual
+teems cal                    # Today's events
+teems cal tomorrow           # Tomorrow's events
+teems cal --week             # This week's events
+teems cal show 3             # View details for event #3
+teems cal accept 3           # Accept event #3
+teems cal decline 3          # Decline event #3
+teems cal create "Standup" --start "tomorrow 09:00" --attendees alice@example.com
+teems cal delete 3           # Delete event #3
 ```
 
-## Usage
-
-### List Teams and Channels
+### Messages
 
 ```bash
-teems channels
+teems messages <chat-id>                    # Read from a chat
+teems messages <channel-id> -t <team-id>    # Read from a channel
+teems messages <chat-id> -n 50              # Show more messages
 ```
 
-### List Chats
+### Channels and Chats
 
 ```bash
-teems chats
-teems chats -n 50  # Show 50 chats
+teems channels       # List joined teams and channels
+teems chats          # List recent chats
+teems chats -n 50    # Show 50 chats
 ```
 
-### Read Messages
+### Out of Office
 
 ```bash
-# Read from a chat
-teems messages <chat-id>
-
-# Read from a channel (requires team ID)
-teems messages <channel-id> -t <team-id>
-
-# Show more messages
-teems messages <chat-id> -n 50
+teems ooo                          # Check OOO status
+teems ooo on                       # Enable OOO (auto-reply + presence)
+teems ooo on --message "Vacation"  # Custom message
+teems ooo on --start 2025-12-22 --end 2025-12-26  # Scheduled
+teems ooo on --event               # Also create a calendar event for your notify list
+teems ooo off                      # Disable OOO
+teems ooo config                   # Show OOO configuration
 ```
 
-### Check Authentication Status
+### People
 
 ```bash
-teems auth status
+teems who              # Show your profile
+teems who john         # Search for a user
+teems org              # Show your org chart
+teems org john         # Org chart for "john"
 ```
 
-### Clear Authentication
+### Status and Activity
 
 ```bash
-teems auth logout
+teems status                          # Show your presence
+teems status --presence available     # Set presence
+teems status --message "In a meeting" # Set status message
+teems activity                        # Show activity feed
+```
+
+### Sync
+
+```bash
+teems sync             # Sync chat history locally
 ```
 
 ## Global Options
@@ -95,12 +116,29 @@ teems auth logout
 
 Configuration is stored in XDG-compliant directories:
 
-- Config: `~/.config/teems/`
+- Config: `~/.config/teems/config.json`
+- Tokens: `~/.config/teems/tokens.json`
 - Cache: `~/.cache/teems/`
+
+### OOO Defaults
+
+Set default messages and a notify list for the `ooo` command:
+
+```json
+{
+  "ooo": {
+    "internal_message": "I'm currently out of office.",
+    "external_message": "Thank you for your message. I'm out of office.",
+    "external_audience": "all",
+    "status_message": "Out of Office",
+    "notify": ["manager@example.com", "team@example.com"]
+  }
+}
+```
 
 ### Custom Endpoints
 
-By default, teems connects to commercial Microsoft Teams endpoints. To use a different environment (e.g., GCC, GCC High), add an `endpoints` section to `~/.config/teems/config.json`:
+By default, teems connects to commercial Microsoft Teams endpoints. To use a different environment (e.g., GCC, GCC High), add an `endpoints` section to your config:
 
 ```json
 {
@@ -113,22 +151,14 @@ By default, teems connects to commercial Microsoft Teams endpoints. To use a dif
 
 Available endpoint keys: `graph`, `teams`, `msgservice`, `presence`.
 
-## Token Expiration
-
-Teams tokens expire after ~24 hours. When you see authentication errors, run:
-
-```bash
-teems auth login
-```
-
 ## Development
 
 ```bash
 git clone https://github.com/ericboehs/teems
 cd teems
-rake check   # Syntax check
-rake test    # Run tests
-rake console # Interactive console
+bundle install
+rake test        # Run tests
+rake console     # Interactive console
 ```
 
 ## License
