@@ -148,12 +148,10 @@ module Teems
 
     # Parses meeting chat messages to extract call events, recordings, transcripts
     module MeetingMessageParser
-      CALL_EVENT_TYPE = 'Event/Call'
-      RECORDING_TYPE = 'RichText/Media_CallRecording'
-      TRANSCRIPT_TYPE = 'RichText/Media_CallTranscript'
-
-      PART_RE = %r{<part\s+([^>]+)>.*?<name>([^<]*)</name>.*?<duration>([^<]*)</duration>}m
-      CALLID_ATTR_RE = /callId="([^"]+)"/
+      PART_RE = %r{<part\s[^>]*identity="([^"]+)"[^>]*>.*?<name>([^<]*)</name>
+                   .*?<displayName>([^<]*)</displayName>.*?<duration>([^<]*)</duration>}xm
+      CALLID_RE = %r{<callId>([^<]+)</callId>}
+      INSTANCE_ICAL_RE = %r{<instanceDetails>.*?<iCalUid>([^<]+)</iCalUid>}m
 
       private
 
@@ -169,9 +167,9 @@ module Teems
 
       def classify_single_message(msg, result)
         case msg['messagetype']
-        when CALL_EVENT_TYPE then result[:call_events] << parse_call_event(msg)
-        when RECORDING_TYPE then result[:recordings] << parse_recording(msg)
-        when TRANSCRIPT_TYPE then result[:transcripts] << parse_transcript(msg)
+        when 'Event/Call' then result[:call_events] << parse_call_event(msg)
+        when 'RichText/Media_CallRecording' then result[:recordings] << parse_recording(msg)
+        when 'RichText/Media_CallTranscript' then result[:transcripts] << parse_transcript(msg)
         else result[:chat_messages] << msg unless system_activity?(msg)
         end
       end
@@ -183,27 +181,26 @@ module Teems
 
       def parse_call_event(msg)
         content = msg['content'].to_s
-        call_id = content.match(CALLID_ATTR_RE)&.captures&.first
-        build_msg_hash(msg).merge(call_id: call_id, participants: extract_partlist(content))
+        build_msg_hash(msg).merge(
+          call_id: content.match(CALLID_RE)&.captures&.first,
+          ical_uid: content.match(INSTANCE_ICAL_RE)&.captures&.first,
+          participants: extract_partlist(content)
+        )
       end
 
       def extract_partlist(content)
-        content.scan(PART_RE).map { |attrs, name, duration| build_participant(attrs, name, duration) }
+        content.scan(PART_RE).map do |identity, _name, display, duration|
+          build_participant(identity, display, duration)
+        end
       end
 
-      def build_participant(attrs, name, duration)
-        identity = extract_attr(attrs, 'identity')
-        display = extract_attr(attrs, 'displayName')
-        { identity: identity, name: best_name(display, name), duration: duration }
+      def build_participant(identity, display_name, duration)
+        name = decode_xml_entities(display_name)
+        { identity: identity, name: name, duration: duration }
       end
 
-      def extract_attr(attrs, key)
-        match = attrs.match(/#{key}="([^"]+)"/)
-        match ? match[1] : ''
-      end
-
-      def best_name(*candidates)
-        candidates.find { |name| name && !name.empty? && !name.start_with?('8:') } || ''
+      def decode_xml_entities(text)
+        text.gsub('&amp;', '&').gsub('&apos;', "'").gsub('&lt;', '<').gsub('&gt;', '>').gsub('&quot;', '"')
       end
 
       def parse_recording(msg)
@@ -360,16 +357,29 @@ module Teems
 
       def classify_and_filter(messages_data, target)
         classified = classify_meeting_messages(messages_data)
+        filter_classified(classified, target)
+      end
+
+      def filter_classified(classified, target)
+        ical = target[:iCalUid]
+        return filter_by_ical(classified, ical) if ical
+
         call_id = target[:callId]
         call_id ? filter_by_call_id(classified, call_id) : classified
       end
 
+      def filter_by_ical(classified, ical_uid)
+        events = classified[:call_events].select { |evt| evt[:ical_uid] == ical_uid }
+        return classified if events.empty?
+
+        classified.merge(call_events: events)
+      end
+
       def filter_by_call_id(classified, call_id)
         events = classified[:call_events].select { |evt| evt[:call_id] == call_id }
-        recordings = classified[:recordings].select { |rec| rec[:call_id] == call_id }
-        return classified if events.empty? && recordings.empty?
+        return classified if events.empty?
 
-        classified.merge(call_events: events, recordings: recordings)
+        classified.merge(call_events: events)
       end
     end
 

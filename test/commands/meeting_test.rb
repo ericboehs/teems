@@ -24,10 +24,12 @@ module MeetingCommandTests
     end
 
     def call_event_content
-      '<partlist callId="abc-123">' \
-        '<part identity="8:orgid:user-uuid-1" displayName="Alice"><name>Alice</name><duration>3600</duration></part>' \
-        '<part identity="8:orgid:user-uuid-2" displayName="Bob"><name>Bob</name><duration>1800</duration></part>' \
-        '</partlist>'
+      '<ended/><partlist alt="" count="2">' \
+        '<part identity="8:orgid:user-uuid-1"><name>8:orgid:user-uuid-1</name>' \
+        '<displayName>Alice</displayName><duration>3600</duration></part>' \
+        '<part identity="8:orgid:user-uuid-2"><name>8:orgid:user-uuid-2</name>' \
+        '<displayName>Bob</displayName><duration>1800</duration></part>' \
+        '</partlist><callId>abc-123</callId>'
     end
 
     def sample_recording_message
@@ -246,8 +248,8 @@ module MeetingCommandTests
     def test_short_duration_shows_less_than_one_min
       short_call = { 'id' => '500', 'messagetype' => 'Event/Call',
                      'composetime' => '2026-01-20T10:00:00.000Z',
-                     'content' => '<partlist><part identity="8:orgid:u1"><name>Test</name>' \
-                                  '<duration>30</duration></part></partlist>' }
+                     'content' => '<partlist><part identity="8:orgid:u1"><name>8:orgid:u1</name>' \
+                                  '<displayName>Test</displayName><duration>30</duration></part></partlist>' }
       result = run_meeting([thread_id],
                            stubs: { 'messages' => meeting_messages_response([short_call]) })
       assert_match(/< 1 min/, result[:stdout])
@@ -380,8 +382,9 @@ module MeetingCommandTests
     def test_displayname_attribute_used_for_visitors
       call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
                    'composetime' => '2026-01-20T10:00:00.000Z',
-                   'content' => '<partlist><part identity="8:teamsvisitor:abc" displayName="Guest User">' \
-                                '<name></name><duration>300</duration></part></partlist>' }
+                   'content' => '<partlist><part identity="8:teamsvisitor:abc">' \
+                                '<name>8:teamsvisitor:abc</name><displayName>Guest User</displayName>' \
+                                '<duration>300</duration></part></partlist>' }
       result = run_meeting([thread_id],
                            stubs: { 'messages' => meeting_messages_response([call_msg]) })
       assert_match(/Guest User/, result[:stdout])
@@ -390,8 +393,9 @@ module MeetingCommandTests
     def test_displayname_preferred_over_identity_name
       call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
                    'composetime' => '2026-01-20T10:00:00.000Z',
-                   'content' => '<partlist><part identity="8:orgid:u1" displayName="Real Name">' \
-                                '<name>8:orgid:u1</name><duration>300</duration></part></partlist>' }
+                   'content' => '<partlist><part identity="8:orgid:u1">' \
+                                '<name>8:orgid:u1</name><displayName>Real Name</displayName>' \
+                                '<duration>300</duration></part></partlist>' }
       result = run_meeting([thread_id],
                            stubs: { 'messages' => meeting_messages_response([call_msg]) })
       assert_match(/Real Name/, result[:stdout])
@@ -415,8 +419,8 @@ module MeetingCommandTests
     def test_call_event_with_nil_time
       call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
                    'composetime' => nil,
-                   'content' => '<partlist><part identity="8:orgid:u1"><name>Test</name>' \
-                                '<duration>60</duration></part></partlist>' }
+                   'content' => '<partlist><part identity="8:orgid:u1"><name>8:orgid:u1</name>' \
+                                '<displayName>Test</displayName><duration>60</duration></part></partlist>' }
       result = run_meeting([thread_id],
                            stubs: { 'messages' => meeting_messages_response([call_msg]) })
       assert_match(/Call Event/, result[:stdout])
@@ -456,7 +460,7 @@ module MeetingCommandTests
       { 'id' => '100', 'messagetype' => 'Event/Call',
         'composetime' => '2026-01-20T10:00:00.000Z',
         'content' => "<partlist><part identity=\"8:orgid:#{uuid}\"><name></name>" \
-                     '<duration>600</duration></part></partlist>' }
+                     '<displayName></displayName><duration>600</duration></part></partlist>' }
     end
 
     def user_profile_response
@@ -519,9 +523,9 @@ module MeetingCommandTests
     def call_event_with_call_id(call_id)
       { 'id' => "evt-#{call_id}", 'messagetype' => 'Event/Call',
         'composetime' => '2026-01-20T10:00:00.000Z',
-        'content' => "<partlist callId=\"#{call_id}\">" \
-                     '<part identity="8:orgid:u1" displayName="Alice"><name>Alice</name>' \
-                     '<duration>600</duration></part></partlist>' }
+        'content' => '<partlist><part identity="8:orgid:u1"><name>8:orgid:u1</name>' \
+                     '<displayName>Alice</displayName><duration>600</duration></part></partlist>' \
+                     "<callId>#{call_id}</callId>" }
     end
 
     def organizer_profile
