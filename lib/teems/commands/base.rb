@@ -150,7 +150,7 @@ module Teems
 
         runner.token_store.save(**tokens)
         true
-      rescue StandardError => e
+      rescue Teems::Error, IOError, SystemCallError => e
         debug("Auto-login failed: #{e.message}")
         nil
       end
