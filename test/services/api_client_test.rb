@@ -15,6 +15,13 @@ module ApiClientTests
       assert_equal 'https://presence.teams.microsoft.com', endpoints[:presence]
     end
 
+    def test_custom_endpoints_override_defaults
+      client = Teems::Services::ApiClient.new(endpoints: { 'msgservice' => 'https://custom.example.com' })
+      resolved = client.send(:resolve_endpoint, :msgservice)
+      assert_equal 'https://custom.example.com', resolved
+      assert_equal 'https://graph.microsoft.com', client.send(:resolve_endpoint, :graph)
+    end
+
     def test_network_errors_constant_defined
       errors = Teems::Services::ApiClient::NETWORK_ERRORS
 

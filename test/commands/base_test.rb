@@ -209,6 +209,13 @@ module BaseCommandTests
       end
     end
 
+    def test_require_auth_auto_logins_when_unconfigured
+      with_temp_config do
+        runner = runner_with_fake_extractor(configured: false)
+        assert_nil OutputTestCommand.new([], runner: runner).test_require_auth
+      end
+    end
+
     def test_output_json_outputs_formatted_json
       with_temp_config do
         result = capture_output do |output|
@@ -219,6 +226,18 @@ module BaseCommandTests
         assert_match(/"key"/, stdout)
         assert_match(/"value"/, stdout)
       end
+    end
+
+    private
+
+    def runner_with_fake_extractor(configured: true)
+      store = mock_token_store(configured: configured)
+      runner = Teems::Runner.new(output: test_output, token_store: store)
+      tokens = { auth_token: 'new-auth', skype_token: 'new-skype' }
+      extractor = Object.new
+      extractor.define_singleton_method(:extract) { tokens }
+      runner.define_singleton_method(:token_extractor) { |**| extractor }
+      runner
     end
   end
 
@@ -283,6 +302,19 @@ module BaseCommandTests
       assert_equal 1, call_count
     end
 
+    def test_with_token_refresh_falls_back_to_auto_login
+      with_temp_config do |dir|
+        cmd, call_count_ref = build_refresh_cmd_with_extractor(dir)
+        result = cmd.test_with_token_refresh do
+          count = call_count_ref[:n] += 1
+          raise Teems::ApiError.new('Expired', status_code: 401) if count == 1
+
+          'recovered via auto-login'
+        end
+        assert_equal 'recovered via auto-login', result
+      end
+    end
+
     def test_with_token_refresh_succeeds_after_refresh
       with_temp_config do |dir|
         cmd, call_count_ref = build_refresh_cmd(dir, refresh_succeeds: true)
@@ -314,7 +346,15 @@ module BaseCommandTests
       runner.define_singleton_method(:refresh_tokens) { refresh_succeeds }
       runner.define_singleton_method(:token_extractor) { |**| Teems::TestHelpers::NullExtractor.new }
       cmd = RefreshTestCommand.new([], runner: runner)
-      call_count = { n: 0 }
+      [cmd, { n: 0 }]
+    end
+
+    def build_refresh_cmd_with_extractor(dir)
+      cmd, call_count = build_refresh_cmd(dir, refresh_succeeds: false, tokens: basic_tokens)
+      fake_tokens = { auth_token: 'fresh-auth', skype_token: 'fresh-skype' }
+      extractor = Object.new
+      extractor.define_singleton_method(:extract) { fake_tokens }
+      cmd.runner.define_singleton_method(:token_extractor) { |**| extractor }
       [cmd, call_count]
     end
 
