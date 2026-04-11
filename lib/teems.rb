@@ -93,6 +93,7 @@ module Teems
     autoload :Who, 'teems/commands/who'
     autoload :Ooo, 'teems/commands/ooo'
     autoload :Org, 'teems/commands/org'
+    autoload :Meeting, 'teems/commands/meeting'
     autoload :Status, 'teems/commands/status'
   end
 
@@ -103,6 +104,7 @@ module Teems
     autoload :Channels, 'teems/api/channels'
     autoload :Chats, 'teems/api/chats'
     autoload :Files, 'teems/api/files'
+    autoload :Meetings, 'teems/api/meetings'
     autoload :Messages, 'teems/api/messages'
     autoload :Users, 'teems/api/users'
   end

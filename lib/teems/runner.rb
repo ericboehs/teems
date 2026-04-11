@@ -3,6 +3,7 @@
 module Teems
   # API factory methods for Runner, extracted to keep method count manageable
   module ApiFactories
+    def meetings_api = Api::Meetings.new(api_client, account)
     def channels_api = Api::Channels.new(api_client, account)
     def chats_api = Api::Chats.new(api_client, account)
     def messages_api = Api::Messages.new(api_client, account)
