@@ -180,7 +180,7 @@ module Teems
 
       def title_has_result?(title) = !title.empty? && title != POLL_SENTINEL
 
-      def build_fetch_js(url) = format(FETCH_TEMPLATE, url)
+      def build_fetch_js(url) = format(FETCH_TEMPLATE, url.gsub("'", "\\\\'"))
 
       def parse_transcript_response(result)
         data = JSON.parse(result)
@@ -202,18 +202,17 @@ module Teems
 
         File.write(path, vtt)
         success("Transcript saved to #{path}")
+      rescue SystemCallError => e
+        error("Could not save transcript: #{e.message}")
       end
 
       def fetch_and_convert_transcript(url)
-        json_content = fetch_transcript_json(url)
-        return fetch_transcript_content(url) unless json_content
-
-        TranscriptFormatter.new(json_content['entries']).to_vtt
+        json_url = url.include?('?') ? "#{url}&format=json" : "#{url}?format=json"
+        json_content = parse_transcript_json(fetch_transcript_content(json_url))
+        json_content ? TranscriptFormatter.new(json_content['entries']).to_vtt : fetch_transcript_content(url)
       end
 
-      def fetch_transcript_json(url)
-        json_url = url.include?('?') ? "#{url}&format=json" : "#{url}?format=json"
-        raw = fetch_transcript_content(json_url)
+      def parse_transcript_json(raw)
         return nil unless raw
 
         data = JSON.parse(raw)
@@ -224,8 +223,11 @@ module Teems
 
       def fetch_transcript_content(url)
         response = Net::HTTP.get_response(URI(url))
-        response.is_a?(Net::HTTPSuccess) ? response.body : nil
-      rescue StandardError => e
+        return response.body if response.is_a?(Net::HTTPSuccess)
+
+        debug("Transcript download failed: HTTP #{response.code}")
+        nil
+      rescue IOError, SystemCallError, SocketError => e
         debug("Transcript download error: #{e.message}")
         nil
       end

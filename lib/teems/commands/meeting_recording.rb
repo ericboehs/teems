@@ -218,8 +218,11 @@ module Teems
 
       def fetch_manifest_content(url)
         result = Net::HTTP.get_response(URI(url))
-        result.is_a?(Net::HTTPSuccess) ? result.body : nil
-      rescue StandardError => e
+        return result.body if result.is_a?(Net::HTTPSuccess)
+
+        debug("Manifest download failed: HTTP #{result.code}")
+        nil
+      rescue IOError, SystemCallError, SocketError => e
         debug("Manifest download error: #{e.message}")
         nil
       end

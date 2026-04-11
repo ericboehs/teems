@@ -270,6 +270,27 @@ module MeetingCommandTests
       refute_match(/AddMember/, result[:stdout])
     end
 
+    def test_filters_control_typing_messages
+      typing_msg = { 'id' => '401', 'messagetype' => 'Control/Typing',
+                     'composetime' => '2026-01-20T10:00:00.000Z', 'content' => '' }
+      result = run_meeting([thread_id, '--chat'],
+                           stubs: { 'messages' => meeting_messages_response([typing_msg, sample_chat_message]) })
+      assert_match(/Jane Smith/, result[:stdout])
+    end
+
+    def test_omits_bot_participants
+      content = '<partlist>' \
+                '<part identity="8:orgid:u1"><name>u1</name>' \
+                '<displayName>Alice</displayName><duration>60</duration></part>' \
+                '<part identity="28:bot-uuid"><name>28:bot-uuid</name>' \
+                '<displayName>Recording Bot</displayName><duration>60</duration></part></partlist>'
+      call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
+                   'composetime' => '2026-01-20T10:00:00.000Z', 'content' => content }
+      result = run_meeting([thread_id], stubs: { 'messages' => meeting_messages_response([call_msg]) })
+      assert_match(/Alice/, result[:stdout])
+      refute_match(/Recording Bot/, result[:stdout])
+    end
+
     def test_short_duration_shows_less_than_one_min
       short_call = { 'id' => '500', 'messagetype' => 'Event/Call',
                      'composetime' => '2026-01-20T10:00:00.000Z',
@@ -857,6 +878,14 @@ module MeetingCommandTests
       assert_match(/Call Event/, result[:stdout])
     end
 
+    def test_ical_uid_match_filters_events
+      msg1 = call_event_with_ical('aaa-111', 'ical-match')
+      msg2 = call_event_with_ical('bbb-222', 'ical-other')
+      url = build_recap_url_with_ical('ical-match')
+      result = run_with_url(url, [msg1, msg2])
+      assert_equal 1, result[:stdout].scan('Call Event').length
+    end
+
     private
 
     def run_with_url(url, messages)
@@ -892,6 +921,11 @@ module MeetingCommandTests
         'content' => '<partlist><part identity="8:orgid:u1"><name>8:orgid:u1</name>' \
                      '<displayName>Alice</displayName><duration>600</duration></part></partlist>' \
                      "<callId>#{call_id}</callId>" }
+    end
+
+    def call_event_with_ical(call_id, ical_uid)
+      ical_xml = "<meetingDetails><instanceDetails><iCalUid>#{ical_uid}</iCalUid></instanceDetails></meetingDetails>"
+      call_event_with_call_id(call_id).tap { |msg| msg['content'] += ical_xml }
     end
 
     def build_recap_url_with_ical(ical_uid)
@@ -1221,6 +1255,14 @@ module MeetingCommandTests
   class RecordingSuccessTest < Minitest::Test
     include RecordingTestHelpers
 
+    def test_recording_with_dot_prefixed_transform_url
+      fi = '{ ".transformUrl": "https://cdn.example.com/transform/thumbnail?tempauth=xyz", "name": "rec.mp4" }'
+      Dir.mktmpdir('teems-rec') do |dir|
+        result = run_recording(file_info_js: fi, manifest: sample_manifest, output_dir: dir)
+        assert_match(/Recording saved/, result[:stdout])
+      end
+    end
+
     def test_recording_full_pipeline_success
       Dir.mktmpdir('teems-rec') do |dir|
         result = run_recording(file_info_js: valid_recording_file_info,
@@ -1300,15 +1342,8 @@ module MeetingCommandTests
     end
   end
 
-  # Unit tests for SegmentDownloader and MeetingRecording HTTP methods
-  class RecordingHttpTest < Minitest::Test
-    def test_fetch_manifest_content_returns_body_on_success
-      obj = recording_module_instance
-      obj.define_singleton_method(:debug) { |_| nil }
-      body = obj.send(:fetch_manifest_content, 'https://httpbin.org/robots.txt')
-      assert_kind_of String, body if body
-    end
-
+  # Unit tests for SegmentDownloader URL resolution
+  class RecordingUrlTest < Minitest::Test
     def test_resolve_url_returns_absolute_url_unchanged
       obj = segment_downloader_instance
       result = obj.send(:resolve_url, 'https://base.example.com/dir/file', 'https://other.example.com/init.mp4')
@@ -1321,16 +1356,7 @@ module MeetingCommandTests
       assert_equal 'https://base.example.com/dir/segment.m4s', result
     end
 
-    def test_fetch_segment_raises_on_error_response
-      obj = segment_downloader_instance
-      assert_raises(Teems::Error) { obj.send(:fetch_segment, 'https://httpbin.org/status/404') }
-    end
-
     private
-
-    def recording_module_instance
-      Object.new.tap { |obj| obj.extend(Teems::Commands::MeetingRecording) }
-    end
 
     def segment_downloader_instance
       Object.new.tap { |obj| obj.extend(Teems::Commands::SegmentDownloader) }

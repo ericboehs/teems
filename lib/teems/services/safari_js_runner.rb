@@ -51,16 +51,15 @@ module Teems
       end
 
       def navigate_script(url)
-        <<~APPLESCRIPT
-          tell application "Safari"
-            activate
-            if (count of windows) = 0 then
-              make new document with properties {URL:"#{url}"}
-            else
-              set URL of current tab of front window to "#{url}"
-            end if
-          end tell
-        APPLESCRIPT
+        safe = escape_for_applescript(url)
+        "tell application \"Safari\"\nactivate\n" \
+          "if (count of windows) = 0 then\nmake new document with properties {URL:\"#{safe}\"}\n" \
+          "else\nset URL of current tab of front window to \"#{safe}\"\n" \
+          "end if\nend tell\n"
+      end
+
+      def escape_for_applescript(str)
+        str.gsub('\\', '\\\\\\\\').gsub('"', '\\"')
       end
 
       def page_url_script

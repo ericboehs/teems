@@ -257,7 +257,8 @@ module Teems
 
         profile = with_token_refresh { runner.users_api.get_user(organizer_id) }
         puts "  Organizer: #{profile.display_name}"
-      rescue ApiError
+      rescue ApiError => e
+        debug("Could not resolve organizer: #{e.message}")
         nil
       end
 
@@ -300,7 +301,8 @@ module Teems
       def fetch_user_name(uuid, identity)
         profile = with_token_refresh { runner.users_api.get_user(uuid) }
         profile.display_name
-      rescue ApiError
+      rescue ApiError => e
+        debug("Could not resolve user #{uuid}: #{e.message}")
         identity
       end
 
@@ -446,13 +448,12 @@ module Teems
       def dispatch_mode(target, classified)
         if @options[:chat]
           display_meeting_chat(classified[:chat_messages])
-        elsif @options[:transcript]
-          download_transcript(target, classified)
-        elsif @options[:recording]
-          download_recording(target, classified)
-        else
-          display_meeting_summary(target, classified)
+          return 0
         end
+        return download_transcript(target, classified) || 0 if @options[:transcript]
+        return download_recording(target, classified) || 0 if @options[:recording]
+
+        display_meeting_summary(target, classified)
         0
       end
     end
