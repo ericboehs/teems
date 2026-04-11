@@ -223,10 +223,9 @@ module Teems
       private
 
       def download_recording(target, classified)
-        return error('ffmpeg is required. Install with: brew install ffmpeg') unless ffmpeg?
-
         sharing_url = target[:fileUrl] || classified[:recordings].filter_map { |rec| rec[:url] }.first
         return error('No recordings found for this meeting') unless sharing_url
+        return error('ffmpeg is required. Install with: brew install ffmpeg') unless ffmpeg?
 
         execute_recording_pipeline(sharing_url)
       end
