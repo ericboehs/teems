@@ -57,6 +57,11 @@ module Teems
       Formatters::MessageFormatter.new(output: @output, cache_store: cache_store)
     end
 
+    # Safari JS runner for SharePoint automation
+    def safari_js_runner
+      Services::SafariJsRunner.new(output: @output)
+    end
+
     # Token extractor for Safari automation
     def token_extractor(auth_mode: :default)
       Services::TokenExtractor.new(output: @output, auth_mode: auth_mode)

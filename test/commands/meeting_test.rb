@@ -4,6 +4,31 @@ require 'test_helper'
 
 # Tests for the meeting command
 module MeetingCommandTests
+  # Mock Safari JS runner for tests
+  class MockSafari
+    attr_reader :navigated_urls, :executed_js
+
+    def initialize(available: true, js_results: {})
+      @available = available
+      @js_results = js_results
+      @navigated_urls = []
+      @executed_js = []
+    end
+
+    def available? = @available
+
+    def navigate(url)
+      @navigated_urls << url
+    end
+
+    def wait_for_load(**) = nil
+
+    def execute_js(code)
+      @executed_js << code
+      @js_results[code] || @js_results[:default]
+    end
+  end
+
   # Shared helpers for running meeting commands
   module Helpers
     def run_meeting(args, stubs: {})
@@ -277,16 +302,22 @@ module MeetingCommandTests
   class AssetDownloadTest < Minitest::Test
     include Helpers
 
-    def test_transcript_flag_with_no_recordings
+    def test_transcript_flag_with_no_sharing_link
       result = run_meeting([thread_id, '--transcript'],
                            stubs: { 'messages' => meeting_messages_response([sample_chat_message]) })
-      assert_match(/No recordings found/, result[:stderr])
+      assert_match(/No recording sharing link/, result[:stderr])
     end
 
-    def test_transcript_flag_with_recordings
-      result = run_meeting([thread_id, '--transcript'],
-                           stubs: { 'messages' => meeting_messages_response([sample_recording_message]) })
-      assert_match(/Phase 2/, result[:stdout])
+    def test_transcript_flag_requires_safari
+      with_temp_config do
+        result = capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', meeting_messages_response([sample_recording_message]))
+          runner.define_singleton_method(:safari_js_runner) { MockSafari.new(available: false) }
+          Teems::Commands::Meeting.new([thread_id, '--transcript'], runner: runner).execute
+        end
+        assert_match(/Safari is required/, result[:stderr])
+      end
     end
 
     def test_recording_flag_with_no_recordings
@@ -299,6 +330,194 @@ module MeetingCommandTests
       result = run_meeting([thread_id, '--recording'],
                            stubs: { 'messages' => meeting_messages_response([sample_recording_message]) })
       assert_match(/Phase 3/, result[:stdout])
+    end
+  end
+
+  # Tests for transcript download pipeline
+  class TranscriptPipelineTest < Minitest::Test
+    include Helpers
+
+    def test_transcript_embed_url_failure
+      result = run_transcript(embed_response: :error)
+      assert_match(/Could not get embed URL/, result[:stderr])
+    end
+
+    def test_transcript_file_info_extraction_failure
+      result = run_transcript(file_info_js: 'null')
+      assert_match(/Could not extract file info/, result[:stderr])
+    end
+
+    def test_transcript_no_transcripts_found
+      result = run_transcript(file_info_js: valid_file_info, transcript_js: '{"error":"x"}')
+      assert_match(/No transcripts found/, result[:stderr])
+    end
+
+    def test_transcript_saves_file
+      Dir.mktmpdir('teems-vtt') do |dir|
+        result = run_transcript(file_info_js: valid_file_info, transcript_js: valid_transcript, output_dir: dir)
+        assert_match(/Transcript saved/, result[:stdout])
+      end
+    end
+
+    def test_transcript_uses_download_url_fallback
+      transcript = '{"value":[{"downloadUrl":"https://cdn.example.com/t.vtt","name":"f.vtt"}]}'
+      Dir.mktmpdir('teems-vtt') do |dir|
+        result = run_transcript(file_info_js: valid_file_info, transcript_js: transcript, output_dir: dir)
+        assert_match(/Transcript saved/, result[:stdout])
+      end
+    end
+
+    def test_file_info_with_library_id_format
+      fi = '{"libraryId":{"siteId":"d1","siteUrl":"https://sp.example.com"},"itemId":"i1"}'
+      Dir.mktmpdir('teems-vtt') do |dir|
+        result = run_transcript(file_info_js: fi, transcript_js: valid_transcript, output_dir: dir)
+        assert_match(/Transcript saved/, result[:stdout])
+      end
+    end
+
+    private
+
+    def run_transcript(embed_response: :ok, file_info_js: nil, transcript_js: nil, output_dir: nil)
+      safari = TranscriptMockSafari.new(file_info: file_info_js, transcript: transcript_js)
+      with_temp_config do
+        capture_output do |out|
+          runner = build_transcript_runner(out, safari, embed_response)
+          args = build_transcript_args(output_dir)
+          execute_transcript_cmd(args, runner)
+        end
+      end
+    end
+
+    def build_transcript_args(output_dir)
+      args = [recap_url, '--transcript']
+      args.push('-o', output_dir) if output_dir
+      args
+    end
+
+    def execute_transcript_cmd(args, runner)
+      cmd = Teems::Commands::Meeting.new(args, runner: runner)
+      cmd.define_singleton_method(:fetch_transcript_content) { |_url| 'WEBVTT' }
+      cmd.execute
+    end
+
+    def build_transcript_runner(out, safari, embed_response)
+      runner = configured_runner(output: out)
+      runner.api_client.stub('messages', meeting_messages_response([]))
+      apply_embed_stub(runner, embed_response)
+      runner.define_singleton_method(:safari_js_runner) { safari }
+      runner
+    end
+
+    def apply_embed_stub(runner, response)
+      if response == :error
+        runner.api_client.stub_error('shares', Teems::ApiError.new('Not found'))
+      else
+        runner.api_client.stub('shares', { 'getUrl' => 'https://embed.example.com' })
+      end
+    end
+
+    def recap_url
+      encoded = URI.encode_www_form_component(thread_id)
+      "https://teams.microsoft.com/l/meetingrecap?threadId=#{encoded}&fileUrl=https%3A%2F%2Fsp.example.com%2Ffile"
+    end
+
+    def valid_file_info
+      '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
+    end
+
+    def valid_transcript
+      '{"value":[{"temporaryDownloadUrl":"https://cdn.example.com/t.vtt","name":"meeting.vtt"}]}'
+    end
+  end
+
+  # Tests for transcript edge cases (parsing, error paths)
+  class TranscriptParsingTest < Minitest::Test
+    include Helpers
+
+    def test_parse_file_info_with_invalid_json
+      result = run_transcript(file_info_js: '{invalid')
+      assert_match(/Could not extract file info/, result[:stderr])
+    end
+
+    def test_parse_file_info_with_missing_fields
+      result = run_transcript(file_info_js: '{"driveId":"d1"}')
+      assert_match(/Could not extract file info/, result[:stderr])
+    end
+
+    def test_file_info_extraction_timeout
+      safari = TranscriptMockSafari.new(file_info: nil, transcript: nil, raise_on_load: true)
+      with_temp_config do
+        result = capture_output do |out|
+          runner = build_transcript_runner(out, safari)
+          Teems::Commands::Meeting.new([recap_url, '--transcript'], runner: runner).execute
+        end
+        assert_match(/Could not extract file info/, result[:stderr])
+      end
+    end
+
+    def test_transcript_empty_fetch_result
+      file_info = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
+      result = run_transcript(file_info_js: file_info, transcript_js: '')
+      assert_match(/No transcripts found/, result[:stderr])
+    end
+
+    def test_transcript_invalid_json_fetch
+      file_info = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
+      result = run_transcript(file_info_js: file_info, transcript_js: '{broken')
+      assert_match(/No transcripts found/, result[:stderr])
+    end
+
+    def test_transcript_response_without_download_url
+      file_info = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
+      result = run_transcript(file_info_js: file_info, transcript_js: '{"value":[{"name":"t.vtt"}]}')
+      assert_match(/No transcripts found/, result[:stderr])
+    end
+
+    private
+
+    def run_transcript(file_info_js: nil, transcript_js: nil)
+      safari = TranscriptMockSafari.new(file_info: file_info_js, transcript: transcript_js)
+      with_temp_config do
+        capture_output do |out|
+          runner = build_transcript_runner(out, safari)
+          Teems::Commands::Meeting.new([recap_url, '--transcript'], runner: runner).execute
+        end
+      end
+    end
+
+    def build_transcript_runner(out, safari)
+      runner = configured_runner(output: out)
+      runner.api_client.stub('messages', meeting_messages_response([]))
+      runner.api_client.stub('shares', { 'getUrl' => 'https://embed.example.com' })
+      runner.define_singleton_method(:safari_js_runner) { safari }
+      runner
+    end
+
+    def recap_url
+      encoded = URI.encode_www_form_component(thread_id)
+      "https://teams.microsoft.com/l/meetingrecap?threadId=#{encoded}&fileUrl=https%3A%2F%2Fsp.example.com%2Ffile"
+    end
+  end
+
+  # Safari mock with separate responses for file info and transcript fetch
+  class TranscriptMockSafari < MockSafari
+    def initialize(file_info: nil, transcript: nil, raise_on_load: false)
+      super(js_results: {})
+      @file_info = file_info
+      @transcript = transcript
+      @raise_on_load = raise_on_load
+    end
+
+    def wait_for_load(**)
+      raise Teems::Error, 'Timed out' if @raise_on_load
+    end
+
+    def execute_js(code)
+      @executed_js << code
+      return @file_info if code.include?('g_fileInfo')
+      return @transcript if code.include?('fetch(')
+
+      nil
     end
   end
 
@@ -379,43 +598,6 @@ module MeetingCommandTests
       assert_match(/Transcripts: 1/, result[:stdout])
     end
 
-    def test_displayname_attribute_used_for_visitors
-      call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
-                   'composetime' => '2026-01-20T10:00:00.000Z',
-                   'content' => '<partlist><part identity="8:teamsvisitor:abc">' \
-                                '<name>8:teamsvisitor:abc</name><displayName>Guest User</displayName>' \
-                                '<duration>300</duration></part></partlist>' }
-      result = run_meeting([thread_id],
-                           stubs: { 'messages' => meeting_messages_response([call_msg]) })
-      assert_match(/Guest User/, result[:stdout])
-    end
-
-    def test_displayname_preferred_over_identity_name
-      call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
-                   'composetime' => '2026-01-20T10:00:00.000Z',
-                   'content' => '<partlist><part identity="8:orgid:u1">' \
-                                '<name>8:orgid:u1</name><displayName>Real Name</displayName>' \
-                                '<duration>300</duration></part></partlist>' }
-      result = run_meeting([thread_id],
-                           stubs: { 'messages' => meeting_messages_response([call_msg]) })
-      assert_match(/Real Name/, result[:stdout])
-      refute_match(/8:orgid/, result[:stdout])
-    end
-
-    def test_participant_with_empty_name_resolves_via_api
-      result = run_participant_resolution do |api|
-        api.stub('/v1.0/users/user-uuid-1', user_profile_response)
-      end
-      assert_match(/Resolved User/, result[:stdout])
-    end
-
-    def test_participant_resolution_api_error_falls_back
-      result = run_participant_resolution('bad-uuid') do |api|
-        api.stub_error('users/bad-uuid', Teems::ApiError.new('Not found', status_code: 404))
-      end
-      assert_match(/8:orgid:bad-uuid/, result[:stdout])
-    end
-
     def test_call_event_with_nil_time
       call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
                    'composetime' => nil,
@@ -435,13 +617,82 @@ module MeetingCommandTests
       assert_match(/No call events found/, result[:stdout])
     end
 
+    def test_recording_without_call_id_in_content
+      msg = { 'id' => '200', 'messagetype' => 'RichText/Media_CallRecording',
+              'composetime' => '2026-01-20T11:00:00.000Z',
+              'content' => '<a href="https://example.com/play">Play</a>' }
+      result = run_meeting([thread_id],
+                           stubs: { 'messages' => meeting_messages_response([msg]) })
+      assert_match(/Recordings: 1/, result[:stdout])
+    end
+
+    def test_call_event_without_ical_uid
+      call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
+                   'composetime' => '2026-01-20T10:00:00.000Z',
+                   'content' => '<partlist><part identity="8:orgid:u1"><name>u1</name>' \
+                                '<displayName>Alice</displayName><duration>60</duration></part></partlist>' }
+      result = run_meeting([thread_id],
+                           stubs: { 'messages' => meeting_messages_response([call_msg]) })
+      assert_match(/Alice/, result[:stdout])
+    end
+
+    def test_recap_url_with_non_meeting_thread_id_in_query
+      url = 'https://teams.microsoft.com/l/meetingrecap?threadId=19%3Ageneral%40thread.v2'
+      result = run_meeting([url])
+      assert_match(/Could not parse meeting URL/, result[:stderr])
+    end
+
     def test_non_meeting_join_url_returns_nil
       url = 'https://teams.microsoft.com/l/meetup-join/19%3Ageneral%40thread.v2/0'
       result = run_meeting([url])
       assert_match(/Could not parse meeting URL/, result[:stderr])
     end
+  end
+
+  # Tests for participant name resolution and display
+  class ParticipantDisplayTest < Minitest::Test
+    include Helpers
+
+    def test_displayname_used_for_visitors
+      result = run_with_participant('8:teamsvisitor:abc', 'Guest User')
+      assert_match(/Guest User/, result[:stdout])
+    end
+
+    def test_displayname_preferred_over_identity_name
+      result = run_with_participant('8:orgid:u1', 'Real Name')
+      assert_match(/Real Name/, result[:stdout])
+      refute_match(/8:orgid/, result[:stdout])
+    end
+
+    def test_empty_displayname_resolves_via_api
+      result = run_participant_resolution do |api|
+        api.stub('/v1.0/users/user-uuid-1', user_profile_response)
+      end
+      assert_match(/Resolved User/, result[:stdout])
+    end
+
+    def test_api_error_falls_back_to_identity
+      result = run_participant_resolution('bad-uuid') do |api|
+        api.stub_error('users/bad-uuid', Teems::ApiError.new('Not found', status_code: 404))
+      end
+      assert_match(/8:orgid:bad-uuid/, result[:stdout])
+    end
+
+    def test_visitor_with_empty_displayname_shows_identity
+      result = run_with_participant('8:teamsvisitor:xyz', '')
+      assert_match(/8:teamsvisitor:xyz/, result[:stdout])
+    end
 
     private
+
+    def run_with_participant(identity, display_name)
+      call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
+                   'composetime' => '2026-01-20T10:00:00.000Z',
+                   'content' => "<partlist><part identity=\"#{identity}\">" \
+                                "<name>#{identity}</name><displayName>#{display_name}</displayName>" \
+                                '<duration>300</duration></part></partlist>' }
+      run_meeting([thread_id], stubs: { 'messages' => meeting_messages_response([call_msg]) })
+    end
 
     def run_participant_resolution(uuid = 'user-uuid-1')
       call_msg = empty_name_call_msg(uuid)

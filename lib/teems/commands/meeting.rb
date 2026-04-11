@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'meeting_transcript'
+
 module Teems
   module Commands
     MEETING_HELP = <<~HELP
@@ -387,6 +389,7 @@ module Teems
       include MeetingDisplay
       include MeetingChatDisplay
       include MeetingCallFilter
+      include MeetingTranscript
 
       def initialize(args, runner:)
         @options = {}
@@ -442,24 +445,13 @@ module Teems
         if @options[:chat]
           display_meeting_chat(classified[:chat_messages])
         elsif @options[:transcript]
-          download_transcript(classified)
+          download_transcript(target, classified)
         elsif @options[:recording]
           download_recording(classified)
         else
           display_meeting_summary(target, classified)
         end
         0
-      end
-
-      def download_transcript(classified)
-        recordings = classified[:recordings]
-        if recordings.empty?
-          error('No recordings found — transcript requires a recording with sharing link')
-          return
-        end
-
-        info('Transcript download requires Safari automation (Phase 2)')
-        info("Found #{recordings.length} recording(s) with sharing links")
       end
 
       def download_recording(classified)
