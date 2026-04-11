@@ -452,6 +452,11 @@ module MeetingCommandTests
       assert_match(/Could not extract file info/, result[:stderr])
     end
 
+    def test_parse_file_info_with_empty_response
+      result = run_transcript(file_info_js: nil)
+      assert_match(/Could not extract file info/, result[:stderr])
+    end
+
     def test_parse_file_info_with_invalid_sp_item_url
       fi = JSON.generate('.spItemUrl' => 'https://example.com/not-an-api-url')
       result = run_transcript(file_info_js: fi)
