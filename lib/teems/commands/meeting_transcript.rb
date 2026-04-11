@@ -180,7 +180,7 @@ module Teems
 
       def title_has_result?(title) = !title.empty? && title != POLL_SENTINEL
 
-      def build_fetch_js(url) = format(FETCH_TEMPLATE, url.gsub("'", "\\\\'"))
+      def build_fetch_js(url) = format(FETCH_TEMPLATE, url.gsub('\\', '\\\\\\\\').gsub("'", "\\\\'"))
 
       def parse_transcript_response(result)
         data = JSON.parse(result)
