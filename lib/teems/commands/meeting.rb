@@ -282,19 +282,17 @@ module Teems
       end
 
       def needs_resolution?(name)
-        name.empty? || name.start_with?('8:')
+        name.empty? || name.match?(/\A\d*:/)
       end
 
       def resolve_participant_name(identity)
-        uuid = extract_uuid(identity)
+        return 'Bot' if identity.start_with?('28:')
+
+        uuid = identity.match(/8:orgid:(.+)/)&.captures&.first
         return identity unless uuid
 
         @name_cache ||= {}
         @name_cache[uuid] ||= fetch_user_name(uuid, identity)
-      end
-
-      def extract_uuid(identity)
-        identity.match(/8:orgid:(.+)/)&.captures&.first
       end
 
       def fetch_user_name(uuid, identity)
