@@ -24,9 +24,9 @@ module MeetingCommandTests
     end
 
     def call_event_content
-      '<partlist>' \
-        '<part identity="8:orgid:user-uuid-1"><name>Alice</name><duration>3600</duration></part>' \
-        '<part identity="8:orgid:user-uuid-2"><name>Bob</name><duration>1800</duration></part>' \
+      '<partlist callId="abc-123">' \
+        '<part identity="8:orgid:user-uuid-1" displayName="Alice"><name>Alice</name><duration>3600</duration></part>' \
+        '<part identity="8:orgid:user-uuid-2" displayName="Bob"><name>Bob</name><duration>1800</duration></part>' \
         '</partlist>'
     end
 
@@ -377,6 +377,27 @@ module MeetingCommandTests
       assert_match(/Transcripts: 1/, result[:stdout])
     end
 
+    def test_displayname_attribute_used_for_visitors
+      call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
+                   'composetime' => '2026-01-20T10:00:00.000Z',
+                   'content' => '<partlist><part identity="8:teamsvisitor:abc" displayName="Guest User">' \
+                                '<name></name><duration>300</duration></part></partlist>' }
+      result = run_meeting([thread_id],
+                           stubs: { 'messages' => meeting_messages_response([call_msg]) })
+      assert_match(/Guest User/, result[:stdout])
+    end
+
+    def test_displayname_preferred_over_identity_name
+      call_msg = { 'id' => '100', 'messagetype' => 'Event/Call',
+                   'composetime' => '2026-01-20T10:00:00.000Z',
+                   'content' => '<partlist><part identity="8:orgid:u1" displayName="Real Name">' \
+                                '<name>8:orgid:u1</name><duration>300</duration></part></partlist>' }
+      result = run_meeting([thread_id],
+                           stubs: { 'messages' => meeting_messages_response([call_msg]) })
+      assert_match(/Real Name/, result[:stdout])
+      refute_match(/8:orgid/, result[:stdout])
+    end
+
     def test_participant_with_empty_name_resolves_via_api
       result = run_participant_resolution do |api|
         api.stub('/v1.0/users/user-uuid-1', user_profile_response)
@@ -463,17 +484,17 @@ module MeetingCommandTests
       assert_match(/Meeting Details/, result[:stdout])
     end
 
-    def test_call_id_filters_to_matching_recordings
-      msgs = [recording_with_call_id('e2c532e4-0001-0001-0001-000000000001'),
-              recording_with_call_id('e2c532e4-0002-0002-0002-000000000002')]
-      result = run_recap_meeting(messages: msgs, call_id: 'e2c532e4-0001-0001-0001-000000000001')
-      assert_match(/Recordings: 1/, result[:stdout])
+    def test_call_id_filters_call_events
+      msgs = [call_event_with_call_id('aaa-111'), call_event_with_call_id('bbb-222')]
+      result = run_recap_meeting(messages: msgs, call_id: 'aaa-111')
+      assert_match(/Call Event/, result[:stdout])
+      assert_equal 1, result[:stdout].scan('Call Event').length
     end
 
     def test_call_id_no_match_shows_all
-      msgs = [recording_with_call_id('e2c532e4-0001-0001-0001-000000000001')]
-      result = run_recap_meeting(messages: msgs, call_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
-      assert_match(/Recordings: 1/, result[:stdout])
+      msgs = [call_event_with_call_id('aaa-111')]
+      result = run_recap_meeting(messages: msgs, call_id: 'zzz-999')
+      assert_match(/Call Event/, result[:stdout])
     end
 
     private
@@ -495,10 +516,12 @@ module MeetingCommandTests
       "https://teams.microsoft.com/l/meetingrecap?threadId=#{encoded}&organizerId=#{organizer_id}&callId=#{call_id}"
     end
 
-    def recording_with_call_id(call_id)
-      { 'id' => "rec-#{call_id}", 'messagetype' => 'RichText/Media_CallRecording',
-        'composetime' => '2026-01-20T11:00:00.000Z',
-        'content' => "<a href='https://example.com/rec'>Play</a> callId=#{call_id}" }
+    def call_event_with_call_id(call_id)
+      { 'id' => "evt-#{call_id}", 'messagetype' => 'Event/Call',
+        'composetime' => '2026-01-20T10:00:00.000Z',
+        'content' => "<partlist callId=\"#{call_id}\">" \
+                     '<part identity="8:orgid:u1" displayName="Alice"><name>Alice</name>' \
+                     '<duration>600</duration></part></partlist>' }
     end
 
     def organizer_profile

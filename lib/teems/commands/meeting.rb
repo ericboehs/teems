@@ -152,7 +152,8 @@ module Teems
       RECORDING_TYPE = 'RichText/Media_CallRecording'
       TRANSCRIPT_TYPE = 'RichText/Media_CallTranscript'
 
-      PARTLIST_RE = %r{<part identity="([^"]+)"[^>]*>.*?<name>([^<]*)</name>.*?<duration>([^<]*)</duration>}m
+      PART_RE = %r{<part\s+([^>]+)>.*?<name>([^<]*)</name>.*?<duration>([^<]*)</duration>}m
+      CALLID_ATTR_RE = /callId="([^"]+)"/
 
       private
 
@@ -181,13 +182,28 @@ module Teems
       end
 
       def parse_call_event(msg)
-        build_msg_hash(msg).merge(participants: extract_partlist(msg['content'].to_s))
+        content = msg['content'].to_s
+        call_id = content.match(CALLID_ATTR_RE)&.captures&.first
+        build_msg_hash(msg).merge(call_id: call_id, participants: extract_partlist(content))
       end
 
       def extract_partlist(content)
-        content.scan(PARTLIST_RE).map do |identity, name, duration|
-          { identity: identity, name: name, duration: duration }
-        end
+        content.scan(PART_RE).map { |attrs, name, duration| build_participant(attrs, name, duration) }
+      end
+
+      def build_participant(attrs, name, duration)
+        identity = extract_attr(attrs, 'identity')
+        display = extract_attr(attrs, 'displayName')
+        { identity: identity, name: best_name(display, name), duration: duration }
+      end
+
+      def extract_attr(attrs, key)
+        match = attrs.match(/#{key}="([^"]+)"/)
+        match ? match[1] : ''
+      end
+
+      def best_name(*candidates)
+        candidates.find { |name| name && !name.empty? && !name.start_with?('8:') } || ''
       end
 
       def parse_recording(msg)
@@ -343,38 +359,17 @@ module Teems
       private
 
       def classify_and_filter(messages_data, target)
-        @classified = classify_meeting_messages(messages_data)
+        classified = classify_meeting_messages(messages_data)
         call_id = target[:callId]
-        call_id ? apply_call_id_filter(call_id) : @classified
+        call_id ? filter_by_call_id(classified, call_id) : classified
       end
 
-      def apply_call_id_filter(call_id)
-        matched = @classified[:recordings].select { |rec| rec[:call_id] == call_id }
-        return @classified if matched.empty?
+      def filter_by_call_id(classified, call_id)
+        events = classified[:call_events].select { |evt| evt[:call_id] == call_id }
+        recordings = classified[:recordings].select { |rec| rec[:call_id] == call_id }
+        return classified if events.empty? && recordings.empty?
 
-        boundary = compute_time_boundary(matched)
-        @classified.merge(recordings: matched, call_events: select_events_near(boundary))
-      end
-
-      def compute_time_boundary(recordings)
-        earliest = recordings.filter_map { |rec| parse_iso_time(rec[:time]) }.min
-        earliest ? earliest - 7200 : nil
-      end
-
-      def select_events_near(boundary)
-        events = @classified[:call_events]
-        boundary ? events.select { |evt| event_after_boundary?(evt, boundary) } : events
-      end
-
-      def event_after_boundary?(evt, boundary)
-        time = parse_iso_time(evt[:time])
-        time && time >= boundary
-      end
-
-      def parse_iso_time(str)
-        Time.parse(str)
-      rescue ArgumentError, TypeError
-        nil
+        classified.merge(call_events: events, recordings: recordings)
       end
     end
 
