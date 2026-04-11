@@ -47,6 +47,7 @@ module Teems
       EVENT_ID_PREFIX = 'AAMk'
       JOIN_URL_PATTERN = %r{/l/meetup-join/([^/?]+)}
       CHAT_URL_PATTERN = %r{/l/chat/([^/?]+)}
+      RECAP_PARAMS = %w[callId organizerId tenantId iCalUid driveId driveItemId fileUrl].freeze
 
       private
 
@@ -69,13 +70,25 @@ module Teems
 
       def resolve_url_target(url)
         thread_id = extract_meeting_thread(url)
-        return { thread_id: thread_id } if thread_id
+        return build_url_target(url, thread_id) if thread_id
 
         parsed = Services::TeamsUrlParser.parse(url)
         return { thread_id: parsed.conversation_id } if parsed
 
         error('Could not parse meeting URL')
         nil
+      end
+
+      def build_url_target(url, thread_id)
+        target = { thread_id: thread_id }
+        query = URI.parse(url).query
+        return target unless query
+
+        params = URI.decode_www_form(query).to_h
+        RECAP_PARAMS.each { |key| (val = params[key]) && target[key.to_sym] = val }
+        target
+      rescue URI::InvalidURIError
+        target
       end
 
       def extract_meeting_thread(url)
@@ -178,7 +191,8 @@ module Teems
       end
 
       def parse_recording(msg)
-        build_msg_hash(msg).merge(url: extract_href(msg['content'].to_s))
+        content = msg['content'].to_s
+        build_msg_hash(msg).merge(url: extract_href(content), call_id: extract_call_id(content))
       end
 
       def parse_transcript(msg)
@@ -195,6 +209,11 @@ module Teems
         match ? match[1] : nil
       end
 
+      def extract_call_id(content)
+        match = content.match(/callId=([a-f0-9-]+)/i)
+        match ? match[1] : nil
+      end
+
       def safe_parse_json(raw)
         return nil unless raw.is_a?(String) && !raw.empty?
 
@@ -208,11 +227,21 @@ module Teems
     module MeetingDisplay
       private
 
-      def display_meeting_summary(thread_id, classified)
+      def display_meeting_summary(target, classified)
         puts output.bold('Meeting Details')
-        puts "  Thread: #{thread_id}"
+        puts "  Thread: #{target[:thread_id]}"
+        display_organizer(target[:organizerId])
         display_call_events(classified[:call_events])
         display_assets_summary(classified)
+      end
+
+      def display_organizer(organizer_id)
+        return unless organizer_id
+
+        profile = with_token_refresh { runner.users_api.get_user(organizer_id) }
+        puts "  Organizer: #{profile.display_name}"
+      rescue ApiError
+        nil
       end
 
       def display_call_events(call_events)
@@ -235,14 +264,27 @@ module Teems
       end
 
       def format_participant_line(name, identity, duration)
-        resolved = name.empty? ? resolve_participant_name(identity) : name
+        resolved = needs_resolution?(name) ? resolve_participant_name(identity) : name
         "    #{resolved} (#{format_call_duration(duration)})"
       end
 
+      def needs_resolution?(name)
+        name.empty? || name.start_with?('8:')
+      end
+
       def resolve_participant_name(identity)
-        uuid = identity.match(/8:orgid:(.+)/)&.captures&.first
+        uuid = extract_uuid(identity)
         return identity unless uuid
 
+        @name_cache ||= {}
+        @name_cache[uuid] ||= fetch_user_name(uuid, identity)
+      end
+
+      def extract_uuid(identity)
+        identity.match(/8:orgid:(.+)/)&.captures&.first
+      end
+
+      def fetch_user_name(uuid, identity)
         profile = with_token_refresh { runner.users_api.get_user(uuid) }
         profile.display_name
       rescue ApiError
@@ -296,12 +338,53 @@ module Teems
       end
     end
 
+    # Filters classified messages to a specific call instance by callId
+    module MeetingCallFilter
+      private
+
+      def classify_and_filter(messages_data, target)
+        @classified = classify_meeting_messages(messages_data)
+        call_id = target[:callId]
+        call_id ? apply_call_id_filter(call_id) : @classified
+      end
+
+      def apply_call_id_filter(call_id)
+        matched = @classified[:recordings].select { |rec| rec[:call_id] == call_id }
+        return @classified if matched.empty?
+
+        boundary = compute_time_boundary(matched)
+        @classified.merge(recordings: matched, call_events: select_events_near(boundary))
+      end
+
+      def compute_time_boundary(recordings)
+        earliest = recordings.filter_map { |rec| parse_iso_time(rec[:time]) }.min
+        earliest ? earliest - 7200 : nil
+      end
+
+      def select_events_near(boundary)
+        events = @classified[:call_events]
+        boundary ? events.select { |evt| event_after_boundary?(evt, boundary) } : events
+      end
+
+      def event_after_boundary?(evt, boundary)
+        time = parse_iso_time(evt[:time])
+        time && time >= boundary
+      end
+
+      def parse_iso_time(str)
+        Time.parse(str)
+      rescue ArgumentError, TypeError
+        nil
+      end
+    end
+
     # View meeting details, chat, transcripts, and recordings
     class Meeting < Base
       include MeetingTargetResolver
       include MeetingMessageParser
       include MeetingDisplay
       include MeetingChatDisplay
+      include MeetingCallFilter
 
       def initialize(args, runner:)
         @options = {}
@@ -335,12 +418,11 @@ module Teems
       private
 
       def process_meeting(target)
-        thread_id = target[:thread_id]
-        messages_data = fetch_meeting_messages(thread_id)
+        messages_data = fetch_meeting_messages(target[:thread_id])
         return 1 unless messages_data
 
-        classified = classify_meeting_messages(messages_data)
-        dispatch_mode(thread_id, classified)
+        classified = classify_and_filter(messages_data, target)
+        dispatch_mode(target, classified)
       end
 
       def fetch_meeting_messages(thread_id)
@@ -354,20 +436,20 @@ module Teems
         nil
       end
 
-      def dispatch_mode(thread_id, classified)
+      def dispatch_mode(target, classified)
         if @options[:chat]
           display_meeting_chat(classified[:chat_messages])
         elsif @options[:transcript]
-          download_transcript(thread_id, classified)
+          download_transcript(classified)
         elsif @options[:recording]
-          download_recording(thread_id, classified)
+          download_recording(classified)
         else
-          display_meeting_summary(thread_id, classified)
+          display_meeting_summary(target, classified)
         end
         0
       end
 
-      def download_transcript(_thread_id, classified)
+      def download_transcript(classified)
         recordings = classified[:recordings]
         if recordings.empty?
           error('No recordings found — transcript requires a recording with sharing link')
@@ -378,7 +460,7 @@ module Teems
         info("Found #{recordings.length} recording(s) with sharing links")
       end
 
-      def download_recording(_thread_id, classified)
+      def download_recording(classified)
         recordings = classified[:recordings]
         if recordings.empty?
           error('No recordings found for this meeting')

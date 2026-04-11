@@ -443,4 +443,67 @@ module MeetingCommandTests
         'mail' => 'resolved@example.com', 'userPrincipalName' => 'resolved@example.com' }
     end
   end
+
+  # Tests for recap URL metadata extraction and callId filtering
+  class RecapAndFilterTest < Minitest::Test
+    include Helpers
+
+    def test_recap_url_extracts_organizer
+      result = run_recap_meeting do |api|
+        api.stub('/v1.0/users/org-uuid', organizer_profile)
+      end
+      assert_match(/Organizer: Tori Compton/, result[:stdout])
+    end
+
+    def test_organizer_api_error_is_silent
+      result = run_recap_meeting do |api|
+        api.stub_error('users/org-uuid', Teems::ApiError.new('Not found'))
+      end
+      refute_match(/Organizer/, result[:stdout])
+      assert_match(/Meeting Details/, result[:stdout])
+    end
+
+    def test_call_id_filters_to_matching_recordings
+      msgs = [recording_with_call_id('e2c532e4-0001-0001-0001-000000000001'),
+              recording_with_call_id('e2c532e4-0002-0002-0002-000000000002')]
+      result = run_recap_meeting(messages: msgs, call_id: 'e2c532e4-0001-0001-0001-000000000001')
+      assert_match(/Recordings: 1/, result[:stdout])
+    end
+
+    def test_call_id_no_match_shows_all
+      msgs = [recording_with_call_id('e2c532e4-0001-0001-0001-000000000001')]
+      result = run_recap_meeting(messages: msgs, call_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
+      assert_match(/Recordings: 1/, result[:stdout])
+    end
+
+    private
+
+    def run_recap_meeting(messages: [], call_id: 'call-1')
+      url = build_recap_url(call_id: call_id, organizer_id: 'org-uuid')
+      with_temp_config do
+        capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', meeting_messages_response(messages))
+          yield runner.api_client if block_given?
+          Teems::Commands::Meeting.new([url], runner: runner).execute
+        end
+      end
+    end
+
+    def build_recap_url(call_id:, organizer_id:)
+      encoded = URI.encode_www_form_component(thread_id)
+      "https://teams.microsoft.com/l/meetingrecap?threadId=#{encoded}&organizerId=#{organizer_id}&callId=#{call_id}"
+    end
+
+    def recording_with_call_id(call_id)
+      { 'id' => "rec-#{call_id}", 'messagetype' => 'RichText/Media_CallRecording',
+        'composetime' => '2026-01-20T11:00:00.000Z',
+        'content' => "<a href='https://example.com/rec'>Play</a> callId=#{call_id}" }
+    end
+
+    def organizer_profile
+      { 'id' => 'org-uuid', 'displayName' => 'Tori Compton',
+        'mail' => 'tori@example.com', 'userPrincipalName' => 'tori@example.com' }
+    end
+  end
 end
