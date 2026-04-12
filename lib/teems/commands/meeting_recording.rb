@@ -159,57 +159,58 @@ module Teems
       end
     end
 
-    # Resolves recording file info from SharePoint embed page
+    # Resolves recording file info by fetching embed page HTML directly (no Safari)
     module RecordingResolver
-      include TranscriptEmbed
+      FILE_INFO_RE = /g_fileInfo\s*=\s*(\{.*?\});/m
 
       private
 
       def resolve_recording_file_info(sharing_url)
-        embed_url = fetch_embed_url(sharing_url)
+        embed_url = fetch_recording_embed_url(sharing_url)
         return error('Could not get embed URL for recording') && nil unless embed_url
 
-        safari = runner.safari_js_runner
-        return error('Safari is required for recording download (macOS only)') && nil unless safari.available?
-
-        extract_recording_from_embed(safari, embed_url)
+        extract_file_info_from_html(embed_url)
       end
 
-      def extract_recording_from_embed(safari, embed_url)
-        debug("Navigating to recording embed page: #{embed_url}")
-        safari.navigate(embed_url)
-        safari.wait_for_load(timeout: 20)
-        poll_recording_file_info(safari)
-      rescue Teems::Error => e
-        debug("Recording file info extraction failed: #{e.message}")
-        error('Could not extract recording file info from embed page') && nil
-      end
-
-      def poll_recording_file_info(safari)
-        15.times do |attempt|
-          result = try_extract_recording_info(safari)
-          return result if result
-
-          poll_sleep if attempt.positive?
-        end
-        error('Could not extract recording file info from embed page') && nil
-      end
-
-      def try_extract_recording_info(safari)
-        raw = safari.execute_js(TranscriptEmbed::FILE_INFO_JS).to_s
-        return nil if raw.empty?
-
-        data = JSON.parse(raw)
-        data.is_a?(Hash) ? extract_transform_url(data) : nil
-      rescue JSON::ParserError
+      def fetch_recording_embed_url(sharing_url)
+        debug("Resolving recording sharing link: #{sharing_url}")
+        result = with_token_refresh { runner.meetings_api.share_preview(sharing_url) }
+        result['getUrl']
+      rescue ApiError => e
+        debug("Recording share preview failed: #{e.message}")
         nil
       end
 
-      def extract_transform_url(data)
-        transform_url = data['.transformUrl'] || data['transformUrl']
-        return nil unless transform_url
+      def extract_file_info_from_html(embed_url)
+        debug("Fetching embed page HTML: #{embed_url}")
+        html = fetch_embed_html(embed_url)
+        return error('Could not fetch embed page') && nil unless html
 
-        { transform_url: transform_url, name: data['name'] || 'recording.mp4' }
+        parse_file_info_from_html(html)
+      end
+
+      def fetch_embed_html(url)
+        response = Net::HTTP.get_response(URI(url))
+        response.is_a?(Net::HTTPSuccess) ? response.body : nil
+      rescue IOError, SystemCallError, SocketError, Timeout::Error => e
+        debug("Embed page fetch error: #{e.message}")
+        nil
+      end
+
+      def parse_file_info_from_html(html)
+        match = html.match(FILE_INFO_RE)
+        return file_info_error unless match
+
+        data = JSON.parse(match[1])
+        transform_url = data['.transformUrl'] || data['transformUrl']
+        transform_url ? { transform_url: transform_url, name: data['name'] || 'recording.mp4' } : file_info_error
+      rescue JSON::ParserError => e
+        debug("Embed page JSON parse error: #{e.message}")
+        file_info_error
+      end
+
+      def file_info_error
+        error('Could not extract file info from embed page') && nil
       end
     end
 

@@ -1140,19 +1140,15 @@ module MeetingCommandTests
 
     private
 
-    def recording_defaults
-      { messages: nil, embed_response: :ok, safari_available: true,
-        file_info_js: nil, manifest: nil, output_dir: nil, ffmpeg_success: true }
-    end
-
     def run_recording(opts = {})
-      opts = recording_defaults.merge(opts)
+      defaults = { messages: nil, embed_response: :ok,
+                   manifest: nil, output_dir: nil, ffmpeg_success: true }
+      opts = defaults.merge(opts)
       messages = opts[:messages] || [sample_recording_message]
-      safari = RecordingMockSafari.new(available: opts[:safari_available], file_info: opts[:file_info_js])
       with_temp_config do
         capture_output do |out|
-          runner = build_recording_runner(out, safari, opts[:embed_response], messages)
-          execute_recording_cmd(build_recording_args(opts[:output_dir]), runner, opts[:manifest], opts[:ffmpeg_success])
+          runner = build_recording_runner(out, opts[:embed_response], messages)
+          execute_recording_cmd(build_recording_args(opts[:output_dir]), runner, opts)
         end
       end
     end
@@ -1175,25 +1171,28 @@ module MeetingCommandTests
       args
     end
 
-    def execute_recording_cmd(args, runner, manifest, ffmpeg_success)
+    def execute_recording_cmd(args, runner, opts)
       cmd = Teems::Commands::Meeting.new(args, runner: runner)
-      cmd.define_singleton_method(:ffmpeg?) { true }
-      cmd.define_singleton_method(:poll_sleep) { nil }
-      cmd.define_singleton_method(:fetch_manifest_content) { |_url| manifest }
-      cmd.define_singleton_method(:fetch_segment) { |_url| 'FAKEDATA' }
-      cmd.define_singleton_method(:run_ffmpeg) do |*a|
-        File.binwrite(a.last, 'MP4DATA') if ffmpeg_success
-        ffmpeg_success
-      end
+      stub_recording_io(cmd, opts)
       cmd.execute
     end
 
-    def build_recording_runner(out, safari, embed_response, messages)
-      runner = configured_runner(output: out)
-      runner.api_client.stub('messages', meeting_messages_response(messages))
-      apply_recording_embed_stub(runner, embed_response)
-      runner.define_singleton_method(:safari_js_runner) { safari }
-      runner
+    def stub_recording_io(cmd, opts)
+      html = opts.key?(:embed_html) ? opts[:embed_html] : embed_html_with_file_info(valid_recording_file_info)
+      manifest = opts[:manifest]
+      ffmpeg_success = opts[:ffmpeg_success]
+      cmd.define_singleton_method(:ffmpeg?) { true }
+      cmd.define_singleton_method(:fetch_embed_html) { |_url| html }
+      cmd.define_singleton_method(:fetch_manifest_content) { |_url| manifest }
+      cmd.define_singleton_method(:fetch_segment) { |_url| 'FAKEDATA' }
+      cmd.define_singleton_method(:run_ffmpeg) { |*a| File.binwrite(a.last, 'MP4DATA') || true if ffmpeg_success }
+    end
+
+    def build_recording_runner(out, embed_response, messages)
+      configured_runner(output: out).tap do |runner|
+        runner.api_client.stub('messages', meeting_messages_response(messages))
+        apply_recording_embed_stub(runner, embed_response)
+      end
     end
 
     def apply_recording_embed_stub(runner, response)
@@ -1204,6 +1203,8 @@ module MeetingCommandTests
       end
     end
 
+    def embed_html_with_file_info(json) = "<html><script>var g_fileInfo = #{json};</script></html>"
+
     def recap_url
       encoded = URI.encode_www_form_component(thread_id)
       "https://teams.microsoft.com/l/meetingrecap?threadId=#{encoded}" \
@@ -1211,7 +1212,7 @@ module MeetingCommandTests
     end
 
     def valid_recording_file_info
-      '{"transformUrl":"https://cdn.example.com/transform/thumbnail?tempauth=xyz","fileName":"rec.mp4"}'
+      '{".transformUrl":"https://cdn.example.com/transform/thumbnail?tempauth=xyz","name":"rec.mp4"}'
     end
 
     def sample_manifest
@@ -1267,46 +1268,58 @@ module MeetingCommandTests
       assert_match(/Could not get embed URL/, result[:stderr])
     end
 
-    def test_recording_safari_unavailable
-      result = run_recording(safari_available: false)
-      assert_match(/Safari is required/, result[:stderr])
+    def test_recording_embed_html_fetch_failure
+      result = run_recording(embed_html: nil)
+      assert_match(/Could not fetch embed page/, result[:stderr])
     end
 
     def test_recording_file_info_extraction_failure
-      result = run_recording(file_info_js: 'null')
-      assert_match(/Could not extract recording file info/, result[:stderr])
+      result = run_recording(embed_html: '<html>no file info</html>')
+      assert_match(/Could not extract file info/, result[:stderr])
     end
 
     def test_recording_file_info_without_transform_url
-      result = run_recording(file_info_js: '{"fileName":"test.mp4"}')
-      assert_match(/Could not extract recording file info/, result[:stderr])
+      html = embed_html_with_file_info('{"name":"test.mp4"}')
+      result = run_recording(embed_html: html)
+      assert_match(/Could not extract file info/, result[:stderr])
     end
 
     def test_recording_manifest_fetch_failure
-      fi = '{"transformUrl":"https://cdn.example.com/thumbnail?tempauth=xyz","fileName":"rec.mp4"}'
-      result = run_recording(file_info_js: fi, manifest: nil)
+      result = run_recording(manifest: nil)
       assert_match(/Could not fetch DASH manifest/, result[:stderr])
     end
 
     def test_recording_manifest_missing_tracks
-      fi = '{"transformUrl":"https://cdn.example.com/thumbnail?tempauth=xyz","fileName":"rec.mp4"}'
-      result = run_recording(file_info_js: fi, manifest: '<MPD></MPD>')
+      result = run_recording(manifest: '<MPD></MPD>')
       assert_match(%r{No video/audio tracks found}, result[:stderr])
     end
 
     def test_recording_file_info_invalid_json
-      result = run_recording(file_info_js: '{broken')
-      assert_match(/Could not extract recording file info/, result[:stderr])
+      result = run_recording(embed_html: '<html><script>var g_fileInfo = {broken;</script></html>')
+      assert_match(/Could not extract file info/, result[:stderr])
     end
 
-    def test_recording_file_info_non_hash_json
-      result = run_recording(file_info_js: '[1,2,3]')
-      assert_match(/Could not extract recording file info/, result[:stderr])
+    def test_recording_file_info_no_transform_url
+      html = embed_html_with_file_info('{"name":"test.mp4"}')
+      result = run_recording(embed_html: html)
+      assert_match(/Could not extract file info/, result[:stderr])
     end
 
-    def test_recording_file_info_empty_response
-      result = run_recording(file_info_js: '')
-      assert_match(/Could not extract recording file info/, result[:stderr])
+    def test_recording_with_non_json_file_info
+      html = '<html><script>var g_fileInfo = "just a string";</script></html>'
+      result = run_recording(embed_html: html)
+      assert_match(/Could not extract file info/, result[:stderr])
+    end
+
+    def test_recording_returns_error_exit_code_on_failure
+      with_temp_config do
+        result = capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', meeting_messages_response([sample_chat_message]))
+          assert_equal 1, Teems::Commands::Meeting.new([thread_id, '--recording'], runner: runner).execute
+        end
+        assert_match(/No recordings found/, result[:stderr])
+      end
     end
   end
 
@@ -1314,18 +1327,9 @@ module MeetingCommandTests
   class RecordingSuccessTest < Minitest::Test
     include RecordingTestHelpers
 
-    def test_recording_with_dot_prefixed_transform_url
-      fi = '{ ".transformUrl": "https://cdn.example.com/transform/thumbnail?tempauth=xyz", "name": "rec.mp4" }'
-      Dir.mktmpdir('teems-rec') do |dir|
-        result = run_recording(file_info_js: fi, manifest: sample_manifest, output_dir: dir)
-        assert_match(/Recording saved/, result[:stdout])
-      end
-    end
-
     def test_recording_full_pipeline_success
       Dir.mktmpdir('teems-rec') do |dir|
-        result = run_recording(file_info_js: valid_recording_file_info,
-                               manifest: sample_manifest, output_dir: dir)
+        result = run_recording(manifest: sample_manifest, output_dir: dir)
         assert_match(/Recording saved/, result[:stdout])
         assert File.exist?(File.join(dir, 'recording.mp4'))
       end
@@ -1333,8 +1337,7 @@ module MeetingCommandTests
 
     def test_recording_ffmpeg_merge_failure
       Dir.mktmpdir('teems-rec') do |dir|
-        result = run_recording(file_info_js: valid_recording_file_info,
-                               manifest: sample_manifest, output_dir: dir, ffmpeg_success: false)
+        result = run_recording(manifest: sample_manifest, output_dir: dir, ffmpeg_success: false)
         assert_match(/ffmpeg merge failed/, result[:stderr])
       end
     end
@@ -1342,26 +1345,21 @@ module MeetingCommandTests
     def test_recording_embeds_subtitle_when_vtt_present
       Dir.mktmpdir('teems-rec') do |dir|
         File.write(File.join(dir, 'transcript.vtt'), "WEBVTT\n\n1\n00:00:00.000 --> 00:00:01.000\nHello")
-        result = run_recording(file_info_js: valid_recording_file_info,
-                               manifest: sample_manifest, output_dir: dir)
+        result = run_recording(manifest: sample_manifest, output_dir: dir)
         assert_match(/Embedding transcript as subtitle/, result[:stdout])
       end
     end
 
     def test_recording_with_absolute_segment_urls
-      manifest = absolute_url_manifest
       Dir.mktmpdir('teems-rec') do |dir|
-        result = run_recording(file_info_js: valid_recording_file_info,
-                               manifest: manifest, output_dir: dir)
+        result = run_recording(manifest: absolute_url_manifest, output_dir: dir)
         assert_match(/Recording saved/, result[:stdout])
       end
     end
 
     def test_recording_manifest_without_base_url
-      manifest = sample_manifest.gsub(%r{<BaseURL>[^<]+</BaseURL>}, '')
       Dir.mktmpdir('teems-rec') do |dir|
-        result = run_recording(file_info_js: valid_recording_file_info,
-                               manifest: manifest, output_dir: dir)
+        result = run_recording(manifest: sample_manifest.gsub(%r{<BaseURL>[^<]+</BaseURL>}, ''), output_dir: dir)
         assert_match(/Recording saved/, result[:stdout])
       end
     end
@@ -1399,10 +1397,9 @@ module MeetingCommandTests
     private
 
     def run_recording_subtitle_fail(dir)
-      safari = RecordingMockSafari.new(file_info: valid_recording_file_info)
       with_temp_config do
         capture_output do |out|
-          runner = build_recording_runner(out, safari, :ok, [sample_recording_message])
+          runner = build_recording_runner(out, :ok, [sample_recording_message])
           cmd = Teems::Commands::Meeting.new(build_recording_args(dir), runner: runner)
           stub_subtitle_fail(cmd)
           cmd.execute
@@ -1411,11 +1408,7 @@ module MeetingCommandTests
     end
 
     def stub_subtitle_fail(cmd)
-      manifest = sample_manifest
-      cmd.define_singleton_method(:ffmpeg?) { true }
-      cmd.define_singleton_method(:poll_sleep) { nil }
-      cmd.define_singleton_method(:fetch_manifest_content) { |_url| manifest }
-      cmd.define_singleton_method(:fetch_segment) { |_url| 'FAKEDATA' }
+      stub_combined(cmd)
       call_count = 0
       cmd.define_singleton_method(:run_ffmpeg) do |*a|
         call_count += 1
@@ -1424,11 +1417,9 @@ module MeetingCommandTests
     end
 
     def run_combined_recording(dir, transcript_fail: false)
-      safari = transcript_fail ? RecordingMockSafari.new(file_info: valid_recording_file_info) : build_combined_safari
       with_temp_config do
         capture_output do |out|
-          runner = build_recording_runner(out, safari, :ok, [])
-          runner.api_client.stub_transient_error('shares', Teems::ApiError.new('fail')) if transcript_fail
+          runner = build_combined_runner(out, transcript_fail)
           cmd = Teems::Commands::Meeting.new([recap_url, '--recording', '--transcript', '-o', dir], runner: runner)
           stub_combined(cmd)
           cmd.execute
@@ -1436,15 +1427,25 @@ module MeetingCommandTests
       end
     end
 
-    def build_combined_safari
-      transcript_fi = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
-      CombinedMockSafari.new(recording_info: valid_recording_file_info, transcript_info: transcript_fi)
+    def build_combined_runner(out, transcript_fail)
+      fi = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
+      safari = TranscriptMockSafari.new(file_info: fi, transcript: valid_combined_transcript)
+      build_recording_runner(out, :ok, []).tap do |runner|
+        runner.define_singleton_method(:safari_js_runner) { safari }
+        runner.api_client.stub_transient_error('shares', Teems::ApiError.new('fail')) if transcript_fail
+      end
+    end
+
+    def valid_combined_transcript
+      '{"value":[{"temporaryDownloadUrl":"https://cdn.example.com/t.vtt","name":"t.vtt"}]}'
     end
 
     def stub_combined(cmd)
       manifest = sample_manifest
+      html = embed_html_with_file_info(valid_recording_file_info)
       cmd.define_singleton_method(:ffmpeg?) { true }
       cmd.define_singleton_method(:poll_sleep) { nil }
+      cmd.define_singleton_method(:fetch_embed_html) { |_url| html }
       cmd.define_singleton_method(:fetch_manifest_content) { |_url| manifest }
       cmd.define_singleton_method(:fetch_segment) { |_url| 'FAKEDATA' }
       cmd.define_singleton_method(:fetch_transcript_content) { |_url| 'WEBVTT' }
@@ -1452,8 +1453,53 @@ module MeetingCommandTests
     end
   end
 
-  # Unit tests for SegmentDownloader URL resolution
-  class RecordingUrlTest < Minitest::Test
+  # Unit tests for RecordingResolver and SegmentDownloader
+  class RecordingUnitTest < Minitest::Test
+    def test_fetch_embed_html_returns_nil_on_connection_error
+      obj = resolver_instance
+      assert_nil obj.send(:fetch_embed_html, 'https://localhost:1/nonexistent')
+    end
+
+    def test_fetch_manifest_content_returns_nil_on_connection_error
+      obj = recording_instance
+      assert_nil obj.send(:fetch_manifest_content, 'https://localhost:1/nonexistent')
+    end
+
+    def test_parse_file_info_from_html_with_valid_data
+      obj = resolver_instance
+      html = '<script>var g_fileInfo = {".transformUrl":"https://cdn.example.com/t","name":"r.mp4"};</script>'
+      result = obj.send(:parse_file_info_from_html, html)
+      assert_equal 'https://cdn.example.com/t', result[:transform_url]
+    end
+
+    def test_parse_file_info_from_html_without_transform_url
+      obj = resolver_instance
+      html = '<script>var g_fileInfo = {"name":"r.mp4"};</script>'
+      assert_nil obj.send(:parse_file_info_from_html, html)
+    end
+
+    def test_fetch_embed_html_returns_body_on_success
+      obj = resolver_instance
+      body = obj.send(:fetch_embed_html, 'https://example.com')
+      assert_kind_of String, body if body
+    end
+
+    def test_fetch_manifest_content_returns_body_on_success
+      obj = recording_instance
+      body = obj.send(:fetch_manifest_content, 'https://example.com')
+      assert_kind_of String, body if body
+    end
+
+    private
+
+    def resolver_instance
+      Object.new.tap do |o|
+        o.extend(Teems::Commands::RecordingResolver)
+        o.define_singleton_method(:debug) { |_| nil }
+        o.define_singleton_method(:error) { |_| 1 }
+      end
+    end
+
     def test_resolve_url_returns_absolute_url_unchanged
       obj = segment_downloader_instance
       result = obj.send(:resolve_url, 'https://base.example.com/dir/file', 'https://other.example.com/init.mp4')
@@ -1466,60 +1512,15 @@ module MeetingCommandTests
       assert_equal 'https://base.example.com/dir/segment.m4s', result
     end
 
-    private
+    def recording_instance
+      Object.new.tap do |o|
+        o.extend(Teems::Commands::MeetingRecording)
+        o.define_singleton_method(:debug) { |_| nil }
+      end
+    end
 
     def segment_downloader_instance
       Object.new.tap { |obj| obj.extend(Teems::Commands::SegmentDownloader) }
-    end
-  end
-
-  # Mock Safari for combined transcript+recording tests (returns different file info per navigate)
-  class CombinedMockSafari < MockSafari
-    def initialize(recording_info:, transcript_info:)
-      super(js_results: {})
-      @infos = [transcript_info, recording_info]
-      @navigate_count = 0
-      @title = nil
-    end
-
-    def navigate(url)
-      @navigated_urls << url
-      @navigate_count += 1
-    end
-
-    def execute_js(code)
-      @executed_js << code
-      return @infos[[@navigate_count - 1, 1].min] if code.include?('g_fileInfo')
-
-      handle_title_state(code)
-    end
-
-    private
-
-    def handle_title_state(code)
-      if code.include?('TEEMS_LOADING')
-        @title = nil
-      elsif code.include?('fetch(')
-        @title = '{"value":[{"temporaryDownloadUrl":"https://cdn.example.com/t.vtt","name":"t.vtt"}]}'
-      elsif code.include?('document.title')
-        return @title
-      end
-      nil
-    end
-  end
-
-  # Mock Safari for recording tests (returns transformUrl from g_fileInfo)
-  class RecordingMockSafari < MockSafari
-    def initialize(available: true, file_info: nil)
-      super(available: available, js_results: {})
-      @file_info = file_info
-    end
-
-    def execute_js(code)
-      @executed_js << code
-      return @file_info if code.include?('g_fileInfo')
-
-      nil
     end
   end
 end
