@@ -26,17 +26,24 @@ module Teems
         parse_embed_file_info(html)
       end
 
-      def fetch_embed_page(url)
+      def fetch_embed_page(url, limit: 3)
         response = Net::HTTP.get_response(URI(url))
-        response.is_a?(Net::HTTPSuccess) ? response.body : nil
-      rescue IOError, SystemCallError, SocketError, Timeout::Error => e
+        return response.body if response.is_a?(Net::HTTPSuccess)
+        return debug("Embed page failed: HTTP #{response.code}") unless response.is_a?(Net::HTTPRedirection)
+        return debug('Too many redirects fetching embed page') unless limit.positive?
+
+        fetch_embed_page(response['location'], limit: limit - 1)
+      rescue IOError, SystemCallError, SocketError, Timeout::Error, URI::InvalidURIError => e
         debug("Embed page fetch error: #{e.message}")
         nil
       end
 
       def parse_embed_file_info(html)
         match = html.match(FILE_INFO_RE)
-        return nil unless match
+        unless match
+          debug('g_fileInfo not found in embed page HTML')
+          return nil
+        end
 
         data = JSON.parse(match[1])
         build_file_info(data)
@@ -128,10 +135,6 @@ module Teems
         @transcript_info = fetch_and_parse_embed(embed_url)
         return error('Could not extract file info from embed page') unless @transcript_info
 
-        fetch_and_save_transcript
-      end
-
-      def fetch_and_save_transcript
         transcript = resolve_transcript
         return error('No transcripts found for this recording') unless transcript
 
@@ -161,24 +164,36 @@ module Teems
       end
 
       def fetch_with_drive_token(url)
-        uri = URI(url)
-        headers = { 'Accept' => 'application/json' }
-        token = @transcript_info[:drive_token]
-        headers['Authorization'] = "Bearer #{token}" if token
-        result = Net::HTTP.get_response(uri, headers)
-        result.is_a?(Net::HTTPSuccess) ? result.body : nil
+        result = Net::HTTP.get_response(URI(url), drive_token_headers)
+        return result.body if result.is_a?(Net::HTTPSuccess)
+
+        debug("Transcript list request failed: HTTP #{result.code}")
+        nil
       rescue IOError, SystemCallError, SocketError, Timeout::Error, OpenSSL::SSL::SSLError => e
         debug("Transcript list fetch error: #{e.message}")
         nil
       end
 
-      def parse_transcript_response(body)
-        data = JSON.parse(body)
-        return nil if data['error']
+      def drive_token_headers
+        token = @transcript_info[:drive_token]
+        debug('No drive token; request will be unauthenticated') unless token
+        hdrs = { 'Accept' => 'application/json' }
+        hdrs['Authorization'] = "Bearer #{token}" if token
+        hdrs
+      end
 
-        entry = (data['value'] || [data]).first
-        download_url = entry&.dig('temporaryDownloadUrl') || entry&.dig('downloadUrl')
-        download_url ? { url: download_url, name: File.basename(entry['name'] || 'transcript.vtt') } : nil
+      def parse_transcript_response(body)
+        parsed = JSON.parse(body)
+        api_error = parsed['error']
+        return debug("SharePoint API error: #{api_error}") if api_error
+
+        extract_transcript_entry(parsed)
+      end
+
+      def extract_transcript_entry(parsed)
+        entry = (parsed['value'] || [parsed]).first
+        url = entry&.dig('temporaryDownloadUrl') || entry&.dig('downloadUrl')
+        url ? { url: url, name: File.basename(entry['name'] || 'transcript.vtt') } : nil
       end
 
       def save_transcript(transcript)

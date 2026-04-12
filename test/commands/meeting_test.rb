@@ -1403,6 +1403,23 @@ module MeetingCommandTests
       with_local_server('403 Forbidden', '') { |port| assert_nil obj.send(:fetch_with_drive_token, "http://127.0.0.1:#{port}/") }
     end
 
+    def test_fetch_transcript_content_success
+      obj = transcript_obj
+      with_local_server('200 OK', 'WEBVTT') { |p| assert_equal 'WEBVTT', obj.send(:fetch_transcript_content, "http://127.0.0.1:#{p}/") }
+    end
+
+    def test_fetch_transcript_content_failure
+      obj = transcript_obj
+      with_local_server('404 Not Found', '') { |p| assert_nil obj.send(:fetch_transcript_content, "http://127.0.0.1:#{p}/") }
+    end
+
+    def test_fetch_embed_page_follows_redirect
+      with_redirect_server do |port|
+        result = parser.send(:fetch_embed_page, "http://127.0.0.1:#{port}/redir")
+        assert_equal 'DONE', result
+      end
+    end
+
     private
 
     def parser
@@ -1429,6 +1446,28 @@ module MeetingCommandTests
       yield server.addr[1]
     ensure
       server&.close
+    end
+
+    def with_redirect_server
+      server = TCPServer.new('127.0.0.1', 0)
+      port = server.addr[1]
+      Thread.new { serve_redirect(server, port) }
+      yield port
+    ensure
+      server&.close
+    end
+
+    def serve_redirect(server, port)
+      2.times do |idx|
+        client = server.accept
+        client.gets
+        if idx.zero?
+          client.print "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:#{port}/ok\r\n\r\n"
+        else
+          client.print "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nDONE"
+        end
+        client.close
+      end
     end
 
     def serve_one(server, status, body)
