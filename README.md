@@ -90,7 +90,7 @@ teems meeting <event-id>                           # By calendar event ID (AAMk.
 teems meeting "https://teams.microsoft.com/..."    # By Teams URL or recap link
 ```
 
-Transcript download requires Safari (for SharePoint authentication). Recording download requires `ffmpeg` (`brew install ffmpeg`) and downloads via DASH streaming with 5 parallel threads.
+Recording download requires `ffmpeg` (`brew install ffmpeg`) and downloads via DASH streaming with 5 parallel threads. No browser required.
 
 ### People
 
