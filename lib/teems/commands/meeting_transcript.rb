@@ -2,10 +2,10 @@
 
 module Teems
   module Commands
-    # Resolves SharePoint embed page and extracts file metadata via Safari
-    module TranscriptEmbed
+    # Parses SharePoint embed page HTML to extract file metadata
+    module EmbedPageParser
       SP_ITEM_RE = %r{(https://[^/]+(?::\d+)?/.+?)/_api/v2\.\d+/drives/([^/]+)/items/([^/?]+)}
-      FILE_INFO_JS = 'try { JSON.stringify(g_fileInfo) } catch(e) { "null" }'
+      FILE_INFO_RE = /g_fileInfo\s*=\s*(\{.*?\});/m
 
       private
 
@@ -18,44 +18,46 @@ module Teems
         nil
       end
 
-      def extract_file_info(safari, embed_url)
-        debug("Navigating to embed page: #{embed_url}")
-        safari.navigate(embed_url)
-        safari.wait_for_load(timeout: 20)
+      def fetch_and_parse_embed(embed_url)
+        debug("Fetching embed page: #{embed_url}")
+        html = fetch_embed_page(embed_url)
+        return nil unless html
 
-        poll_file_info(safari)
-      rescue Teems::Error => e
-        debug("File info extraction failed: #{e.message}")
+        parse_embed_file_info(html)
+      end
+
+      def fetch_embed_page(url)
+        response = Net::HTTP.get_response(URI(url))
+        response.is_a?(Net::HTTPSuccess) ? response.body : nil
+      rescue IOError, SystemCallError, SocketError, Timeout::Error => e
+        debug("Embed page fetch error: #{e.message}")
         nil
       end
 
-      def poll_file_info(safari)
-        15.times do |attempt|
-          result = try_extract_file_info(safari)
-          return result if result
+      def parse_embed_file_info(html)
+        match = html.match(FILE_INFO_RE)
+        return nil unless match
 
-          poll_sleep if attempt.positive?
-        end
-        nil
-      end
-
-      def poll_sleep = Kernel.sleep(1)
-
-      def try_extract_file_info(safari)
-        parse_file_info(safari.execute_js(FILE_INFO_JS).to_s)
-      end
-
-      def parse_file_info(raw)
-        return nil if raw.empty?
-
-        data = JSON.parse(raw)
-        data.is_a?(Hash) ? build_file_info(data) : nil
-      rescue JSON::ParserError
+        data = JSON.parse(match[1])
+        build_file_info(data)
+      rescue JSON::ParserError => e
+        debug("Embed page JSON parse error: #{e.message}")
         nil
       end
 
       def build_file_info(data)
-        build_from_sp_item_url(data['.spItemUrl']) || build_from_ids(data)
+        extras = extract_extras(data)
+        extract_ids(data)&.merge(extras)
+      end
+
+      def extract_extras(data)
+        { drive_token: data['.driveAccessTokenV21'],
+          transform_url: data['.transformUrl'] || data['transformUrl'],
+          name: data['name'] }
+      end
+
+      def extract_ids(data)
+        build_from_sp_item_url(data['.spItemUrl']) || build_from_fields(data)
       end
 
       def build_from_sp_item_url(sp_url)
@@ -65,7 +67,7 @@ module Teems
         match ? { site_url: match[1], drive_id: match[2], item_id: match[3] } : nil
       end
 
-      def build_from_ids(data)
+      def build_from_fields(data)
         drive_id = data.dig('libraryId', 'siteId') || data['driveId']
         item_id = data['itemId'] || data['id']
         site_url = data['siteUrl'] || data.dig('libraryId', 'siteUrl')
@@ -101,14 +103,9 @@ module Teems
       end
     end
 
-    # Downloads meeting transcripts via SharePoint API using Safari for auth
+    # Downloads meeting transcripts via SharePoint API (no Safari required)
     module MeetingTranscript
-      include TranscriptEmbed
-
-      FETCH_TEMPLATE = "fetch('%s', {credentials: 'include', headers: {Accept: 'application/json'}})" \
-                       '.then(r => r.json()).then(d => document.title = JSON.stringify(d))' \
-                       '.catch(e => document.title = JSON.stringify({error: e.message}))'
-      POLL_SENTINEL = 'TEEMS_LOADING'
+      include EmbedPageParser
 
       private
 
@@ -116,24 +113,20 @@ module Teems
         sharing_url = target[:fileUrl] || first_recording_url(classified)
         return error('No recording sharing link found for transcript download') unless sharing_url
 
-        safari = runner.safari_js_runner
-        return error('Safari is required for transcript download (macOS only)') unless safari.available?
-
-        execute_transcript_pipeline(safari, sharing_url)
+        execute_transcript_pipeline(sharing_url)
       end
 
       def first_recording_url(classified)
         classified[:recordings].filter_map { |rec| rec[:url] }.first
       end
 
-      def execute_transcript_pipeline(safari, sharing_url)
+      def execute_transcript_pipeline(sharing_url)
         info('Fetching transcript via SharePoint...')
         embed_url = fetch_embed_url(sharing_url)
         return error('Could not get embed URL from sharing link') unless embed_url
 
-        @transcript_safari = safari
-        @transcript_file_info = extract_file_info(safari, embed_url)
-        return error('Could not extract file info from embed page') unless @transcript_file_info
+        @transcript_info = fetch_and_parse_embed(embed_url)
+        return error('Could not extract file info from embed page') unless @transcript_info
 
         fetch_and_save_transcript
       end
@@ -148,47 +141,44 @@ module Teems
       def resolve_transcript
         url = build_transcripts_url
         debug("Fetching transcripts from: #{url}")
-        fetch_transcript_list(@transcript_safari, url)
+        fetch_transcript_list(url)
       end
 
       def build_transcripts_url
-        "#{@transcript_file_info[:site_url]}/_api/v2.1" \
-          "/drives/#{@transcript_file_info[:drive_id]}" \
-          "/items/#{@transcript_file_info[:item_id]}/media/transcripts"
+        "#{@transcript_info[:site_url]}/_api/v2.1" \
+          "/drives/#{@transcript_info[:drive_id]}" \
+          "/items/#{@transcript_info[:item_id]}/media/transcripts"
       end
 
-      def fetch_transcript_list(safari, url)
-        safari.execute_js("document.title = 'TEEMS_LOADING'")
-        safari.execute_js(build_fetch_js(url))
-        result = poll_title_result(safari)
-        return nil unless result
+      def fetch_transcript_list(url)
+        response = fetch_with_drive_token(url)
+        return nil unless response
 
-        parse_transcript_response(result)
+        parse_transcript_response(response)
       rescue JSON::ParserError => e
-        debug("Transcript JSON parse error: #{e.message}")
+        debug("Transcript list JSON parse error: #{e.message}")
         nil
       end
 
-      def poll_title_result(safari)
-        10.times do |attempt|
-          poll_sleep if attempt.positive?
-          title = safari.execute_js('document.title').to_s
-          return title if title_has_result?(title)
-        end
+      def fetch_with_drive_token(url)
+        uri = URI(url)
+        headers = { 'Accept' => 'application/json' }
+        token = @transcript_info[:drive_token]
+        headers['Authorization'] = "Bearer #{token}" if token
+        result = Net::HTTP.get_response(uri, headers)
+        result.is_a?(Net::HTTPSuccess) ? result.body : nil
+      rescue IOError, SystemCallError, SocketError, Timeout::Error, OpenSSL::SSL::SSLError => e
+        debug("Transcript list fetch error: #{e.message}")
         nil
       end
 
-      def title_has_result?(title) = !title.empty? && title != POLL_SENTINEL
-
-      def build_fetch_js(url) = format(FETCH_TEMPLATE, url.gsub('\\', '\\\\\\\\').gsub("'", "\\\\'"))
-
-      def parse_transcript_response(result)
-        data = JSON.parse(result)
+      def parse_transcript_response(body)
+        data = JSON.parse(body)
         return nil if data['error']
 
         entry = (data['value'] || [data]).first
         download_url = entry&.dig('temporaryDownloadUrl') || entry&.dig('downloadUrl')
-        download_url ? { url: download_url, name: entry['name'] || 'transcript.vtt' } : nil
+        download_url ? { url: download_url, name: File.basename(entry['name'] || 'transcript.vtt') } : nil
       end
 
       def save_transcript(transcript)

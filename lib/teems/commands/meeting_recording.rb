@@ -159,58 +159,20 @@ module Teems
       end
     end
 
-    # Resolves recording file info by fetching embed page HTML directly (no Safari)
+    # Resolves recording file info by fetching embed page HTML directly
     module RecordingResolver
-      FILE_INFO_RE = /g_fileInfo\s*=\s*(\{.*?\});/m
+      include EmbedPageParser
 
       private
 
       def resolve_recording_file_info(sharing_url)
-        embed_url = fetch_recording_embed_url(sharing_url)
+        embed_url = fetch_embed_url(sharing_url)
         return error('Could not get embed URL for recording') && nil unless embed_url
 
-        extract_file_info_from_html(embed_url)
-      end
+        file_info = fetch_and_parse_embed(embed_url)
+        return error('Could not extract file info from embed page') && nil unless file_info&.dig(:transform_url)
 
-      def fetch_recording_embed_url(sharing_url)
-        debug("Resolving recording sharing link: #{sharing_url}")
-        result = with_token_refresh { runner.meetings_api.share_preview(sharing_url) }
-        result['getUrl']
-      rescue ApiError => e
-        debug("Recording share preview failed: #{e.message}")
-        nil
-      end
-
-      def extract_file_info_from_html(embed_url)
-        debug("Fetching embed page HTML: #{embed_url}")
-        html = fetch_embed_html(embed_url)
-        return error('Could not fetch embed page') && nil unless html
-
-        parse_file_info_from_html(html)
-      end
-
-      def fetch_embed_html(url)
-        response = Net::HTTP.get_response(URI(url))
-        response.is_a?(Net::HTTPSuccess) ? response.body : nil
-      rescue IOError, SystemCallError, SocketError, Timeout::Error => e
-        debug("Embed page fetch error: #{e.message}")
-        nil
-      end
-
-      def parse_file_info_from_html(html)
-        match = html.match(FILE_INFO_RE)
-        return file_info_error unless match
-
-        data = JSON.parse(match[1])
-        transform_url = data['.transformUrl'] || data['transformUrl']
-        transform_url ? { transform_url: transform_url, name: data['name'] || 'recording.mp4' } : file_info_error
-      rescue JSON::ParserError => e
-        debug("Embed page JSON parse error: #{e.message}")
-        file_info_error
-      end
-
-      def file_info_error
-        error('Could not extract file info from embed page') && nil
+        { transform_url: file_info[:transform_url], name: file_info[:name] || 'recording.mp4' }
       end
     end
 

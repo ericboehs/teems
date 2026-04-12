@@ -17,7 +17,7 @@ module Teems
 
       OPTIONS:
         --transcript     Download meeting transcript (WebVTT)
-        --recording      Download meeting recording (MP4, requires ffmpeg, no Safari needed)
+        --recording      Download meeting recording (MP4, requires ffmpeg)
                          Combine with --transcript to embed subtitles
         --chat           Show meeting chat messages
         -o, --output-dir Directory for downloads (default: current directory)

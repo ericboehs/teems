@@ -4,31 +4,6 @@ require 'test_helper'
 
 # Tests for the meeting command
 module MeetingCommandTests
-  # Mock Safari JS runner for tests
-  class MockSafari
-    attr_reader :navigated_urls, :executed_js
-
-    def initialize(available: true, js_results: {})
-      @available = available
-      @js_results = js_results
-      @navigated_urls = []
-      @executed_js = []
-    end
-
-    def available? = @available
-
-    def navigate(url)
-      @navigated_urls << url
-    end
-
-    def wait_for_load(**) = nil
-
-    def execute_js(code)
-      @executed_js << code
-      @js_results[code] || @js_results[:default]
-    end
-  end
-
   # Shared helpers for running meeting commands
   module Helpers
     def run_meeting(args, stubs: {})
@@ -81,6 +56,8 @@ module MeetingCommandTests
     def thread_id
       '19:meeting_abc123@thread.v2'
     end
+
+    def embed_html_with_file_info(json) = "<script>var g_fileInfo = #{json};</script>"
   end
 
   # Tests for auth, target requirement, and help display
@@ -329,18 +306,6 @@ module MeetingCommandTests
       assert_match(/No recording sharing link/, result[:stderr])
     end
 
-    def test_transcript_flag_requires_safari
-      with_temp_config do
-        result = capture_output do |out|
-          runner = configured_runner(output: out)
-          runner.api_client.stub('messages', meeting_messages_response([sample_recording_message]))
-          runner.define_singleton_method(:safari_js_runner) { MockSafari.new(available: false) }
-          Teems::Commands::Meeting.new([thread_id, '--transcript'], runner: runner).execute
-        end
-        assert_match(/Safari is required/, result[:stderr])
-      end
-    end
-
     def test_recording_flag_with_no_recordings
       result = run_meeting([thread_id, '--recording'],
                            stubs: { 'messages' => meeting_messages_response([sample_chat_message]) })
@@ -420,12 +385,11 @@ module MeetingCommandTests
     private
 
     def run_transcript(embed_response: :ok, file_info_js: nil, transcript_js: nil, output_dir: nil)
-      safari = TranscriptMockSafari.new(file_info: file_info_js, transcript: transcript_js)
       with_temp_config do
         capture_output do |out|
-          runner = build_transcript_runner(out, safari, embed_response)
+          runner = build_transcript_runner(out, embed_response)
           args = build_transcript_args(output_dir)
-          execute_transcript_cmd(args, runner)
+          execute_transcript_cmd(args, runner, file_info_js, transcript_js)
         end
       end
     end
@@ -436,18 +400,19 @@ module MeetingCommandTests
       args
     end
 
-    def execute_transcript_cmd(args, runner)
+    def execute_transcript_cmd(args, runner, file_info_js, transcript_js)
+      embed_html = file_info_js ? "<script>var g_fileInfo = #{file_info_js};</script>" : nil
       cmd = Teems::Commands::Meeting.new(args, runner: runner)
+      cmd.define_singleton_method(:fetch_embed_page) { |_url| embed_html }
+      cmd.define_singleton_method(:fetch_with_drive_token) { |_url| transcript_js }
       cmd.define_singleton_method(:fetch_transcript_content) { |_url| 'WEBVTT' }
-      cmd.define_singleton_method(:poll_sleep) { nil } # skip sleeps in tests
       cmd.execute
     end
 
-    def build_transcript_runner(out, safari, embed_response)
+    def build_transcript_runner(out, embed_response)
       runner = configured_runner(output: out)
       runner.api_client.stub('messages', meeting_messages_response([]))
       apply_embed_stub(runner, embed_response)
-      runner.define_singleton_method(:safari_js_runner) { safari }
       runner
     end
 
@@ -498,17 +463,6 @@ module MeetingCommandTests
       assert_match(/Could not extract file info/, result[:stderr])
     end
 
-    def test_file_info_extraction_timeout
-      safari = TranscriptMockSafari.new(file_info: nil, transcript: nil, raise_on_load: true)
-      with_temp_config do
-        result = capture_output do |out|
-          runner = build_transcript_runner(out, safari)
-          Teems::Commands::Meeting.new([recap_url, '--transcript'], runner: runner).execute
-        end
-        assert_match(/Could not extract file info/, result[:stderr])
-      end
-    end
-
     def test_transcript_empty_fetch_result
       file_info = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
       result = run_transcript(file_info_js: file_info, transcript_js: '')
@@ -530,60 +484,28 @@ module MeetingCommandTests
     private
 
     def run_transcript(file_info_js: nil, transcript_js: nil)
-      safari = TranscriptMockSafari.new(file_info: file_info_js, transcript: transcript_js)
+      embed_html = file_info_js ? "<script>var g_fileInfo = #{file_info_js};</script>" : nil
       with_temp_config do
         capture_output do |out|
-          runner = build_transcript_runner(out, safari)
+          runner = build_simple_runner(out)
           cmd = Teems::Commands::Meeting.new([recap_url, '--transcript'], runner: runner)
-          cmd.define_singleton_method(:poll_sleep) { nil }
+          cmd.define_singleton_method(:fetch_embed_page) { |_url| embed_html }
+          cmd.define_singleton_method(:fetch_with_drive_token) { |_url| transcript_js }
           cmd.execute
         end
       end
     end
 
-    def build_transcript_runner(out, safari)
-      runner = configured_runner(output: out)
-      runner.api_client.stub('messages', meeting_messages_response([]))
-      runner.api_client.stub('shares', { 'getUrl' => 'https://embed.example.com' })
-      runner.define_singleton_method(:safari_js_runner) { safari }
-      runner
+    def build_simple_runner(out)
+      configured_runner(output: out).tap do |runner|
+        runner.api_client.stub('messages', meeting_messages_response([]))
+        runner.api_client.stub('shares', { 'getUrl' => 'https://embed.example.com' })
+      end
     end
 
     def recap_url
       encoded = URI.encode_www_form_component(thread_id)
       "https://teams.microsoft.com/l/meetingrecap?threadId=#{encoded}&fileUrl=https%3A%2F%2Fsp.example.com%2Ffile"
-    end
-  end
-
-  # Safari mock with separate responses for file info and transcript fetch
-  class TranscriptMockSafari < MockSafari
-    def initialize(file_info: nil, transcript: nil, raise_on_load: false)
-      super(js_results: {})
-      @file_info = file_info
-      @transcript = transcript
-      @raise_on_load = raise_on_load
-      @title = nil
-    end
-
-    def wait_for_load(**)
-      raise Teems::Error, 'Timed out' if @raise_on_load
-    end
-
-    def execute_js(code)
-      @executed_js << code
-      return @file_info if code.include?('g_fileInfo')
-
-      handle_fetch_or_title(code)
-    end
-
-    private
-
-    def handle_fetch_or_title(code)
-      if code.include?('fetch(')
-        @title = @transcript
-      elsif code.include?('document.title')
-        code.include?('TEEMS_LOADING') ? @title = nil : @title
-      end
     end
   end
 
@@ -602,29 +524,29 @@ module MeetingCommandTests
     private
 
     def run_json_transcript(dir)
-      safari = TranscriptMockSafari.new(file_info: valid_file_info, transcript: valid_transcript)
+      embed = "<script>var g_fileInfo = #{valid_file_info};</script>"
+      json = json_transcript
       with_temp_config do
         capture_output do |out|
-          runner = build_runner(out, safari)
-          cmd = Teems::Commands::Meeting.new([recap_url, '--transcript', '-o', dir], runner: runner)
-          stub_json_transcript(cmd)
+          cmd = Teems::Commands::Meeting.new([recap_url, '--transcript', '-o', dir], runner: build_runner(out))
+          stub_json_stubs(cmd, embed, json)
           cmd.execute
         end
       end
     end
 
-    def stub_json_transcript(cmd)
-      json = json_transcript
-      cmd.define_singleton_method(:poll_sleep) { nil }
+    def stub_json_stubs(cmd, embed, json)
+      transcript = valid_transcript
+      cmd.define_singleton_method(:fetch_embed_page) { |_url| embed }
+      cmd.define_singleton_method(:fetch_with_drive_token) { |_url| transcript }
       cmd.define_singleton_method(:fetch_transcript_content) { |_url| json }
     end
 
-    def build_runner(out, safari)
-      runner = configured_runner(output: out)
-      runner.api_client.stub('messages', meeting_messages_response([]))
-      runner.api_client.stub('shares', { 'getUrl' => 'https://embed.example.com' })
-      runner.define_singleton_method(:safari_js_runner) { safari }
-      runner
+    def build_runner(out)
+      configured_runner(output: out).tap do |runner|
+        runner.api_client.stub('messages', meeting_messages_response([]))
+        runner.api_client.stub('shares', { 'getUrl' => 'https://embed.example.com' })
+      end
     end
 
     def json_transcript
@@ -1182,7 +1104,7 @@ module MeetingCommandTests
       manifest = opts[:manifest]
       ffmpeg_success = opts[:ffmpeg_success]
       cmd.define_singleton_method(:ffmpeg?) { true }
-      cmd.define_singleton_method(:fetch_embed_html) { |_url| html }
+      cmd.define_singleton_method(:fetch_embed_page) { |_url| html }
       cmd.define_singleton_method(:fetch_manifest_content) { |_url| manifest }
       cmd.define_singleton_method(:fetch_segment) { |_url| 'FAKEDATA' }
       cmd.define_singleton_method(:run_ffmpeg) { |*a| File.binwrite(a.last, 'MP4DATA') || true if ffmpeg_success }
@@ -1203,8 +1125,6 @@ module MeetingCommandTests
       end
     end
 
-    def embed_html_with_file_info(json) = "<html><script>var g_fileInfo = #{json};</script></html>"
-
     def recap_url
       encoded = URI.encode_www_form_component(thread_id)
       "https://teams.microsoft.com/l/meetingrecap?threadId=#{encoded}" \
@@ -1212,7 +1132,8 @@ module MeetingCommandTests
     end
 
     def valid_recording_file_info
-      '{".transformUrl":"https://cdn.example.com/transform/thumbnail?tempauth=xyz","name":"rec.mp4"}'
+      '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com",' \
+        '".transformUrl":"https://cdn.example.com/transform/thumbnail?tempauth=xyz","name":"rec.mp4"}'
     end
 
     def sample_manifest
@@ -1270,7 +1191,7 @@ module MeetingCommandTests
 
     def test_recording_embed_html_fetch_failure
       result = run_recording(embed_html: nil)
-      assert_match(/Could not fetch embed page/, result[:stderr])
+      assert_match(/Could not extract file info/, result[:stderr])
     end
 
     def test_recording_file_info_extraction_failure
@@ -1428,24 +1349,18 @@ module MeetingCommandTests
     end
 
     def build_combined_runner(out, transcript_fail)
-      fi = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com"}'
-      safari = TranscriptMockSafari.new(file_info: fi, transcript: valid_combined_transcript)
       build_recording_runner(out, :ok, []).tap do |runner|
-        runner.define_singleton_method(:safari_js_runner) { safari }
         runner.api_client.stub_transient_error('shares', Teems::ApiError.new('fail')) if transcript_fail
       end
     end
 
-    def valid_combined_transcript
-      '{"value":[{"temporaryDownloadUrl":"https://cdn.example.com/t.vtt","name":"t.vtt"}]}'
-    end
-
     def stub_combined(cmd)
       manifest = sample_manifest
-      html = embed_html_with_file_info(valid_recording_file_info)
+      embed = embed_html_with_file_info(valid_recording_file_info)
+      transcript_list = '{"value":[{"temporaryDownloadUrl":"https://cdn.example.com/t.vtt","name":"t.vtt"}]}'
       cmd.define_singleton_method(:ffmpeg?) { true }
-      cmd.define_singleton_method(:poll_sleep) { nil }
-      cmd.define_singleton_method(:fetch_embed_html) { |_url| html }
+      cmd.define_singleton_method(:fetch_embed_page) { |_url| embed }
+      cmd.define_singleton_method(:fetch_with_drive_token) { |_url| transcript_list }
       cmd.define_singleton_method(:fetch_manifest_content) { |_url| manifest }
       cmd.define_singleton_method(:fetch_segment) { |_url| 'FAKEDATA' }
       cmd.define_singleton_method(:fetch_transcript_content) { |_url| 'WEBVTT' }
@@ -1453,74 +1368,120 @@ module MeetingCommandTests
     end
   end
 
-  # Unit tests for RecordingResolver and SegmentDownloader
-  class RecordingUnitTest < Minitest::Test
-    def test_fetch_embed_html_returns_nil_on_connection_error
-      obj = resolver_instance
-      assert_nil obj.send(:fetch_embed_html, 'https://localhost:1/nonexistent')
+  # Tests embed page fetch with real HTTP (local server)
+  class EmbedPageFetchTest < Minitest::Test
+    def test_fetch_embed_page_returns_body_on_success
+      with_local_server('200 OK', 'OK') do |port|
+        result = parser.send(:fetch_embed_page, "http://127.0.0.1:#{port}/")
+        assert_equal 'OK', result
+      end
     end
 
-    def test_fetch_manifest_content_returns_nil_on_connection_error
-      obj = recording_instance
-      assert_nil obj.send(:fetch_manifest_content, 'https://localhost:1/nonexistent')
+    def test_fetch_embed_page_returns_nil_on_error
+      with_local_server('404 Not Found', '') do |port|
+        assert_nil parser.send(:fetch_embed_page, "http://127.0.0.1:#{port}/")
+      end
     end
 
-    def test_parse_file_info_from_html_with_valid_data
-      obj = resolver_instance
-      html = '<script>var g_fileInfo = {".transformUrl":"https://cdn.example.com/t","name":"r.mp4"};</script>'
-      result = obj.send(:parse_file_info_from_html, html)
-      assert_equal 'https://cdn.example.com/t', result[:transform_url]
+    def test_fetch_manifest_content_success
+      obj = recording_obj
+      with_local_server('200 OK', 'MPD') { |port| assert_equal 'MPD', obj.send(:fetch_manifest_content, "http://127.0.0.1:#{port}/") }
     end
 
-    def test_parse_file_info_from_html_without_transform_url
-      obj = resolver_instance
-      html = '<script>var g_fileInfo = {"name":"r.mp4"};</script>'
-      assert_nil obj.send(:parse_file_info_from_html, html)
+    def test_fetch_manifest_content_failure
+      obj = recording_obj
+      with_local_server('500 Error', '') { |port| assert_nil obj.send(:fetch_manifest_content, "http://127.0.0.1:#{port}/") }
     end
 
-    def test_fetch_embed_html_returns_body_on_success
-      obj = resolver_instance
-      body = obj.send(:fetch_embed_html, 'https://example.com')
-      assert_kind_of String, body if body
+    def test_fetch_with_drive_token_success
+      obj = transcript_obj
+      with_local_server('200 OK', '{}') { |port| assert_equal '{}', obj.send(:fetch_with_drive_token, "http://127.0.0.1:#{port}/") }
     end
 
-    def test_fetch_manifest_content_returns_body_on_success
-      obj = recording_instance
-      body = obj.send(:fetch_manifest_content, 'https://example.com')
-      assert_kind_of String, body if body
+    def test_fetch_with_drive_token_failure
+      obj = transcript_obj
+      with_local_server('403 Forbidden', '') { |port| assert_nil obj.send(:fetch_with_drive_token, "http://127.0.0.1:#{port}/") }
     end
 
     private
 
-    def resolver_instance
-      Object.new.tap do |o|
-        o.extend(Teems::Commands::RecordingResolver)
-        o.define_singleton_method(:debug) { |_| nil }
-        o.define_singleton_method(:error) { |_| 1 }
+    def parser
+      build_obj(Teems::Commands::EmbedPageParser)
+    end
+
+    def recording_obj
+      build_obj(Teems::Commands::MeetingRecording)
+    end
+
+    def transcript_obj
+      build_obj(Teems::Commands::MeetingTranscript).tap do |o|
+        o.instance_variable_set(:@transcript_info, { drive_token: nil })
       end
+    end
+
+    def build_obj(mod)
+      Object.new.tap { |o| o.extend(mod) }.tap { |o| o.define_singleton_method(:debug) { |_| nil } }
+    end
+
+    def with_local_server(status, body)
+      server = TCPServer.new('127.0.0.1', 0)
+      Thread.new { serve_one(server, status, body) }
+      yield server.addr[1]
+    ensure
+      server&.close
+    end
+
+    def serve_one(server, status, body)
+      client = server.accept
+      client.gets
+      client.print "HTTP/1.1 #{status}\r\nContent-Length: #{body.length}\r\n\r\n#{body}"
+      client.close
+    end
+  end
+
+  # Unit tests for EmbedPageParser and SegmentDownloader
+  class EmbedParserUnitTest < Minitest::Test
+    def test_parse_embed_file_info_extracts_transform_url
+      html = '<script>var g_fileInfo = {"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com",' \
+             '".transformUrl":"https://cdn.example.com/t"};</script>'
+      result = parser_instance.send(:parse_embed_file_info, html)
+      assert_equal 'https://cdn.example.com/t', result[:transform_url]
+    end
+
+    def test_parse_embed_file_info_returns_nil_without_ids
+      assert_nil parser_instance.send(:parse_embed_file_info, '<script>var g_fileInfo = {"name":"r"};</script>')
+    end
+
+    def test_parse_embed_file_info_returns_nil_for_invalid_json
+      assert_nil parser_instance.send(:parse_embed_file_info, '<script>var g_fileInfo = {broken;</script>')
+    end
+
+    def test_parse_embed_file_info_returns_nil_without_g_file_info
+      assert_nil parser_instance.send(:parse_embed_file_info, '<html>no data</html>')
+    end
+
+    def test_parse_embed_file_info_with_sp_item_url
+      html = '<script>var g_fileInfo = {".spItemUrl":"https://sp.example.com/s/_api/v2.0/drives/d1/items/i1?t=1"};</script>'
+      assert_equal 'd1', parser_instance.send(:parse_embed_file_info, html)[:drive_id]
     end
 
     def test_resolve_url_returns_absolute_url_unchanged
-      obj = segment_downloader_instance
-      result = obj.send(:resolve_url, 'https://base.example.com/dir/file', 'https://other.example.com/init.mp4')
-      assert_equal 'https://other.example.com/init.mp4', result
+      obj = Object.new.tap { |o| o.extend(Teems::Commands::SegmentDownloader) }
+      assert_equal 'https://other.com/i.mp4', obj.send(:resolve_url, 'https://base.com/d/f', 'https://other.com/i.mp4')
     end
 
     def test_resolve_url_joins_relative_path
-      obj = segment_downloader_instance
-      result = obj.send(:resolve_url, 'https://base.example.com/dir/file', 'segment.m4s')
-      assert_equal 'https://base.example.com/dir/segment.m4s', result
+      obj = Object.new.tap { |o| o.extend(Teems::Commands::SegmentDownloader) }
+      assert_equal 'https://base.com/dir/seg.m4s', obj.send(:resolve_url, 'https://base.com/dir/file', 'seg.m4s')
     end
 
-    def recording_instance
+    private
+
+    def parser_instance
       Object.new.tap do |o|
-        o.extend(Teems::Commands::MeetingRecording)
+        o.extend(Teems::Commands::EmbedPageParser)
         o.define_singleton_method(:debug) { |_| nil }
       end
-    end
-
-    def segment_downloader_instance
-      Object.new.tap { |obj| obj.extend(Teems::Commands::SegmentDownloader) }
     end
   end
 end
