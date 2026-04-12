@@ -67,6 +67,7 @@ module Teems
     autoload :TeamsUrlParser, 'teems/services/teams_url_parser'
     autoload :SyncStore, 'teems/services/sync_store'
     autoload :SyncDirNaming, 'teems/services/sync_dir_naming'
+    autoload :SafariJsRunner, 'teems/services/safari_js_runner'
     autoload :SyncEngine, 'teems/services/sync_engine'
   end
 
@@ -93,6 +94,7 @@ module Teems
     autoload :Who, 'teems/commands/who'
     autoload :Ooo, 'teems/commands/ooo'
     autoload :Org, 'teems/commands/org'
+    autoload :Meeting, 'teems/commands/meeting'
     autoload :Status, 'teems/commands/status'
   end
 
@@ -103,6 +105,7 @@ module Teems
     autoload :Channels, 'teems/api/channels'
     autoload :Chats, 'teems/api/chats'
     autoload :Files, 'teems/api/files'
+    autoload :Meetings, 'teems/api/meetings'
     autoload :Messages, 'teems/api/messages'
     autoload :Users, 'teems/api/users'
   end

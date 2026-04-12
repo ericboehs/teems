@@ -47,6 +47,7 @@ module Teems
       'cal' => Commands::Cal,
       'channels' => Commands::Channels,
       'chats' => Commands::Chats,
+      'meeting' => Commands::Meeting,
       'messages' => Commands::Messages,
       'sync' => Commands::Sync,
       'who' => Commands::Who,

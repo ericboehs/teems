@@ -3,6 +3,7 @@
 module Teems
   # API factory methods for Runner, extracted to keep method count manageable
   module ApiFactories
+    def meetings_api = Api::Meetings.new(api_client, account)
     def channels_api = Api::Channels.new(api_client, account)
     def chats_api = Api::Chats.new(api_client, account)
     def messages_api = Api::Messages.new(api_client, account)
@@ -54,6 +55,11 @@ module Teems
     # Formatter helpers
     def message_formatter
       Formatters::MessageFormatter.new(output: @output, cache_store: cache_store)
+    end
+
+    # Safari JS runner for SharePoint automation
+    def safari_js_runner
+      Services::SafariJsRunner.new(output: @output)
     end
 
     # Token extractor for Safari automation

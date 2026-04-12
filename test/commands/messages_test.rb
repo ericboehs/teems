@@ -509,6 +509,7 @@ module MessagesCommandTests
       stdout = capture_download_in_dir(downloader: dl)[:stdout]
       assert_includes stdout, 'Downloading report.pdf'
       assert_includes stdout, 'done'
+      assert_includes stdout, 'Downloaded 1 file to'
     end
 
     def test_download_shows_kb_size

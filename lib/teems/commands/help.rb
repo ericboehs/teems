@@ -8,6 +8,7 @@ module Teems
       ['cal', 'List calendar events and view details'],
       ['channels', 'List joined teams and channels'],
       ['chats', 'List recent chats'],
+      ['meeting', 'View meeting details, chat, transcripts, and recordings'],
       ['messages', 'Read messages from a channel or chat'],
       ['sync', 'Sync chat history locally'],
       ['who', "Look up a user's profile"],
