@@ -32,8 +32,8 @@ module Teems
         return debug("Embed page failed: HTTP #{response.code}") unless response.is_a?(Net::HTTPRedirection)
         return debug('Too many redirects fetching embed page') unless limit.positive?
 
-        fetch_embed_page(response['location'], limit: limit - 1)
-      rescue IOError, SystemCallError, SocketError, Timeout::Error, URI::InvalidURIError => e
+        fetch_embed_page(URI.join(url, response['location']).to_s, limit: limit - 1)
+      rescue IOError, SystemCallError, SocketError, Timeout::Error, URI::InvalidURIError, OpenSSL::SSL::SSLError => e
         debug("Embed page fetch error: #{e.message}")
         nil
       end
