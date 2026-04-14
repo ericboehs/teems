@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0] - 2026-04-14
+
+### Added
+- `teems meeting` - View meeting details, download transcripts, and download recordings
+- Auto-authentication when tokens are missing or expired (no manual `auth login` needed)
+
+### Fixed
+- `teems cal delete` now uses configured endpoints instead of hardcoded defaults
+
 ## [0.1.0] - 2026-04-10
 
 ### Added
