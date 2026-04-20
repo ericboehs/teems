@@ -2,6 +2,34 @@
 
 module Teems
   module Commands
+    # Derives a human-friendly output filename stem from a SharePoint recording/transcript name.
+    # SharePoint format is typically "<subject>-YYYYMMDD_HHMMSS[-Meeting Recording].<ext>"
+    # which we reshape into "YYYY-MM-DD - <subject>".
+    module MeetingFilename
+      SHAREPOINT_NAME_RE = /\A(.+)-(\d{4})(\d{2})(\d{2})_\d{6}\z/
+      UNSAFE_FILENAME_CHARS = %r{[/\\:*?"<>|\x00]}
+
+      private
+
+      def derive_output_stem(sharepoint_name)
+        base = File.basename(sharepoint_name.to_s, '.*').sub(/-Meeting Recording\z/, '')
+        sanitize_filename(reshape_sharepoint_name(base))
+      end
+
+      def reshape_sharepoint_name(base)
+        captures = base.match(SHAREPOINT_NAME_RE)&.captures
+        return base unless captures
+
+        subject, year, month, day = captures
+        "#{year}-#{month}-#{day} - #{subject}"
+      end
+
+      def sanitize_filename(name)
+        cleaned = name.gsub(UNSAFE_FILENAME_CHARS, '_').strip
+        cleaned.empty? ? 'recording' : cleaned
+      end
+    end
+
     # Parses SharePoint embed page HTML to extract file metadata
     module EmbedPageParser
       SP_ITEM_RE = %r{(https://[^/]+(?::\d+)?/.+?)/_api/v2\.\d+/drives/([^/]+)/items/([^/?]+)}
@@ -113,6 +141,7 @@ module Teems
     # Downloads meeting transcripts via SharePoint API (no Safari required)
     module MeetingTranscript
       include EmbedPageParser
+      include MeetingFilename
 
       private
 
@@ -196,11 +225,11 @@ module Teems
         url ? { url: url, name: File.basename(entry['name'] || 'transcript.vtt') } : nil
       end
 
+      # Prefers the recording's name (via @transcript_info) so transcript and recording share a stem.
       def save_transcript(transcript)
         dir = @options[:output_dir] || '.'
         FileUtils.mkdir_p(dir)
-        path = File.join(dir, File.basename(transcript[:name]))
-
+        path = File.join(dir, "#{derive_output_stem(@transcript_info[:name] || transcript[:name])}.vtt")
         info("Downloading transcript to #{path}...")
         vtt = fetch_and_convert_transcript(transcript[:url])
         return error('Failed to download transcript content') unless vtt

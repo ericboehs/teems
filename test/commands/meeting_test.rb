@@ -1056,21 +1056,62 @@ module MeetingCommandTests
     end
   end
 
+  # DASH manifest fixtures used by recording tests
+  module RecordingManifestFixtures
+    private
+
+    def sample_manifest
+      <<~XML
+        <MPD><Period>
+          <BaseURL>https://cdn.example.com/media/</BaseURL>
+          <AdaptationSet contentType="video">
+            <SegmentTemplate initialization="v_init.mp4" media="v_$Time$.m4s" timescale="1000">
+              <SegmentTimeline><S t="0" d="2000"/><S d="2000"/></SegmentTimeline>
+            </SegmentTemplate>
+          </AdaptationSet>
+          <AdaptationSet contentType="audio">
+            <SegmentTemplate initialization="a_init.mp4" media="a_$Time$.m4s" timescale="1000">
+              <SegmentTimeline><S t="0" d="2000"/><S d="2000"/></SegmentTimeline>
+            </SegmentTemplate>
+          </AdaptationSet>
+        </Period></MPD>
+      XML
+    end
+
+    def absolute_url_manifest
+      <<~XML
+        <MPD><Period>
+          <AdaptationSet contentType="video">
+            <SegmentTemplate initialization="https://cdn.example.com/v_init.mp4" media="https://cdn.example.com/v_$Time$.m4s" timescale="1000">
+              <SegmentTimeline><S t="0" d="2000"/></SegmentTimeline>
+            </SegmentTemplate>
+          </AdaptationSet>
+          <AdaptationSet contentType="audio">
+            <SegmentTemplate initialization="https://cdn.example.com/a_init.mp4" media="https://cdn.example.com/a_$Time$.m4s" timescale="1000">
+              <SegmentTimeline><S t="0" d="2000"/></SegmentTimeline>
+            </SegmentTemplate>
+          </AdaptationSet>
+        </Period></MPD>
+      XML
+    end
+  end
+
   # Shared helpers for recording pipeline tests
   module RecordingTestHelpers
     include MeetingCommandTests::Helpers
+    include RecordingManifestFixtures
 
     private
 
     def run_recording(opts = {})
-      defaults = { messages: nil, embed_response: :ok,
-                   manifest: nil, output_dir: nil, ffmpeg_success: true }
+      defaults = { messages: nil, embed_response: :ok, manifest: nil,
+                   output_dir: nil, ffmpeg_success: true, mode: '--recording' }
       opts = defaults.merge(opts)
       messages = opts[:messages] || [sample_recording_message]
       with_temp_config do
         capture_output do |out|
           runner = build_recording_runner(out, opts[:embed_response], messages)
-          execute_recording_cmd(build_recording_args(opts[:output_dir]), runner, opts)
+          execute_recording_cmd(build_recording_args(opts[:output_dir], mode: opts[:mode]), runner, opts)
         end
       end
     end
@@ -1087,8 +1128,9 @@ module MeetingCommandTests
       end
     end
 
-    def build_recording_args(output_dir)
-      args = [recap_url, '--recording']
+    def build_recording_args(output_dir, mode: '--recording')
+      args = [recap_url]
+      args.concat(Array(mode))
       args.push('-o', output_dir) if output_dir
       args
     end
@@ -1133,42 +1175,8 @@ module MeetingCommandTests
 
     def valid_recording_file_info
       '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com",' \
-        '".transformUrl":"https://cdn.example.com/transform/thumbnail?tempauth=xyz","name":"rec.mp4"}'
-    end
-
-    def sample_manifest
-      <<~XML
-        <MPD><Period>
-          <BaseURL>https://cdn.example.com/media/</BaseURL>
-          <AdaptationSet contentType="video">
-            <SegmentTemplate initialization="v_init.mp4" media="v_$Time$.m4s" timescale="1000">
-              <SegmentTimeline><S t="0" d="2000"/><S d="2000"/></SegmentTimeline>
-            </SegmentTemplate>
-          </AdaptationSet>
-          <AdaptationSet contentType="audio">
-            <SegmentTemplate initialization="a_init.mp4" media="a_$Time$.m4s" timescale="1000">
-              <SegmentTimeline><S t="0" d="2000"/><S d="2000"/></SegmentTimeline>
-            </SegmentTemplate>
-          </AdaptationSet>
-        </Period></MPD>
-      XML
-    end
-
-    def absolute_url_manifest
-      <<~XML
-        <MPD><Period>
-          <AdaptationSet contentType="video">
-            <SegmentTemplate initialization="https://cdn.example.com/v_init.mp4" media="https://cdn.example.com/v_$Time$.m4s" timescale="1000">
-              <SegmentTimeline><S t="0" d="2000"/></SegmentTimeline>
-            </SegmentTemplate>
-          </AdaptationSet>
-          <AdaptationSet contentType="audio">
-            <SegmentTemplate initialization="https://cdn.example.com/a_init.mp4" media="https://cdn.example.com/a_$Time$.m4s" timescale="1000">
-              <SegmentTimeline><S t="0" d="2000"/></SegmentTimeline>
-            </SegmentTemplate>
-          </AdaptationSet>
-        </Period></MPD>
-      XML
+        '".transformUrl":"https://cdn.example.com/transform/thumbnail?tempauth=xyz",' \
+        '"name":"Team Sync-20260120_140000-Meeting Recording.mp4"}'
     end
   end
 
@@ -1252,7 +1260,16 @@ module MeetingCommandTests
       Dir.mktmpdir('teems-rec') do |dir|
         result = run_recording(manifest: sample_manifest, output_dir: dir)
         assert_match(/Recording saved/, result[:stdout])
-        assert File.exist?(File.join(dir, 'recording.mp4'))
+        assert File.exist?(File.join(dir, '2026-01-20 - Team Sync.mp4'))
+      end
+    end
+
+    def test_recording_falls_back_to_raw_name_when_not_sharepoint_format
+      Dir.mktmpdir('teems-rec') do |dir|
+        info = '{"driveId":"d1","itemId":"i1","siteUrl":"https://sp.example.com",' \
+               '".transformUrl":"https://cdn.example.com/transform/thumbnail?tempauth=xyz","name":"plain.mp4"}'
+        run_recording(manifest: sample_manifest, output_dir: dir, embed_html: embed_html_with_file_info(info))
+        assert File.exist?(File.join(dir, 'plain.mp4'))
       end
     end
 
@@ -1286,6 +1303,79 @@ module MeetingCommandTests
     end
   end
 
+  # Tests for --audio and --no-video output modes
+  class RecordingAudioTest < Minitest::Test
+    include RecordingTestHelpers
+
+    def test_audio_only_via_no_video_writes_only_m4a
+      Dir.mktmpdir('teems-rec') do |dir|
+        result = run_recording(manifest: sample_manifest, output_dir: dir, mode: '--no-video')
+        assert_match(/Audio saved/, result[:stdout])
+        refute_match(/Recording saved/, result[:stdout])
+        assert File.exist?(File.join(dir, '2026-01-20 - Team Sync.m4a'))
+        refute File.exist?(File.join(dir, '2026-01-20 - Team Sync.mp4'))
+      end
+    end
+
+    def test_audio_with_recording_writes_both_files
+      Dir.mktmpdir('teems-rec') do |dir|
+        result = run_recording(manifest: sample_manifest, output_dir: dir, mode: '--audio')
+        assert_match(/Audio saved/, result[:stdout])
+        assert_match(/Recording saved/, result[:stdout])
+        assert File.exist?(File.join(dir, '2026-01-20 - Team Sync.m4a'))
+        assert File.exist?(File.join(dir, '2026-01-20 - Team Sync.mp4'))
+      end
+    end
+
+    def test_audio_and_no_video_together_drops_video
+      Dir.mktmpdir('teems-rec') do |dir|
+        result = run_recording(manifest: sample_manifest, output_dir: dir, mode: %w[--audio --no-video])
+        assert_match(/Audio saved/, result[:stdout])
+        refute_match(/Recording saved/, result[:stdout])
+        refute File.exist?(File.join(dir, '2026-01-20 - Team Sync.mp4'))
+      end
+    end
+
+    def test_audio_remux_failure_reports_error
+      Dir.mktmpdir('teems-rec') do |dir|
+        result = run_recording(manifest: sample_manifest, output_dir: dir,
+                               mode: '--no-video', ffmpeg_success: false)
+        assert_match(/ffmpeg audio remux failed/, result[:stderr])
+      end
+    end
+  end
+
+  # Force autoload of Meeting so the MeetingFilename helper module is defined
+  Teems::Commands.const_get(:Meeting)
+
+  # Tests for MeetingFilename.derive_output_stem
+  class MeetingFilenameTest < Minitest::Test
+    include Teems::Commands::MeetingFilename
+
+    def test_reshapes_sharepoint_name_with_meeting_recording_suffix
+      assert_equal '2026-01-20 - Team Sync',
+                   derive_output_stem('Team Sync-20260120_140000-Meeting Recording.mp4')
+    end
+
+    def test_reshapes_sharepoint_name_without_suffix
+      assert_equal '2026-03-15 - Planning',
+                   derive_output_stem('Planning-20260315_093000.vtt')
+    end
+
+    def test_falls_back_to_base_when_no_timestamp
+      assert_equal 'simple', derive_output_stem('simple.mp4')
+    end
+
+    def test_sanitizes_unsafe_characters
+      assert_equal '2026-01-20 - Q_A_ Plans',
+                   derive_output_stem('Q:A? Plans-20260120_140000.mp4')
+    end
+
+    def test_empty_name_falls_back_to_recording
+      assert_equal 'recording', derive_output_stem('')
+    end
+  end
+
   # Tests for recording edge cases (subtitle embedding, combined mode)
   class RecordingEdgeCaseTest < Minitest::Test
     include RecordingTestHelpers
@@ -1304,6 +1394,15 @@ module MeetingCommandTests
         assert_match(/Transcript saved/, result[:stdout])
         assert_match(/Recording saved/, result[:stdout])
         assert_match(/Embedding transcript/, result[:stdout])
+      end
+    end
+
+    def test_transcript_and_recording_share_filename_stem
+      Dir.mktmpdir('teems-rec') do |dir|
+        run_combined_recording(dir)
+        stem = '2026-01-20 - Team Sync'
+        assert File.exist?(File.join(dir, "#{stem}.vtt"))
+        assert File.exist?(File.join(dir, "#{stem}.mp4"))
       end
     end
 

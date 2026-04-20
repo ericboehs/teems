@@ -19,6 +19,8 @@ module Teems
         --transcript     Download meeting transcript (WebVTT)
         --recording      Download meeting recording (MP4, requires ffmpeg)
                          Combine with --transcript to embed subtitles
+        --audio          Also save a separate audio file (M4A) — ideal for transcription
+        --no-video       Skip the video file; with --audio produces audio-only output
         --chat           Show meeting chat messages
         -o, --output-dir Directory for downloads (default: current directory)
         -v, --verbose    Show debug output
@@ -30,6 +32,8 @@ module Teems
         teems meeting 19:meeting_abc123@thread.v2
         teems meeting 19:meeting_abc123@thread.v2 --chat
         teems meeting 19:meeting_abc123@thread.v2 --transcript
+        teems meeting 19:meeting_abc123@thread.v2 --audio -o ~/Downloads          # video + audio
+        teems meeting 19:meeting_abc123@thread.v2 --audio --no-video -o ~/Downloads  # audio only
         teems meeting 19:meeting_abc123@thread.v2 --recording -o ~/Downloads
         teems meeting 19:meeting_abc123@thread.v2 --recording --transcript -o ~/Downloads
         teems meeting AAMkAGVmMDEz...        # By calendar event ID
@@ -40,6 +44,8 @@ module Teems
       ALL = {
         '--transcript' => ->(opts, _args) { opts[:transcript] = true },
         '--recording' => ->(opts, _args) { opts[:recording] = true },
+        '--audio' => ->(opts, _args) { opts[:audio] = true },
+        '--no-video' => ->(opts, _args) { opts[:no_video] = true },
         '--chat' => ->(opts, _args) { opts[:chat] = true },
         '-o' => ->(opts, args) { opts[:output_dir] = args.shift },
         '--output-dir' => ->(opts, args) { opts[:output_dir] = args.shift }
@@ -187,6 +193,7 @@ module Teems
 
       def parse_call_event(msg)
         content = msg['content'].to_s
+        debug("Call event XML: #{content}")
         build_msg_hash(msg).merge(
           call_id: content.match(CALLID_RE)&.captures&.first,
           ical_uid: content.match(INSTANCE_ICAL_RE)&.captures&.first,
@@ -452,19 +459,27 @@ module Teems
           display_meeting_chat(classified[:chat_messages])
           return 0
         end
-        return download_recording_with_transcript(target, classified) if @options[:recording]
+        media = media_output_spec
+        return download_media_with_transcript(target, classified, media) if media
         return download_transcript(target, classified) || 0 if @options[:transcript]
 
         display_meeting_summary(target, classified)
         0
       end
 
-      def download_recording_with_transcript(target, classified)
+      def media_output_spec
+        audio, recording, no_video = @options.values_at(:audio, :recording, :no_video)
+        return nil unless audio || recording || no_video
+
+        { video: (recording || audio) && !no_video, audio: audio || no_video }
+      end
+
+      def download_media_with_transcript(target, classified, media)
         if @options[:transcript]
           result = download_transcript(target, classified)
-          warn('Transcript download failed; proceeding with recording') if result == 1
+          warn("Transcript download failed; proceeding with #{media[:video] ? 'recording' : 'audio'}") if result == 1
         end
-        download_recording(target, classified) || 0
+        download_recording(target, classified, media: media) || 0
       end
     end
   end

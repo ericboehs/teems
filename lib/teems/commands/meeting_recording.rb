@@ -176,32 +176,86 @@ module Teems
       end
     end
 
+    # Writes video/audio output files from downloaded DASH tracks via ffmpeg
+    module RecordingOutputWriter
+      private
+
+      def produce_outputs(video_path, audio_path, media)
+        video_result = media[:video] ? write_video_output(video_path, audio_path) : true
+        audio_result = media[:audio] ? write_audio_output(audio_path) : true
+        FileUtils.rm_f([video_path, audio_path].compact)
+        video_result && audio_result ? 0 : 1
+      end
+
+      def write_video_output(video_path, audio_path)
+        output_path = File.join(@rec_dir, "#{@recording_stem}.mp4")
+        info('Merging video and audio tracks...')
+        merged = run_ffmpeg('-i', video_path, '-i', audio_path, '-c', 'copy', output_path)
+        return error('ffmpeg merge failed') && false unless merged
+
+        embed_subtitle_if_available(output_path)
+        success("Recording saved to #{output_path}")
+        true
+      end
+
+      def write_audio_output(audio_path)
+        output_path = File.join(@rec_dir, "#{@recording_stem}.m4a")
+        info('Remuxing audio track...')
+        remuxed = run_ffmpeg('-i', audio_path, '-c', 'copy', output_path)
+        return error('ffmpeg audio remux failed') && false unless remuxed
+
+        success("Audio saved to #{output_path}")
+        true
+      end
+
+      def embed_subtitle_if_available(video_path)
+        vtt_path = paired_vtt_path(video_path)
+        return unless vtt_path
+
+        info('Embedding transcript as subtitle track...')
+        final_path = video_path.sub('.mp4', '_subs.mp4')
+        return unless run_ffmpeg('-i', video_path, '-i', vtt_path, '-c', 'copy', '-c:s', 'mov_text', final_path)
+
+        FileUtils.mv(final_path, video_path)
+      end
+
+      def paired_vtt_path(video_path)
+        paired = video_path.sub(/\.mp4\z/, '.vtt')
+        return paired if File.exist?(paired)
+
+        Dir.glob(File.join(File.dirname(video_path), '*.vtt')).first
+      end
+    end
+
     # Downloads meeting recordings via DASH streaming from SharePoint
     module MeetingRecording
+      include MeetingFilename
       include RecordingResolver
       include SegmentDownloader
+      include RecordingOutputWriter
 
       MANIFEST_PARAMS = 'format=dash&part=index'
 
       private
 
-      def download_recording(target, classified)
+      def download_recording(target, classified, media: { video: true, audio: false })
         sharing_url = target[:fileUrl] || classified[:recordings].filter_map { |rec| rec[:url] }.first
         return error('No recordings found for this meeting') unless sharing_url
         return error('ffmpeg is required. Install with: brew install ffmpeg') unless ffmpeg?
 
-        execute_recording_pipeline(sharing_url)
+        execute_recording_pipeline(sharing_url, media)
       end
 
-      def execute_recording_pipeline(sharing_url)
-        info('Fetching recording via SharePoint...')
+      def execute_recording_pipeline(sharing_url, media)
+        info("Fetching #{media[:video] ? 'recording' : 'audio'} via SharePoint...")
         file_info = resolve_recording_file_info(sharing_url)
         return 1 unless file_info
 
+        @recording_stem = derive_output_stem(file_info[:name])
         manifest = fetch_dash_manifest(file_info[:transform_url])
         return error('Could not fetch DASH manifest') unless manifest
 
-        download_and_assemble(manifest)
+        download_and_assemble(manifest, media)
       end
 
       def fetch_dash_manifest(transform_url)
@@ -227,29 +281,33 @@ module Teems
         nil
       end
 
-      def download_and_assemble(manifest_xml)
+      def download_and_assemble(manifest_xml, media)
         tracks = DashManifestParser.new(manifest_xml).parse
-        selected = select_tracks(tracks)
+        selected = select_tracks(tracks, media)
         return error('No video/audio tracks found in manifest') unless selected
 
-        assemble_recording(selected, manifest_xml)
+        assemble_recording(selected, manifest_xml, media)
       end
 
-      def select_tracks(tracks)
+      def select_tracks(tracks, media)
         grouped = tracks.group_by(&:type)
-        video = grouped['video']&.first
         audio = grouped['audio']&.first
-        video && audio ? { video: video, audio: audio } : nil
+        return nil unless audio
+
+        video = grouped['video']&.first
+        return nil if media[:video] && !video
+
+        { video: video, audio: audio }
       end
 
-      def assemble_recording(selected, manifest_xml)
+      def assemble_recording(selected, manifest_xml, media)
         @rec_dir = @options[:output_dir] || '.'
         FileUtils.mkdir_p(@rec_dir)
         @rec_base_url = manifest_xml.match(%r{<BaseURL>([^<]+)</BaseURL>})&.then { _1[1] } || ''
 
-        video_path = write_track(selected[:video], 'video')
         audio_path = write_track(selected[:audio], 'audio')
-        merge_and_finalize(video_path, audio_path, @rec_dir)
+        video_path = media[:video] ? write_track(selected[:video], 'video') : nil
+        produce_outputs(video_path, audio_path, media)
       end
 
       def write_track(track, label)
@@ -259,29 +317,6 @@ module Teems
         File.binwrite(path, data)
         puts
         path
-      end
-
-      def merge_and_finalize(video_path, audio_path, dir)
-        output_path = File.join(dir, 'recording.mp4')
-        info('Merging video and audio tracks...')
-        merged = run_ffmpeg('-i', video_path, '-i', audio_path, '-c', 'copy', output_path)
-        FileUtils.rm_f([video_path, audio_path])
-
-        return error('ffmpeg merge failed') unless merged
-
-        embed_subtitle_if_available(output_path)
-        success("Recording saved to #{output_path}")
-      end
-
-      def embed_subtitle_if_available(video_path)
-        vtt_path = Dir.glob(File.join(File.dirname(video_path), '*.vtt')).first
-        return unless vtt_path
-
-        info('Embedding transcript as subtitle track...')
-        final_path = video_path.sub('.mp4', '_subs.mp4')
-        return unless run_ffmpeg('-i', video_path, '-i', vtt_path, '-c', 'copy', '-c:s', 'mov_text', final_path)
-
-        FileUtils.mv(final_path, video_path)
       end
 
       def run_ffmpeg(*)
