@@ -193,11 +193,12 @@ module Teems
 
       def parse_call_event(msg)
         content = msg['content'].to_s
-        debug("Call event XML: #{content}")
+        parts = extract_partlist(content)
         build_msg_hash(msg).merge(
           call_id: content.match(CALLID_RE)&.captures&.first,
           ical_uid: content.match(INSTANCE_ICAL_RE)&.captures&.first,
-          participants: extract_partlist(content)
+          duration: parts.first&.dig(:duration),
+          participants: parts
         )
       end
 
@@ -279,7 +280,8 @@ module Teems
 
       def display_single_call_event(event)
         puts
-        puts "  #{output.bold('Call Event')} #{format_time_str(event[:time])}"
+        header = "  #{output.bold('Call Event')} #{format_time_str(event[:time])}"
+        puts "#{header} (#{format_call_duration(event[:duration])})"
         display_participants(event[:participants])
       end
 
@@ -287,12 +289,12 @@ module Teems
         return if parts.empty?
 
         puts "  Participants (#{parts.length}):"
-        parts.each { |entry| puts format_participant_line(entry[:name], entry[:identity], entry[:duration]) }
+        parts.each { |entry| puts format_participant_line(entry[:name], entry[:identity]) }
       end
 
-      def format_participant_line(name, identity, duration)
+      def format_participant_line(name, identity)
         resolved = needs_resolution?(name) ? resolve_participant_name(identity) : name
-        "    #{resolved} (#{format_call_duration(duration)})"
+        "    #{resolved}"
       end
 
       def needs_resolution?(name)

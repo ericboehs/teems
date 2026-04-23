@@ -116,5 +116,6 @@ module Teems
     autoload :HelpFormatter, 'teems/support/help_formatter'
     autoload :ErrorLogger, 'teems/support/error_logger'
     autoload :Timezone, 'teems/support/timezone'
+    autoload :TimeParsing, 'teems/support/time_parsing'
   end
 end

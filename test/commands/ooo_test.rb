@@ -60,6 +60,14 @@ module OooCommandTests
       end
     end
 
+    def with_tz(zone)
+      original_tz = ENV.fetch('TZ', nil)
+      zone ? ENV['TZ'] = zone : ENV.delete('TZ')
+      yield
+    ensure
+      original_tz ? ENV['TZ'] = original_tz : ENV.delete('TZ')
+    end
+
     def stub_status_apis(runner, reply_data, presence_error, presence_data)
       runner.api_client.stub('/v1.0/me/mailboxSettings/automaticRepliesSetting', reply_data)
       if presence_error
@@ -144,16 +152,14 @@ module OooCommandTests
     end
 
     def test_show_status_with_scheduled_replies
-      result = with_temp_config do
-        capture_output do |output|
-          runner = configured_runner(output: output)
-          runner.api_client.stub('/v1.0/me/mailboxSettings/automaticRepliesSetting', AUTO_REPLY_SCHEDULED)
-          runner.api_client.stub('/v1.0/me/presence', PRESENCE_DATA)
-          Teems::Commands::Ooo.new([], runner: runner).execute
-        end
-      end
+      result = with_tz('UTC') { run_ooo_status(AUTO_REPLY_SCHEDULED) }
       assert_match(/scheduled/, result[:stdout])
-      assert_match(/2026-04-14/, result[:stdout])
+      assert_match(/2026-04-14 00:00 to 2026-04-18 23:59 UTC/, result[:stdout])
+    end
+
+    def test_show_status_converts_utc_schedule_to_local
+      result = with_tz('America/Chicago') { run_ooo_status(AUTO_REPLY_SCHEDULED) }
+      assert_match(/2026-04-13 19:00 to 2026-04-18 18:59 CT/, result[:stdout])
     end
 
     def test_show_status_with_reply_message
@@ -245,8 +251,8 @@ module OooCommandTests
       patch_call = calls.find { |c| c[:path] == '/v1.0/me/mailboxSettings' }
       settings = patch_call[:body][:automaticRepliesSetting]
       assert_equal 'scheduled', settings[:status]
-      assert_includes settings[:scheduledStartDateTime][:dateTime], '2026-04-14'
-      assert_includes settings[:scheduledEndDateTime][:dateTime], '2026-04-18'
+      assert_includes settings[:scheduledStartDateTime][:dateTime], '2026-04-14T00:00:00'
+      assert_includes settings[:scheduledEndDateTime][:dateTime], '2026-04-18T23:59:59'
     end
 
     def test_enable_with_config_message
@@ -282,6 +288,21 @@ module OooCommandTests
       assert_nil event_call
     end
 
+    def test_invite_option_overrides_config_notify_list
+      ooo_config = { 'notify' => ['mgr@test.com'] }
+      runner = run_ooo_runner(['on', '--event', '--invite', 'a@test.com,b@test.com'], config_ooo: ooo_config)
+      event_call = runner.api_client.calls.find { |c| c[:path] == '/v1.0/me/events' }
+      attendee_emails = event_call[:body][:attendees].map { |a| a[:emailAddress][:address] }
+      assert_equal %w[a@test.com b@test.com], attendee_emails
+    end
+
+    def test_invite_option_without_config_creates_event
+      runner = run_ooo_runner(['on', '--event', '--invite', 'alex@example.com'])
+      event_call = runner.api_client.calls.find { |c| c[:path] == '/v1.0/me/events' }
+      assert event_call
+      assert_equal 'alex@example.com', event_call[:body][:attendees].first[:emailAddress][:address]
+    end
+
     def test_enable_skips_status_with_no_status_flag
       runner = run_ooo_runner(['on', '--no-status'])
       calls = runner.api_client.calls
@@ -292,6 +313,53 @@ module OooCommandTests
     def test_enable_reports_success
       result = run_ooo(['on'])
       assert_match(/Auto-reply enabled/, result[:stdout])
+    end
+  end
+
+  # Tests for timed (non-all-day) OOO schedules
+  class TimedScheduleTest < Minitest::Test
+    include Helpers
+
+    def test_timed_schedule_sets_exact_auto_reply_times
+      runner = run_ooo_runner(['on', '--start', '2026-04-20 14:00', '--end', '2026-04-20 17:00'])
+      patch_call = runner.api_client.calls.find { |c| c[:path] == '/v1.0/me/mailboxSettings' }
+      settings = patch_call[:body][:automaticRepliesSetting]
+      assert_equal 'scheduled', settings[:status]
+      assert_equal '2026-04-20T14:00:00', settings[:scheduledStartDateTime][:dateTime]
+      assert_equal '2026-04-20T17:00:00', settings[:scheduledEndDateTime][:dateTime]
+    end
+
+    def test_today_time_schedule_resolves_to_today
+      runner = run_ooo_runner(['on', '--start', 'today 14:00', '--end', 'today 17:00'])
+      patch_call = runner.api_client.calls.find { |c| c[:path] == '/v1.0/me/mailboxSettings' }
+      settings = patch_call[:body][:automaticRepliesSetting]
+      today = Date.today.strftime('%Y-%m-%d')
+      assert_equal "#{today}T14:00:00", settings[:scheduledStartDateTime][:dateTime]
+      assert_equal "#{today}T17:00:00", settings[:scheduledEndDateTime][:dateTime]
+    end
+
+    def test_timed_schedule_creates_timed_event
+      ooo_config = { 'notify' => ['mgr@test.com'] }
+      runner = run_ooo_runner(
+        ['on', '--event', '--start', '2026-04-20 14:00', '--end', '2026-04-20 17:00'],
+        config_ooo: ooo_config
+      )
+      event_call = runner.api_client.calls.find { |c| c[:path] == '/v1.0/me/events' }
+      assert_equal false, event_call[:body][:isAllDay]
+      assert_equal '2026-04-20T14:00:00', event_call[:body][:start][:dateTime]
+      assert_equal '2026-04-20T17:00:00', event_call[:body][:end][:dateTime]
+    end
+
+    def test_date_schedule_still_creates_all_day_event
+      ooo_config = { 'notify' => ['mgr@test.com'] }
+      runner = run_ooo_runner(
+        ['on', '--event', '--start', '2026-04-14', '--end', '2026-04-14'],
+        config_ooo: ooo_config
+      )
+      event_call = runner.api_client.calls.find { |c| c[:path] == '/v1.0/me/events' }
+      assert_equal true, event_call[:body][:isAllDay]
+      assert_equal '2026-04-14T00:00:00', event_call[:body][:start][:dateTime]
+      assert_equal '2026-04-15T00:00:00', event_call[:body][:end][:dateTime]
     end
   end
 
@@ -433,12 +501,22 @@ module OooCommandTests
 
     def test_invalid_start_date_shows_error
       result = run_ooo(['on', '--start', 'not-a-date', '--end', '2026-04-18'])
-      assert_match(/Invalid date for --start/, result[:stderr])
+      assert_match(/Invalid value for --start/, result[:stderr])
     end
 
     def test_invalid_end_date_shows_error
       result = run_ooo(['on', '--start', '2026-04-14', '--end', 'bogus'])
-      assert_match(/Invalid date for --end/, result[:stderr])
+      assert_match(/Invalid value for --end/, result[:stderr])
+    end
+
+    def test_mixed_schedule_kinds_shows_error
+      result = run_ooo(['on', '--start', '2026-04-14', '--end', 'today 17:00'])
+      assert_match(/both be dates or both include a time/, result[:stderr])
+    end
+
+    def test_mixed_schedule_kinds_halts_execution
+      runner = run_ooo_runner(['on', '--start', 'today 14:00', '--end', '2026-04-14'])
+      assert_empty runner.api_client.calls
     end
   end
 

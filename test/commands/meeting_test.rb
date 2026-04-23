@@ -213,11 +213,10 @@ module MeetingCommandTests
       assert_match(/Bob/, result[:stdout])
     end
 
-    def test_parses_participant_duration
+    def test_shows_call_duration_on_event_header
       result = run_meeting([thread_id],
                            stubs: { 'messages' => meeting_messages_response([sample_call_event_message]) })
-      assert_match(/60 min/, result[:stdout])
-      assert_match(/30 min/, result[:stdout])
+      assert_match(/Call Event.*60 min/, result[:stdout])
     end
 
     def test_shows_assets_summary_with_recording
