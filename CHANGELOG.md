@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0] - 2026-04-23
+
+### Added
+- `teems meeting --audio` - Download audio-only M4A alongside or instead of video (ideal for transcription)
+- `teems meeting --no-video` - Skip the video download for audio-only output
+- `teems ooo` now supports timed schedules via `--start`/`--end` (e.g., "today 14:00") in addition to all-day dates
+- `teems ooo --invite` - Override the configured notify list for a single invocation
+
+### Changed
+- Recording, audio, and transcript files share a common base name derived from the SharePoint file (e.g., `2026-01-20 - Team Sync.mp4`/`.m4a`/`.vtt`)
+
+### Fixed
+- `teems meeting` shows call duration once on the event header instead of repeating it per participant
+
 ## [0.2.0] - 2026-04-14
 
 ### Added
