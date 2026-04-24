@@ -187,6 +187,29 @@ module OooCommandTests
       refute_match(/Schedule/, result[:stdout])
     end
 
+    def test_show_status_scheduled_without_start_date_skips_schedule_line
+      incomplete = AUTO_REPLY_SCHEDULED.except('scheduledStartDateTime')
+      result = run_ooo_status(incomplete)
+      assert_match(/scheduled/, result[:stdout])
+      refute_match(/Schedule:/, result[:stdout])
+    end
+
+    def test_show_status_scheduled_without_end_date_renders_empty_end
+      missing_end = AUTO_REPLY_SCHEDULED.except('scheduledEndDateTime')
+      result = with_tz('UTC') { run_ooo_status(missing_end) }
+      assert_match(/Schedule: 2026-04-14 00:00 to  UTC/, result[:stdout])
+    end
+
+    def test_show_status_schedule_with_non_utc_timezone
+      local_schedule = {
+        'status' => 'scheduled',
+        'scheduledStartDateTime' => { 'dateTime' => '2026-04-14T09:00:00', 'timeZone' => 'Central Standard Time' },
+        'scheduledEndDateTime' => { 'dateTime' => '2026-04-18T17:00:00', 'timeZone' => 'Central Standard Time' }
+      }
+      result = with_tz('UTC') { run_ooo_status(local_schedule) }
+      assert_match(/Schedule: 2026-04-14 09:00 to 2026-04-18 17:00 UTC/, result[:stdout])
+    end
+
     def test_show_status_presence_without_status_message
       presence_no_msg = { 'availability' => 'Available', 'activity' => 'Available' }
       result = run_ooo_status(AUTO_REPLY_DISABLED, presence_data: presence_no_msg)
@@ -541,6 +564,18 @@ module OooCommandTests
       result = run_ooo(['--help'])
       assert_match(/teems ooo/, result[:stdout])
       assert_match(/--message/, result[:stdout])
+    end
+
+    def test_invite_without_value_treats_notify_as_empty
+      ooo_config = { 'notify' => ['mgr@test.com'] }
+      runner = run_ooo_runner(['on', '--event', '--invite'], config_ooo: ooo_config)
+      event_call = runner.api_client.calls.find { |c| c[:path] == '/v1.0/me/events' }
+      assert_nil event_call
+    end
+
+    def test_unknown_option_is_reported
+      result = run_ooo(['on', '--no-such-flag'])
+      assert_match(/Unknown option/, result[:stderr])
     end
   end
 end
