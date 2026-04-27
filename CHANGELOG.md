@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `teems org` no longer hangs when the manager chain contains a cycle; cycle detection breaks the walk on the first repeated manager
+
 ## [0.3.0] - 2026-04-23
 
 ### Added

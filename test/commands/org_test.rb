@@ -141,6 +141,16 @@ module OrgCommandTests
                       'CEO should come before Director'
     end
 
+    def test_manager_chain_breaks_on_cycle
+      result = run_cyclic_chain_org
+      stdout = result[:stdout]
+
+      assert_equal 0, result[:exit_code]
+      assert_match(/Alice/, stdout)
+      assert_match(/Bob/, stdout)
+      assert_match(/--> Me/, stdout)
+    end
+
     private
 
     def run_chain_org(names:, titles: [])
@@ -148,6 +158,22 @@ module OrgCommandTests
       dir = profile_data(id: 'dir', name: names[1], title: titles[1])
       user = profile_data(id: 'me-1', name: names[2], title: titles[2])
       run_org { |runner| stub_me_with_manager_chain(runner, user, [ceo, dir]) }
+    end
+
+    def run_cyclic_chain_org
+      user = profile_data(id: 'me-1', name: 'Me')
+      alice = profile_data(id: 'a', name: 'Alice')
+      bob = profile_data(id: 'b', name: 'Bob')
+      run_org { |runner| stub_cyclic_chain(runner, user, alice, bob) }
+    end
+
+    def stub_cyclic_chain(runner, user, alice, bob)
+      api = runner.api_client
+      api.stub('/v1.0/me', user)
+      api.stub('/v1.0/me/manager', alice)
+      api.stub('users/a/manager', bob)
+      api.stub('users/b/manager', alice)
+      api.stub('/v1.0/me/directReports', { 'value' => [] })
     end
 
     def line_index(lines, text)

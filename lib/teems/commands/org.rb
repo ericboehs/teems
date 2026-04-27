@@ -7,16 +7,18 @@ module Teems
       private
 
       def walk_manager_chain(target_id)
-        managers = []
-        current_id = target_id
         fetch = method(target_is_me? ? :fetch_my_manager : :fetch_user_manager)
-        collect_managers(managers, current_id, fetch)
+        collect_managers(target_id, fetch, Set[target_id])
       end
 
-      def collect_managers(managers, current_id, fetch)
+      def collect_managers(current_id, fetch, visited)
+        managers = []
         while (mgr = fetch.call(current_id))
+          mgr_id = mgr.id
+          break unless visited.add?(mgr_id)
+
           managers.unshift(mgr)
-          current_id = mgr.id
+          current_id = mgr_id
           fetch = method(:fetch_user_manager)
         end
         managers
