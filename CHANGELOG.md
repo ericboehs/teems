@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- `teems messages <teams-url>` now treats a message permalink as a thread root: it fetches the linked message and its replies and renders them with a `--- N replies ---` separator (modelled after `slk view`). Falls back to listing recent messages when the URL has no message ID.
+
 ### Fixed
 - `teems org` no longer hangs when the manager chain contains a cycle; cycle detection breaks the walk on the first repeated manager
 

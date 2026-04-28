@@ -39,6 +39,12 @@ module Teems
         get("/v1/users/ME/conversations/#{encoded_id}/messages", params: params)
       end
 
+      # Get a single message by ID
+      def message(thread_id:, message_id:)
+        encoded_id = URI.encode_www_form_component(thread_id)
+        get("/v1/users/ME/conversations/#{encoded_id}/messages/#{message_id}")
+      end
+
       # Get replies to a message
       def replies(thread_id:, message_id:, limit: 50)
         encoded_id = URI.encode_www_form_component(thread_id)

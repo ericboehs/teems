@@ -24,6 +24,7 @@ module Teems
         teems messages 19:abc123@thread.v2         # Read chat messages
         teems messages 19:abc123@thread.v2 -n 50   # Show 50 messages
         teems messages "https://teams.microsoft.com/l/message/19:abc@thread.v2/123?context=..."
+                                                   # Show the linked message and its thread replies
     HELP
 
     # Display formatting for messages command
@@ -167,10 +168,51 @@ module Teems
       end
     end
 
+    # Fetch and render a single message and its thread replies
+    module ThreadFetch
+      private
+
+      def fetch_thread(thread_id, message_id)
+        api = runner.messages_api
+        parent_data = with_token_refresh { api.message(thread_id: thread_id, message_id: message_id) }
+        replies_data = with_token_refresh do
+          api.replies(thread_id: thread_id, message_id: message_id, limit: @options[:limit])
+        end
+        display_thread(parent_data, extract_messages_data(replies_data))
+      rescue ApiError => e
+        error("Failed to fetch message: #{e.message}")
+      end
+
+      def display_thread(parent_data, replies_data)
+        parent = Models::Message.from_api(parent_data)
+        replies = replies_data.map { |data| Models::Message.from_api(data) }.reject(&:system_message?).reverse
+        return output_json(thread_to_hash(parent, replies)) if @options[:json]
+
+        render_thread(parent, replies)
+        download_attachments([parent, *replies]) if @options[:download]
+        0
+      end
+
+      def render_thread(parent, replies)
+        display_message(parent)
+        count = replies.length
+        return if count.zero?
+
+        puts output.gray("--- #{count} #{count == 1 ? 'reply' : 'replies'} ---")
+        puts
+        replies.each { |reply| display_message(reply) }
+      end
+
+      def thread_to_hash(parent, replies)
+        { parent: message_to_hash(parent), replies: replies.map { |reply| message_to_hash(reply) } }
+      end
+    end
+
     # Read messages from a channel or chat
     class Messages < Base
       include MessagesDisplay
       include AttachmentDownload
+      include ThreadFetch
 
       def initialize(args, runner:)
         @options = {}
@@ -231,12 +273,17 @@ module Teems
       def apply_parsed_url(result)
         conversation_id = result.conversation_id
         team_id = result.team_id
-        debug("Parsed URL: conversation=#{conversation_id}, team=#{team_id}")
+        message_id = result.message_id
+        debug("Parsed URL: conversation=#{conversation_id}, team=#{team_id}, message=#{message_id}")
         @options[:team_id] = team_id if team_id
+        @options[:message_id] = message_id if message_id
         conversation_id
       end
 
       def fetch_messages(target)
+        message_id = @options[:message_id]
+        return fetch_thread(target, message_id) if message_id
+
         @options[:team_id] ? fetch_channel_messages(target) : fetch_chat_messages(target)
       end
 

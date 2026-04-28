@@ -158,13 +158,114 @@ module MessagesCommandTests
     def test_url_with_verbose_shows_debug
       with_temp_config do
         err = StringIO.new
-        output = Teems::Formatters::Output.new(err: err, color: false, mode: :verbose)
+        output = Teems::Formatters::Output.new(io: StringIO.new, err: err, color: false, mode: :verbose)
         runner = configured_runner(output: output)
         runner.api_client.stub('messages', { 'messages' => [] })
         url = 'https://teams.microsoft.com/l/message/19:abc@thread.v2/123?context=%7B%22contextType%22%3A%22chat%22%7D'
         Teems::Commands::Messages.new(['-v', url], runner: runner).execute
         assert_match(/Parsed URL/, err.string)
       end
+    end
+  end
+
+  # Tests for thread mode triggered by message URLs
+  class ThreadModeTest < Minitest::Test
+    include Helpers
+
+    URL_WITH_MSG_ID = 'https://teams.microsoft.com/l/message/19:abc@thread.v2/' \
+                      '1768935087318?context=%7B%22contextType%22%3A%22chat%22%7D'
+
+    def test_url_fetches_specific_message_and_replies
+      runner = run_thread_url(URL_WITH_MSG_ID, parent_msg, [reply_msg])
+      paths = runner.api_client.calls.map { |call| call[:path] }
+
+      assert(paths.any? { |path| path.end_with?('/1768935087318') }, 'Expected single-message fetch')
+      assert(paths.any? { |path| path.end_with?('/1768935087318/replies') }, 'Expected replies fetch')
+    end
+
+    def test_thread_output_shows_parent_and_reply_separator
+      result = capture_thread_output(URL_WITH_MSG_ID, parent_msg, [reply_msg])
+
+      assert_match(/Hello parent/, result[:stdout])
+      assert_match(/--- 1 reply ---/, result[:stdout])
+      assert_match(/Reply text/, result[:stdout])
+    end
+
+    def test_thread_with_no_replies_omits_separator
+      result = capture_thread_output(URL_WITH_MSG_ID, parent_msg, [])
+
+      assert_match(/Hello parent/, result[:stdout])
+      refute_match(/replies ---/, result[:stdout])
+    end
+
+    def test_thread_json_output_groups_parent_and_replies
+      args = ['--json', URL_WITH_MSG_ID]
+      result = run_thread_json(args, parent_msg, [reply_msg])
+      json = JSON.parse(result[:stdout])
+
+      assert_equal 'Jane Smith', json['parent']['sender_name']
+      assert_equal 1, json['replies'].length
+      assert_match(/Reply text/, json['replies'].first['content'])
+    end
+
+    def test_thread_api_error_reports_failure
+      with_temp_config do
+        result = capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.api_client.stub_error('1768935087318',
+                                       Teems::ApiError.new('boom', status_code: 500))
+          Teems::Commands::Messages.new([URL_WITH_MSG_ID], runner: runner).execute
+        end
+        assert_match(/Failed to fetch message/, result[:stderr])
+      end
+    end
+
+    private
+
+    def parent_msg
+      sample_ng_msg_message.merge('id' => '1768935087318',
+                                  'content' => '<p>Hello parent</p>')
+    end
+
+    def reply_msg
+      sample_ng_msg_message.merge('id' => '1768935087400',
+                                  'content' => '<p>Reply text</p>',
+                                  'rootMessageId' => '1768935087318')
+    end
+
+    def run_thread_url(url, parent, replies)
+      with_temp_config do
+        runner = configured_runner
+        stub_thread(runner, parent, replies)
+        Teems::Commands::Messages.new([url], runner: runner).execute
+        runner
+      end
+    end
+
+    def capture_thread_output(url, parent, replies)
+      with_temp_config do
+        capture_output do |output|
+          runner = configured_runner(output: output)
+          stub_thread(runner, parent, replies)
+          Teems::Commands::Messages.new([url], runner: runner).execute
+        end
+      end
+    end
+
+    def run_thread_json(args, parent, replies)
+      with_temp_config do
+        capture_output do |output|
+          runner = configured_runner(output: output)
+          stub_thread(runner, parent, replies)
+          Teems::Commands::Messages.new(args, runner: runner).execute
+        end
+      end
+    end
+
+    def stub_thread(runner, parent, replies)
+      api = runner.api_client
+      api.stub('1768935087318/replies', { 'messages' => replies })
+      api.stub('1768935087318', parent)
     end
   end
 
