@@ -1644,6 +1644,17 @@ module MeetingCommandTests
       assert_match(/Invalid --date value/, result[:stderr])
     end
 
+    def test_invalid_date_short_circuits_before_auth
+      with_temp_config do
+        result = capture_output do |output|
+          runner = unconfigured_runner(output: output)
+          Teems::Commands::Meeting.new([thread_id, '--date', 'bogus'], runner: runner).execute
+        end
+        assert_match(/Invalid --date value/, result[:stderr])
+        refute_match(/Not authenticated/, result[:stderr])
+      end
+    end
+
     def test_date_filter_module_skips_items_without_time
       filter = Object.new.tap do |obj|
         obj.extend(Teems::Commands::MeetingDateFilter)

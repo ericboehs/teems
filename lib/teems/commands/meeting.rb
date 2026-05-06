@@ -471,24 +471,42 @@ module Teems
 
       private
 
-      def filter_classified_by_date(classified, date_str)
-        target_date = parse_date_option(date_str)
-        return nil unless target_date
+      def validate_date_option
+        raw = @options[:date]
+        return nil unless raw
 
-        DATE_KEYS.each_with_object(classified.dup) do |key, acc|
-          acc[key] = items_on_date(acc[key], target_date)
-        end
+        @options[:target_date] = Date.parse(raw)
+        nil
+      rescue ArgumentError, TypeError
+        error("Invalid --date value: #{raw.inspect} (expected YYYY-MM-DD)")
+        1
+      end
+
+      def apply_date_option(classified)
+        target_date = @options[:target_date]
+        return classified unless target_date
+
+        filtered = filter_classified_by_date(classified, target_date)
+        return filtered unless date_filter_empty?(filtered)
+
+        error("No meeting activity found for #{@options[:date]}")
+        nil
+      end
+
+      def date_filter_empty?(classified)
+        DATE_KEYS.all? { |key| classified[key].empty? }
+      end
+
+      def filter_classified_by_date(classified, target_date)
+        classified.to_h { |key, val| [key, filter_classified_value(key, val, target_date)] }
+      end
+
+      def filter_classified_value(key, val, target_date)
+        DATE_KEYS.include?(key) ? items_on_date(val, target_date) : val
       end
 
       def items_on_date(items, target_date)
         items.select { |item| item_on_date?(item, target_date) }
-      end
-
-      def parse_date_option(date_str)
-        Date.parse(date_str)
-      rescue ArgumentError, TypeError
-        error("Invalid --date value: #{date_str.inspect} (expected YYYY-MM-DD)")
-        nil
       end
 
       def item_on_date?(item, target_date)
@@ -561,6 +579,13 @@ module Teems
         target ? process_meeting(target) : 1
       end
 
+      def validate_options
+        result = super
+        return result if result
+
+        validate_date_option
+      end
+
       protected
 
       MEETING_OPTIONS = MeetingOptionDefs::ALL
@@ -587,37 +612,12 @@ module Teems
         dispatch_mode(target, classified)
       end
 
-      def apply_date_option(classified)
-        date_str = @options[:date]
-        return classified unless date_str
-
-        filtered = filter_classified_by_date(classified, date_str)
-        return nil unless filtered
-        return filtered unless date_filter_empty?(filtered)
-
-        error("No meeting activity found for #{date_str}")
-        nil
-      end
-
-      def date_filter_empty?(classified)
-        MeetingDateFilter::DATE_KEYS.all? { |key| classified[key].empty? }
-      end
-
       def fetch_meeting_messages(thread_id)
         debug("Fetching messages for thread: #{thread_id}")
-        target_date = pagination_target_date
+        target_date = @options[:target_date]
         return paginate_meeting_messages(thread_id, target_date) if target_date
 
         single_page_meeting_messages(thread_id)
-      end
-
-      def pagination_target_date
-        date_str = @options[:date]
-        return nil unless date_str
-
-        Date.parse(date_str)
-      rescue ArgumentError, TypeError
-        nil
       end
 
       def single_page_meeting_messages(thread_id)
