@@ -1621,4 +1621,167 @@ module MeetingCommandTests
       end
     end
   end
+
+  # Tests for --date filtering of recurring meeting occurrences
+  class DateFilterTest < Minitest::Test
+    include Helpers
+
+    def test_date_filters_call_events_to_one_occurrence
+      result = with_tz('UTC') { run_with_messages(messages_two_days, ['--date', '2026-01-21']) }
+      assert_match(/Call Event/, result[:stdout])
+      assert_equal 1, result[:stdout].scan('Call Event').length
+      assert_match(/Bob/, result[:stdout])
+      refute_match(/Alice/, result[:stdout])
+    end
+
+    def test_date_with_no_match_errors
+      result = with_tz('UTC') { run_with_messages(messages_two_days, ['--date', '2026-02-15']) }
+      assert_match(/No meeting activity found for 2026-02-15/, result[:stderr])
+    end
+
+    def test_date_with_invalid_value_errors
+      result = run_with_messages(messages_two_days, ['--date', 'not-a-date'])
+      assert_match(/Invalid --date value/, result[:stderr])
+    end
+
+    def test_date_filter_module_skips_items_without_time
+      filter = Object.new.tap do |obj|
+        obj.extend(Teems::Commands::MeetingDateFilter)
+        obj.define_singleton_method(:error) { |_| nil }
+      end
+      target = Date.new(2026, 1, 20)
+      refute filter.send(:item_on_date?, { time: nil }, target)
+      refute filter.send(:item_on_date?, { time: 'garbage' }, target)
+      with_tz('UTC') do
+        assert filter.send(:item_on_date?, { time: '2026-01-20T10:00:00Z' }, target)
+      end
+    end
+
+    private
+
+    def with_tz(zone)
+      original = ENV.fetch('TZ', nil)
+      ENV['TZ'] = zone
+      yield
+    ensure
+      original ? ENV['TZ'] = original : ENV.delete('TZ')
+    end
+
+    def run_with_messages(messages, extra_args)
+      with_temp_config do
+        capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', meeting_messages_response(messages))
+          Teems::Commands::Meeting.new([thread_id, *extra_args], runner: runner).execute
+        end
+      end
+    end
+
+    def messages_two_days
+      [call_event_on('2026-01-20T15:00:00.000Z', 'aaa-111', 'Alice'),
+       call_event_on('2026-01-21T15:00:00.000Z', 'bbb-222', 'Bob')]
+    end
+
+    def call_event_on(timestamp, call_id, display_name)
+      { 'id' => "evt-#{call_id}", 'messagetype' => 'Event/Call',
+        'composetime' => timestamp,
+        'content' => '<partlist><part identity="8:orgid:u1"><name>8:orgid:u1</name>' \
+                     "<displayName>#{display_name}</displayName>" \
+                     '<duration>600</duration></part></partlist>' \
+                     "<callId>#{call_id}</callId>" }
+    end
+  end
+
+  # Tests for backward-link pagination triggered by --date
+  class PaginationTest < Minitest::Test
+    include Helpers
+
+    # Sleep is undesirable in any unit test; override once at class load.
+    Teems::Commands::Meeting.class_eval { define_method(:page_pause) { nil } }
+
+    def test_paginates_until_oldest_message_predates_target
+      pages = [paged([call_event('2026-01-22T15:00:00Z', 'a')], 'link-1'),
+               paged([call_event('2026-01-21T15:00:00Z', 'b')], 'link-2'),
+               paged([call_event('2026-01-19T15:00:00Z', 'c')], nil)]
+      result = run_paginated(pages, ['--date', '2026-01-21'])
+      assert_match(/Call Event/, result[:stdout])
+      assert_equal 1, result[:stdout].scan('Call Event').length
+    end
+
+    def test_pagination_stops_when_no_backward_link
+      pages = [paged([call_event('2026-01-22T15:00:00Z', 'a')], nil)]
+      result = run_paginated(pages, ['--date', '2026-01-10'])
+      assert_match(/No meeting activity found for 2026-01-10/, result[:stderr])
+    end
+
+    def test_pagination_stops_on_empty_page
+      pages = [paged([call_event('2026-01-22T15:00:00Z', 'a')], 'link-1'),
+               paged([], 'link-2')]
+      result = run_paginated(pages, ['--date', '2026-01-22'])
+      assert_match(/Call Event/, result[:stdout])
+    end
+
+    def test_pagination_skips_messages_with_unparseable_compose_time
+      pages = [paged([msg_with_bad_time, call_event('2026-01-22T15:00:00Z', 'a')], 'link-1'),
+               paged([call_event('2026-01-19T15:00:00Z', 'b')], nil)]
+      result = run_paginated(pages, ['--date', '2026-01-22'])
+      assert_match(/Call Event/, result[:stdout])
+    end
+
+    def test_pagination_caps_at_max_pages
+      cap = Teems::Commands::MeetingPagination::MAX_PAGES
+      pages = Array.new(cap + 5) { |i| paged([call_event("2026-01-22T15:00:0#{i % 10}Z", "a#{i}")], "link-#{i}") }
+      result = run_paginated(pages, ['--date', '2025-01-01'])
+      assert_match(/No meeting activity found for 2025-01-01/, result[:stderr])
+    end
+
+    def test_pagination_reports_api_error
+      result = with_temp_config do
+        capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub_error('messages', Teems::ApiError.new('boom'))
+          Teems::Commands::Meeting.new([thread_id, '--date', '2026-01-21'], runner: runner).execute
+        end
+      end
+      assert_match(/Failed to fetch meeting messages/, result[:stderr])
+    end
+
+    private
+
+    def run_paginated(pages, extra_args)
+      with_temp_config do
+        capture_output do |out|
+          runner = configured_runner(output: out)
+          stub_paged_responses(runner.api_client, pages)
+          Teems::Commands::Meeting.new([thread_id, *extra_args], runner: runner).execute
+        end
+      end
+    end
+
+    def stub_paged_responses(api_client, pages)
+      idx = 0
+      api_client.define_singleton_method(:get) do |_endpoint, _path, **_opts|
+        page = pages[idx] || pages.last
+        idx += 1
+        page
+      end
+    end
+
+    def paged(messages, backward_link)
+      metadata = backward_link ? { 'backwardLink' => backward_link } : {}
+      { 'messages' => messages, '_metadata' => metadata }
+    end
+
+    def call_event(timestamp, suffix)
+      { 'id' => "evt-#{suffix}", 'messagetype' => 'Event/Call', 'composetime' => timestamp,
+        'content' => '<partlist><part identity="8:orgid:u1"><name>8:orgid:u1</name>' \
+                     "<displayName>Person #{suffix}</displayName>" \
+                     '<duration>600</duration></part></partlist>' \
+                     "<callId>#{suffix}</callId>" }
+    end
+
+    def msg_with_bad_time
+      { 'id' => 'bad', 'messagetype' => 'RichText/Html', 'composetime' => 'not-a-time', 'content' => '' }
+    end
+  end
 end

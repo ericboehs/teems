@@ -22,6 +22,8 @@ module Teems
         --audio          Also save a separate audio file (M4A) — ideal for transcription
         --no-video       Skip the video file; with --audio produces audio-only output
         --chat           Show meeting chat messages
+        --date YYYY-MM-DD  Pick a single occurrence of a recurring meeting by date
+                           (filters call events, recordings, and transcripts)
         -o, --output-dir Directory for downloads (default: current directory)
         -v, --verbose    Show debug output
         -q, --quiet      Suppress output
@@ -36,6 +38,7 @@ module Teems
         teems meeting 19:meeting_abc123@thread.v2 --audio --no-video -o ~/Downloads  # audio only
         teems meeting 19:meeting_abc123@thread.v2 --recording -o ~/Downloads
         teems meeting 19:meeting_abc123@thread.v2 --recording --transcript -o ~/Downloads
+        teems meeting "<recurring-url>" --date 2026-05-04 --audio --no-video --transcript
         teems meeting AAMkAGVmMDEz...        # By calendar event ID
     HELP
 
@@ -47,6 +50,7 @@ module Teems
         '--audio' => ->(opts, _args) { opts[:audio] = true },
         '--no-video' => ->(opts, _args) { opts[:no_video] = true },
         '--chat' => ->(opts, _args) { opts[:chat] = true },
+        '--date' => ->(opts, args) { opts[:date] = args.shift },
         '-o' => ->(opts, args) { opts[:output_dir] = args.shift },
         '--output-dir' => ->(opts, args) { opts[:output_dir] = args.shift }
       }.freeze
@@ -364,6 +368,139 @@ module Teems
       end
     end
 
+    # A single page of meeting chat messages with the link to the page before it.
+    MeetingPage = Data.define(:messages, :backward_link) do
+      def empty? = messages.empty?
+      def last? = backward_link.to_s.empty?
+
+      def oldest_local_date
+        times = messages.filter_map { |msg| MeetingPage.safe_parse_time(msg['composetime']) }
+        times.min&.localtime&.to_date
+      end
+
+      def covers_through?(target_date)
+        oldest = oldest_local_date
+        oldest && oldest < target_date
+      end
+
+      def terminal_for?(target_date)
+        empty? || last? || covers_through?(target_date)
+      end
+
+      def self.safe_parse_time(time_str)
+        return nil unless time_str
+
+        Time.parse(time_str)
+      rescue ArgumentError, TypeError
+        nil
+      end
+    end
+
+    # Pages backward through chat messages until we've fetched past the target date.
+    # The ng.msg endpoint caps pages at 200 messages and exposes no messageType filter,
+    # so for recurring meetings we paginate via _metadata.backwardLink.
+    module MeetingPagination
+      PAGE_SIZE = 200
+      MAX_PAGES = 50
+      PAGE_DELAY_SECONDS = 0.5
+
+      private
+
+      def paginate_meeting_messages(thread_id, target_date)
+        @page_count = 0
+        @pagination_link = nil
+        @paginated_messages = []
+        run_pagination_loop(thread_id, target_date)
+        @paginated_messages
+      end
+
+      def run_pagination_loop(thread_id, target_date)
+        loop do
+          page = fetch_meeting_page(thread_id, @pagination_link)
+          return unless page
+
+          merge_meeting_page(page)
+          break if pagination_done?(page, target_date)
+
+          @pagination_link = page.backward_link
+          page_pause
+        end
+      end
+
+      def page_pause
+        sleep(PAGE_DELAY_SECONDS)
+      end
+
+      def fetch_meeting_page(thread_id, backward_link)
+        response = with_token_refresh do
+          runner.messages_api.chat_messages_page(
+            chat_id: thread_id, limit: PAGE_SIZE, backward_link: backward_link
+          )
+        end
+        MeetingPage.new(messages: response['messages'] || response['value'] || [],
+                        backward_link: response.dig('_metadata', 'backwardLink'))
+      rescue ApiError => e
+        error("Failed to fetch meeting messages: #{e.message}")
+        nil
+      end
+
+      def merge_meeting_page(page)
+        page_messages = page.messages
+        @paginated_messages.concat(page_messages)
+        @page_count += 1
+        debug("Page #{@page_count}: #{page_messages.length} message(s) " \
+              "(oldest #{page.oldest_local_date}); total #{@paginated_messages.length}")
+      end
+
+      def pagination_done?(page, target_date)
+        reached_pagination_cap? || page.terminal_for?(target_date)
+      end
+
+      def reached_pagination_cap?
+        return false if @page_count < MAX_PAGES
+
+        debug("Reached max pages (#{MAX_PAGES}); stopping pagination")
+        true
+      end
+    end
+
+    # Filters classified call events, recordings, and transcripts to a single date.
+    # Used to select one occurrence of a recurring meeting series.
+    module MeetingDateFilter
+      DATE_KEYS = %i[call_events recordings transcripts].freeze
+
+      private
+
+      def filter_classified_by_date(classified, date_str)
+        target_date = parse_date_option(date_str)
+        return nil unless target_date
+
+        DATE_KEYS.each_with_object(classified.dup) do |key, acc|
+          acc[key] = items_on_date(acc[key], target_date)
+        end
+      end
+
+      def items_on_date(items, target_date)
+        items.select { |item| item_on_date?(item, target_date) }
+      end
+
+      def parse_date_option(date_str)
+        Date.parse(date_str)
+      rescue ArgumentError, TypeError
+        error("Invalid --date value: #{date_str.inspect} (expected YYYY-MM-DD)")
+        nil
+      end
+
+      def item_on_date?(item, target_date)
+        time_str = item[:time]
+        return false unless time_str
+
+        Time.parse(time_str).localtime.to_date == target_date
+      rescue ArgumentError, TypeError
+        false
+      end
+    end
+
     # Filters classified messages to a specific call instance by callId
     module MeetingCallFilter
       private
@@ -403,6 +540,8 @@ module Teems
       include MeetingDisplay
       include MeetingChatDisplay
       include MeetingCallFilter
+      include MeetingDateFilter
+      include MeetingPagination
       include MeetingTranscript
       include MeetingRecording
 
@@ -442,11 +581,46 @@ module Teems
         return 1 unless messages_data
 
         classified = classify_and_filter(messages_data, target)
+        classified = apply_date_option(classified)
+        return 1 unless classified
+
         dispatch_mode(target, classified)
+      end
+
+      def apply_date_option(classified)
+        date_str = @options[:date]
+        return classified unless date_str
+
+        filtered = filter_classified_by_date(classified, date_str)
+        return nil unless filtered
+        return filtered unless date_filter_empty?(filtered)
+
+        error("No meeting activity found for #{date_str}")
+        nil
+      end
+
+      def date_filter_empty?(classified)
+        MeetingDateFilter::DATE_KEYS.all? { |key| classified[key].empty? }
       end
 
       def fetch_meeting_messages(thread_id)
         debug("Fetching messages for thread: #{thread_id}")
+        target_date = pagination_target_date
+        return paginate_meeting_messages(thread_id, target_date) if target_date
+
+        single_page_meeting_messages(thread_id)
+      end
+
+      def pagination_target_date
+        date_str = @options[:date]
+        return nil unless date_str
+
+        Date.parse(date_str)
+      rescue ArgumentError, TypeError
+        nil
+      end
+
+      def single_page_meeting_messages(thread_id)
         response = with_token_refresh do
           runner.messages_api.chat_messages(chat_id: thread_id, limit: @options[:limit])
         end
