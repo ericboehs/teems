@@ -168,6 +168,16 @@ module Teems
       CALLID_RE = %r{<callId>([^<]+)</callId>}
       INSTANCE_ICAL_RE = %r{<instanceDetails>.*?<iCalUid>([^<]+)</iCalUid>}m
 
+      # Public helper: parses an ISO/RFC time string, returning nil for nil/garbage input.
+      # Shared with MeetingPage which doesn't include the module.
+      def self.safe_parse_time(time_str)
+        return nil unless time_str
+
+        Time.parse(time_str)
+      rescue ArgumentError, TypeError
+        nil
+      end
+
       private
 
       def classify_meeting_messages(messages_data)
@@ -368,59 +378,96 @@ module Teems
       end
     end
 
-    # A single page of meeting chat messages with the link to the page before it.
-    MeetingPage = Data.define(:messages, :backward_link) do
-      def empty? = messages.empty?
-      def last? = backward_link.to_s.empty?
-
-      def oldest_local_date
-        times = messages.filter_map { |msg| MeetingPage.safe_parse_time(msg['composetime']) }
-        times.min&.localtime&.to_date
+    # A single page of meeting chat messages with the cursor to the page before it.
+    # Constructor normalizes a blank backward_link to nil so `last?` is a simple nil check.
+    # Date comparisons use the user's local timezone to match `--date` semantics.
+    #
+    # `segment_cursor` is `_metadata.lastCompleteSegmentStartTime` (a Time) — the API's
+    # boundary marker for "all messages from here on are fully loaded." Prefer it for
+    # `covers_through?` because pages can intersperse old replies/system messages, making
+    # the message-level `oldest_local_date` an unreliable stop signal. Falls back to the
+    # oldest message when the cursor is absent (e.g. in synthetic test data).
+    MeetingPage = Data.define(:messages, :backward_link, :segment_cursor) do
+      def self.from_response(response)
+        msgs, value_msgs, meta_or_nil = response.values_at('messages', 'value', '_metadata')
+        meta = meta_or_nil || {}
+        new(messages: msgs || value_msgs || [],
+            backward_link: meta['backwardLink'],
+            segment_cursor: cursor_from_millis(meta['lastCompleteSegmentStartTime']))
       end
 
+      def self.cursor_from_millis(millis)
+        return nil unless millis.is_a?(Numeric)
+
+        Time.at(millis / 1000.0)
+      end
+
+      def initialize(messages:, backward_link:, segment_cursor: nil)
+        super(messages: messages,
+              backward_link: backward_link.to_s.empty? ? nil : backward_link,
+              segment_cursor: segment_cursor)
+      end
+
+      def empty? = messages.empty?
+      def last? = !backward_link
+
+      def oldest_local_date
+        oldest_message_time&.localtime&.to_date
+      end
+
+      # Strict `<` is load-bearing: when the cursor equals target_date, we must keep
+      # paginating to ensure we've fetched all of target_date's messages.
       def covers_through?(target_date)
-        oldest = oldest_local_date
-        oldest && oldest < target_date
+        cursor = segment_cursor || oldest_message_time
+        cursor && cursor.localtime.to_date < target_date
       end
 
       def terminal_for?(target_date)
         empty? || last? || covers_through?(target_date)
       end
 
-      def self.safe_parse_time(time_str)
-        return nil unless time_str
+      private
 
-        Time.parse(time_str)
-      rescue ArgumentError, TypeError
-        nil
+      def oldest_message_time
+        messages.filter_map { |msg| MeetingMessageParser.safe_parse_time(msg['composetime']) }.min
       end
     end
 
     # Pages backward through chat messages until we've fetched past the target date.
-    # The ng.msg endpoint caps pages at 200 messages and exposes no messageType filter,
+    # The ng.msg wrapper requests 200 messages per page and exposes no messageType filter,
     # so for recurring meetings we paginate via _metadata.backwardLink.
     module MeetingPagination
+      # Per-page request size used by Api::Messages#chat_messages_page.
       PAGE_SIZE = 200
+
+      # Safety net: 50 pages × 200 = 10K messages worst case (~25s with the rate-limit
+      # cushion). Beyond this we assume the requested date is older than retained history
+      # and surface a user-visible error.
       MAX_PAGES = 50
+
+      # Polite pause between page fetches. Matches Services::SyncEngine::API_DELAY_SECONDS.
       PAGE_DELAY_SECONDS = 0.5
 
       private
 
+      # Returns the accumulated messages, or nil if the API errored mid-pagination
+      # (so callers can fail loudly instead of rendering partial data as success).
       def paginate_meeting_messages(thread_id, target_date)
         @page_count = 0
         @pagination_link = nil
         @paginated_messages = []
-        run_pagination_loop(thread_id, target_date)
+        return nil unless run_pagination_loop(thread_id, target_date)
+
         @paginated_messages
       end
 
       def run_pagination_loop(thread_id, target_date)
         loop do
           page = fetch_meeting_page(thread_id, @pagination_link)
-          return unless page
+          return false unless page
 
           merge_meeting_page(page)
-          break if pagination_done?(page, target_date)
+          return true if pagination_done?(page, target_date)
 
           @pagination_link = page.backward_link
           page_pause
@@ -437,8 +484,7 @@ module Teems
             chat_id: thread_id, limit: PAGE_SIZE, backward_link: backward_link
           )
         end
-        MeetingPage.new(messages: response['messages'] || response['value'] || [],
-                        backward_link: response.dig('_metadata', 'backwardLink'))
+        MeetingPage.from_response(response)
       rescue ApiError => e
         error("Failed to fetch meeting messages: #{e.message}")
         nil
@@ -453,21 +499,28 @@ module Teems
       end
 
       def pagination_done?(page, target_date)
-        reached_pagination_cap? || page.terminal_for?(target_date)
+        return true if page.terminal_for?(target_date)
+
+        reached_pagination_cap?
       end
 
       def reached_pagination_cap?
         return false if @page_count < MAX_PAGES
 
-        debug("Reached max pages (#{MAX_PAGES}); stopping pagination")
+        error("Stopped after #{MAX_PAGES} pages (~#{MAX_PAGES * PAGE_SIZE} messages); " \
+              '--date may predate available history')
         true
       end
     end
 
-    # Filters classified call events, recordings, and transcripts to a single date.
-    # Used to select one occurrence of a recurring meeting series.
+    # Filters classified call events, recordings, transcripts, and chat messages to a
+    # single date. Used to select one occurrence of a recurring meeting series.
+    # Date comparison uses the user's local timezone.
     module MeetingDateFilter
-      DATE_KEYS = %i[call_events recordings transcripts].freeze
+      # All four classification buckets are date-filtered. Parsed buckets (call_events,
+      # recordings, transcripts) carry :time (symbol); raw chat_messages carry
+      # 'composetime' (string) — `item_on_date?` accepts either shape.
+      DATE_KEYS = %i[call_events recordings transcripts chat_messages].freeze
 
       private
 
@@ -510,7 +563,7 @@ module Teems
       end
 
       def item_on_date?(item, target_date)
-        time_str = item[:time]
+        time_str = item[:time] || item['composetime']
         return false unless time_str
 
         Time.parse(time_str).localtime.to_date == target_date

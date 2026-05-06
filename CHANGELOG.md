@@ -3,8 +3,8 @@
 ## [Unreleased]
 
 ### Added
-- `teems meeting --date YYYY-MM-DD` - Pick a single occurrence of a recurring meeting series by date. Filters call events, recordings, and transcripts to that day in the user's local timezone, so iterating multiple days from the same series is a one-liner shell loop. Errors when nothing matches.
-- `teems meeting --date` automatically paginates the chat thread via `_metadata.backwardLink` until the page covers the requested date, so picking older occurrences of a recurring meeting works without bumping `--limit` (capped at 50 pages of 200 messages each as a safety net).
+- `teems meeting --date YYYY-MM-DD` - Pick a single occurrence of a recurring meeting series by date. Filters call events, recordings, transcripts, and chat messages to that day in the user's local timezone, so iterating multiple days from the same series is a one-liner shell loop. Errors when nothing matches.
+- `teems meeting --date` automatically paginates the chat thread via `_metadata.backwardLink` until the page covers the requested date — using `lastCompleteSegmentStartTime` as the boundary cursor so pages with interleaved old replies/system messages don't terminate pagination prematurely. Capped at 50 pages of 200 messages as a safety net; cap-hit surfaces a user-visible error. API errors mid-pagination now exit non-zero instead of rendering partial data as success.
 - `teems messages <teams-url>` now treats a message permalink as a thread root: it fetches the linked message and its replies and renders them with a `--- N replies ---` separator (modelled after `slk view`). Falls back to listing recent messages when the URL has no message ID.
 
 ### Fixed
