@@ -1621,4 +1621,314 @@ module MeetingCommandTests
       end
     end
   end
+
+  # Tests for --date filtering of recurring meeting occurrences
+  class DateFilterTest < Minitest::Test
+    include Helpers
+
+    def test_date_filters_call_events_to_one_occurrence
+      result = with_tz('UTC') { run_with_messages(messages_two_days, ['--date', '2026-01-21']) }
+      assert_match(/Call Event/, result[:stdout])
+      assert_equal 1, result[:stdout].scan('Call Event').length
+      assert_match(/Bob/, result[:stdout])
+      refute_match(/Alice/, result[:stdout])
+    end
+
+    def test_date_with_no_match_errors
+      result = with_tz('UTC') { run_with_messages(messages_two_days, ['--date', '2026-02-15']) }
+      assert_match(/No meeting activity found for 2026-02-15/, result[:stderr])
+    end
+
+    def test_date_with_invalid_value_errors
+      result = run_with_messages(messages_two_days, ['--date', 'not-a-date'])
+      assert_match(/Invalid --date value/, result[:stderr])
+    end
+
+    def test_invalid_date_short_circuits_before_auth
+      with_temp_config do
+        result = capture_output do |output|
+          runner = unconfigured_runner(output: output)
+          Teems::Commands::Meeting.new([thread_id, '--date', 'bogus'], runner: runner).execute
+        end
+        assert_match(/Invalid --date value/, result[:stderr])
+        refute_match(/Not authenticated/, result[:stderr])
+      end
+    end
+
+    def test_date_filter_module_skips_items_without_time
+      filter = Object.new.tap do |obj|
+        obj.extend(Teems::Commands::MeetingDateFilter)
+        obj.define_singleton_method(:error) { |_| nil }
+      end
+      target = Date.new(2026, 1, 20)
+      refute filter.send(:item_on_date?, { time: nil }, target)
+      refute filter.send(:item_on_date?, { time: 'garbage' }, target)
+      with_tz('UTC') do
+        assert filter.send(:item_on_date?, { time: '2026-01-20T10:00:00Z' }, target)
+      end
+    end
+
+    private
+
+    def with_tz(zone)
+      original = ENV.fetch('TZ', nil)
+      ENV['TZ'] = zone
+      yield
+    ensure
+      original ? ENV['TZ'] = original : ENV.delete('TZ')
+    end
+
+    def run_with_messages(messages, extra_args)
+      with_temp_config do
+        capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', meeting_messages_response(messages))
+          Teems::Commands::Meeting.new([thread_id, *extra_args], runner: runner).execute
+        end
+      end
+    end
+
+    def messages_two_days
+      [call_event_on('2026-01-20T15:00:00.000Z', 'aaa-111', 'Alice'),
+       call_event_on('2026-01-21T15:00:00.000Z', 'bbb-222', 'Bob')]
+    end
+
+    def call_event_on(timestamp, call_id, display_name)
+      { 'id' => "evt-#{call_id}", 'messagetype' => 'Event/Call',
+        'composetime' => timestamp,
+        'content' => '<partlist><part identity="8:orgid:u1"><name>8:orgid:u1</name>' \
+                     "<displayName>#{display_name}</displayName>" \
+                     '<duration>600</duration></part></partlist>' \
+                     "<callId>#{call_id}</callId>" }
+    end
+  end
+
+  # Tests for backward-link pagination triggered by --date
+  class PaginationTest < Minitest::Test
+    include Helpers
+
+    # Sleep is undesirable in any unit test; override once at class load.
+    Teems::Commands::Meeting.class_eval { define_method(:page_pause) { nil } }
+
+    def test_paginates_until_oldest_message_predates_target
+      pages = [paged([call_event('2026-01-22T15:00:00Z', 'a')], 'link-1'),
+               paged([call_event('2026-01-21T15:00:00Z', 'b')], 'link-2'),
+               paged([call_event('2026-01-19T15:00:00Z', 'c')], nil)]
+      result = run_paginated(pages, ['--date', '2026-01-21'])
+      assert_match(/Call Event/, result[:stdout])
+      assert_equal 1, result[:stdout].scan('Call Event').length
+    end
+
+    def test_pagination_stops_when_no_backward_link
+      pages = [paged([call_event('2026-01-22T15:00:00Z', 'a')], nil)]
+      result = run_paginated(pages, ['--date', '2026-01-10'])
+      assert_match(/No meeting activity found for 2026-01-10/, result[:stderr])
+    end
+
+    def test_pagination_stops_on_empty_page
+      pages = [paged([call_event('2026-01-22T15:00:00Z', 'a')], 'link-1'),
+               paged([], 'link-2')]
+      result = run_paginated(pages, ['--date', '2026-01-22'])
+      assert_match(/Call Event/, result[:stdout])
+    end
+
+    def test_pagination_skips_messages_with_unparseable_compose_time
+      pages = [paged([msg_with_bad_time, call_event('2026-01-22T15:00:00Z', 'a')], 'link-1'),
+               paged([call_event('2026-01-19T15:00:00Z', 'b')], nil)]
+      result = run_paginated(pages, ['--date', '2026-01-22'])
+      assert_match(/Call Event/, result[:stdout])
+    end
+
+    def test_pagination_caps_at_max_pages
+      cap = Teems::Commands::MeetingPagination::MAX_PAGES
+      pages = Array.new(cap + 5) { |i| paged([call_event("2026-01-22T15:00:0#{i % 10}Z", "a#{i}")], "link-#{i}") }
+      result = run_paginated(pages, ['--date', '2025-01-01'])
+      assert_match(/Stopped after #{cap} pages/, result[:stderr])
+      assert_match(/--date may predate available history/, result[:stderr])
+    end
+
+    def test_pagination_reports_api_error_and_does_not_render_partial_data
+      result = run_meeting_command(['--date', '2026-01-21']) do |api_client|
+        api_client.stub_error('messages', Teems::ApiError.new('boom'))
+      end
+      assert_equal 1, result[:exit_code]
+      assert_match(/Failed to fetch meeting messages/, result[:stderr])
+      refute_match(/No meeting activity found/, result[:stderr])
+    end
+
+    def test_pagination_reports_api_error_after_partial_pages
+      first_page = paged([call_event('2026-01-22T15:00:00Z', 'a')], 'link-1')
+      result = run_meeting_command(['--date', '2025-01-01']) { |client| stub_first_then_error(client, first_page) }
+      assert_equal 1, result[:exit_code]
+      assert_match(/Failed to fetch meeting messages/, result[:stderr])
+      refute_match(/Call Event/, result[:stdout])
+    end
+
+    private
+
+    def run_paginated(pages, extra_args)
+      run_meeting_command(extra_args) { |client| stub_paged_responses(client, pages) }
+    end
+
+    def run_meeting_command(extra_args)
+      exit_code = nil
+      io_result = with_temp_config do
+        capture_output do |out|
+          runner = configured_runner(output: out)
+          yield runner.api_client
+          exit_code = Teems::Commands::Meeting.new([thread_id, *extra_args], runner: runner).execute
+        end
+      end
+      io_result.merge(exit_code: exit_code)
+    end
+
+    def stub_paged_responses(api_client, pages)
+      idx = 0
+      api_client.define_singleton_method(:get) do |_endpoint, _path, **_opts|
+        page = pages[idx] || pages.last
+        idx += 1
+        page
+      end
+    end
+
+    def stub_first_then_error(api_client, first_page)
+      idx = 0
+      api_client.define_singleton_method(:get) do |_endpoint, _path, **_opts|
+        idx += 1
+        raise Teems::ApiError, 'boom' if idx > 1
+
+        first_page
+      end
+    end
+
+    def paged(messages, backward_link)
+      metadata = backward_link ? { 'backwardLink' => backward_link } : {}
+      { 'messages' => messages, '_metadata' => metadata }
+    end
+
+    def call_event(timestamp, suffix)
+      { 'id' => "evt-#{suffix}", 'messagetype' => 'Event/Call', 'composetime' => timestamp,
+        'content' => '<partlist><part identity="8:orgid:u1"><name>8:orgid:u1</name>' \
+                     "<displayName>Person #{suffix}</displayName>" \
+                     '<duration>600</duration></part></partlist>' \
+                     "<callId>#{suffix}</callId>" }
+    end
+
+    def msg_with_bad_time
+      { 'id' => 'bad', 'messagetype' => 'RichText/Html', 'composetime' => 'not-a-time', 'content' => '' }
+    end
+  end
+
+  # Tests for MeetingPage Data class invariants
+  class MeetingPageTest < Minitest::Test
+    def test_normalizes_empty_string_backward_link_to_nil
+      page = Teems::Commands::MeetingPage.new(messages: [], backward_link: '')
+      assert_nil page.backward_link
+      assert page.last?
+    end
+
+    def test_normalizes_nil_backward_link
+      page = Teems::Commands::MeetingPage.new(messages: [], backward_link: nil)
+      assert_nil page.backward_link
+      assert page.last?
+    end
+
+    def test_preserves_non_empty_backward_link
+      page = Teems::Commands::MeetingPage.new(messages: [], backward_link: 'https://example.com/?x=1')
+      assert_equal 'https://example.com/?x=1', page.backward_link
+      refute page.last?
+    end
+
+    def test_oldest_local_date_nil_for_empty_page
+      page = Teems::Commands::MeetingPage.new(messages: [], backward_link: 'next')
+      assert_nil page.oldest_local_date
+    end
+
+    def test_oldest_local_date_nil_for_all_unparseable_times
+      msgs = [{ 'composetime' => 'garbage' }, { 'composetime' => nil }]
+      page = Teems::Commands::MeetingPage.new(messages: msgs, backward_link: 'next')
+      assert_nil page.oldest_local_date
+    end
+
+    def test_covers_through_returns_false_when_oldest_is_nil
+      page = Teems::Commands::MeetingPage.new(messages: [], backward_link: 'next')
+      refute page.covers_through?(Date.new(2026, 1, 1))
+    end
+  end
+
+  # Tests for --date composing with existing iCalUid / --chat filters
+  class DateFilterCompositionTest < Minitest::Test
+    include Helpers
+
+    Teems::Commands::Meeting.class_eval { define_method(:page_pause) { nil } }
+
+    def test_date_composes_with_ical_uid_filter
+      msg1 = call_event_with_ical('aaa-111', 'ical-match', '2026-01-21T15:00:00Z')
+      msg2 = call_event_with_ical('bbb-222', 'ical-match', '2026-01-22T15:00:00Z')
+      msg3 = call_event_with_ical('ccc-333', 'ical-other', '2026-01-21T15:00:00Z')
+      url = build_recap_url_with_ical('ical-match')
+      result = with_tz('UTC') { run_with_url(url, [msg1, msg2, msg3], ['--date', '2026-01-21']) }
+      assert_equal 1, result[:stdout].scan('Call Event').length
+      assert_match(/aaa-111|Person aaa-111/, result[:stdout])
+    end
+
+    def test_date_filters_chat_messages
+      msgs = [chat_msg('hello-mon', '2026-01-19T15:00:00Z'),
+              chat_msg('hello-tue', '2026-01-20T15:00:00Z'),
+              chat_msg('hello-wed', '2026-01-21T15:00:00Z')]
+      result = with_tz('UTC') { run_with_messages(msgs, ['--date', '2026-01-20', '--chat']) }
+      assert_match(/hello-tue/, result[:stdout])
+      refute_match(/hello-mon/, result[:stdout])
+      refute_match(/hello-wed/, result[:stdout])
+    end
+
+    private
+
+    def with_tz(zone)
+      original = ENV.fetch('TZ', nil)
+      ENV['TZ'] = zone
+      yield
+    ensure
+      original ? ENV['TZ'] = original : ENV.delete('TZ')
+    end
+
+    def run_with_url(url, messages, extra_args)
+      with_temp_config do
+        capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', meeting_messages_response(messages))
+          Teems::Commands::Meeting.new([url, *extra_args], runner: runner).execute
+        end
+      end
+    end
+
+    def run_with_messages(messages, extra_args)
+      with_temp_config do
+        capture_output do |out|
+          runner = configured_runner(output: out)
+          runner.api_client.stub('messages', meeting_messages_response(messages))
+          Teems::Commands::Meeting.new([thread_id, *extra_args], runner: runner).execute
+        end
+      end
+    end
+
+    def call_event_with_ical(call_id, ical_uid, timestamp)
+      ical_xml = "<meetingDetails><instanceDetails><iCalUid>#{ical_uid}</iCalUid></instanceDetails></meetingDetails>"
+      { 'id' => "evt-#{call_id}", 'messagetype' => 'Event/Call', 'composetime' => timestamp,
+        'content' => '<partlist><part identity="8:orgid:u1"><name>8:orgid:u1</name>' \
+                     "<displayName>Person #{call_id}</displayName>" \
+                     '<duration>600</duration></part></partlist>' \
+                     "<callId>#{call_id}</callId>#{ical_xml}" }
+    end
+
+    def build_recap_url_with_ical(ical_uid)
+      encoded = URI.encode_www_form_component(thread_id)
+      "https://teams.microsoft.com/l/meetingrecap?threadId=#{encoded}&iCalUid=#{ical_uid}"
+    end
+
+    def chat_msg(body, timestamp)
+      sample_ng_msg_message.merge('id' => "chat-#{body}", 'composetime' => timestamp,
+                                  'content' => body, 'messagetype' => 'RichText/Html')
+    end
+  end
 end
