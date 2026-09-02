@@ -396,6 +396,7 @@ module Teems
       end
 
       def log(message) = @output&.debug(message)
+      def notify(message) = @output&.info(message)
     end
   end
 end

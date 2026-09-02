@@ -116,12 +116,28 @@ module Teems
 
     # Polls Safari's URL bar via AppleScript and manages Safari tab navigation
     module SafariOAuthPolling
+      # Sign-in can require an account picker, MFA or a PIV/CAC certificate prompt, so the
+      # redirect is polled in chunks for several minutes rather than a single short burst.
+      POLL_TICK_SECONDS = 0.1
+      POLL_CHUNK_SECONDS = 15
+      POLL_CHUNKS = 12
+
       private
 
       def poll_safari_query_redirect
-        raw = run_applescript(poll_query_redirect_script).to_s
-        if raw.empty? || raw == 'timeout'
-          log('Safari OAuth: fast capture missed, falling back')
+        POLL_CHUNKS.times do |chunk|
+          raw = run_applescript(poll_query_redirect_script).to_s
+          return handle_poll_result(raw) unless raw == 'timeout'
+
+          announce_sign_in_wait(chunk)
+        end
+        log('Safari OAuth: timed out waiting for the sign-in redirect')
+        nil
+      end
+
+      def handle_poll_result(raw)
+        if raw.empty?
+          log('Safari OAuth: unable to read Safari tab URLs')
           return nil
         end
 
@@ -129,19 +145,30 @@ module Teems
         parse_oauth_params(raw)
       end
 
-      # Poll for ?code= in the URL — Safari's URL property includes query strings
+      def announce_sign_in_wait(chunk)
+        return notify('Waiting for you to finish signing in to Safari...') if chunk.zero?
+
+        log("Safari OAuth: still waiting for sign-in (#{(chunk + 1) * POLL_CHUNK_SECONDS}s)")
+      end
+
+      # Poll every tab for ?code= — Safari's URL property includes query strings, and the
+      # redirect can land in a tab other than the one we opened.
       def poll_query_redirect_script
         <<~APPLESCRIPT
           tell application "Safari"
-            repeat 600 times
-              try
-                set pageURL to URL of current tab of front window
-                if pageURL contains "teams.microsoft.com/go?" then
-                  set codeStart to offset of "?" in pageURL
-                  return text (codeStart + 1) thru -1 of pageURL
-                end if
-              end try
-              delay 0.02
+            repeat #{(POLL_CHUNK_SECONDS / POLL_TICK_SECONDS).to_i} times
+              repeat with w in windows
+                repeat with t in tabs of w
+                  try
+                    set pageURL to (URL of t) as text
+                    if pageURL contains "teams.microsoft.com/go?" then
+                      set codeStart to offset of "?" in pageURL
+                      return text (codeStart + 1) thru -1 of pageURL
+                    end if
+                  end try
+                end repeat
+              end repeat
+              delay #{POLL_TICK_SECONDS}
             end repeat
             return "timeout"
           end tell
@@ -192,20 +219,20 @@ module Teems
       include SafariOAuthPolling
 
       SKYPE_RESOURCE = 'https://api.spaces.skype.com'
+      # Used when no previous login is on disk; Entra ID resolves the tenant from the account.
+      DEFAULT_TENANT = 'common'
 
       private
 
       def try_safari_oauth
         hint, tenant = stored_login_hint
-        return nil unless tenant
-
-        log('Trying fast Safari OAuth flow...')
-        safari_code_flow({ tenant: tenant, hint: hint })
+        log('Trying Safari OAuth flow...')
+        safari_code_flow({ tenant: tenant || DEFAULT_TENANT, hint: hint })
       rescue StandardError => e
         log("Safari OAuth error: #{e.class}: #{e.message}")
         nil
       ensure
-        close_teams_tab if tenant
+        close_teams_tab
       end
 
       def safari_code_flow(context)
@@ -273,12 +300,19 @@ module Teems
       # :reek:FeatureEnvy
       def assemble_safari_result(context, graph, skype)
         spaces_token = skype[:spaces_token]
-        { auth_token: graph['access_token'],
+        auth_token = graph['access_token']
+        { auth_token: auth_token,
           skype_token: exchange_skype_via_http(spaces_token),
           skype_spaces_token: spaces_token, chatsvc_token: nil,
           refresh_token: skype[:refresh_token],
           client_id: OAuthUrlBuilder::TEAMS_APP_ID,
-          tenant_id: context[:tenant] }
+          tenant_id: resolved_tenant(auth_token, context[:tenant]) }
+      end
+
+      # Prefer the tenant the token was actually issued for over the placeholder used to
+      # start the flow, so refreshes hit the tenant-specific endpoint.
+      def resolved_tenant(auth_token, requested)
+        decode_jwt(auth_token.to_s)&.fetch('tid', nil) || requested
       end
     end
   end

@@ -36,6 +36,7 @@ module SafariOAuthTests
     def close_teams_tab = nil
     def exchange_skype_via_http(token) = @skype_exchange_result || "skype-#{token}"
     def log(message) = @log_messages << message
+    def notify(message) = @log_messages << message
 
     def post_token_exchange(_exchange)
       @http_responses.shift || mock_http_error(400)
@@ -169,12 +170,32 @@ module SafariOAuthTests
     def test_poll_safari_query_redirect_timeout
       @obj.applescript_results << 'timeout'
       assert_nil @obj.poll_safari_query_redirect
-      assert_includes @obj.log_messages.join, 'fast capture missed'
+      assert_includes @obj.log_messages.join, 'Waiting for you to finish signing in'
+    end
+
+    def test_poll_safari_query_redirect_retries_after_timeout
+      @obj.applescript_results.push('timeout', 'timeout', 'code=late-code&state=s1')
+      result = @obj.poll_safari_query_redirect
+      assert_equal 'late-code', result['code']
+    end
+
+    def test_poll_safari_query_redirect_gives_up_after_max_chunks
+      chunks = Teems::Services::SafariOAuthPolling::POLL_CHUNKS
+      chunks.times { @obj.applescript_results << 'timeout' }
+      assert_nil @obj.poll_safari_query_redirect
+      assert_includes @obj.log_messages.join, 'timed out waiting for the sign-in redirect'
     end
 
     def test_poll_safari_query_redirect_empty
       @obj.applescript_results << ''
       assert_nil @obj.poll_safari_query_redirect
+      assert_includes @obj.log_messages.join, 'unable to read Safari tab URLs'
+    end
+
+    def test_poll_script_scans_every_window_and_tab
+      script = @obj.send(:poll_query_redirect_script)
+      assert_includes script, 'repeat with w in windows'
+      assert_includes script, 'repeat with t in tabs of w'
     end
   end
 
@@ -184,6 +205,18 @@ module SafariOAuthTests
 
     def setup
       @obj = TestableSafariOAuth.new
+    end
+
+    def test_try_safari_oauth_falls_back_to_common_tenant
+      @obj.stored_hint = [nil, nil]
+      @obj.applescript_results << nil # open_safari_to
+      @obj.applescript_results << 'code=c1&state=s1'
+      @obj.http_responses << mock_success('{"access_token":"g-at","refresh_token":"g-rt"}')
+      @obj.http_responses << mock_success('{"access_token":"sk-at","refresh_token":"sk-rt"}')
+
+      result = @obj.try_safari_oauth
+      assert_equal 'g-at', result[:auth_token]
+      assert_equal 'common', result[:tenant_id]
     end
 
     def test_try_safari_oauth_returns_nil_without_tenant
@@ -246,6 +279,15 @@ module SafariOAuthTests
       assert_equal 'sk-sp', result[:skype_spaces_token]
       assert_equal 'sk-rt', result[:refresh_token]
       assert_equal 't1', result[:tenant_id]
+    end
+
+    def test_assemble_safari_result_prefers_tenant_from_token
+      payload = [+'{"tid":"real-tenant"}'].pack('m0').tr('+/', '-_').delete('=')
+      graph = { 'access_token' => "h.#{payload}.s" }
+      skype = { spaces_token: 'sk-sp', refresh_token: 'sk-rt' }
+      result = @obj.assemble_safari_result({ tenant: 'common' }, graph, skype)
+
+      assert_equal 'real-tenant', result[:tenant_id]
     end
 
     private
