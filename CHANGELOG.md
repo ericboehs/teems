@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.1] - 2026-09-02
 
 ### Added
 - `teems meeting --date YYYY-MM-DD` - Pick a single occurrence of a recurring meeting series by date. Filters call events, recordings, transcripts, and chat messages to that day in the user's local timezone, so iterating multiple days from the same series is a one-liner shell loop. Errors when nothing matches.
@@ -8,6 +8,9 @@
 - `teems messages <teams-url>` now treats a message permalink as a thread root: it fetches the linked message and its replies and renders them with a `--- N replies ---` separator (modelled after `slk view`). Falls back to listing recent messages when the URL has no message ID.
 
 ### Fixed
+- `teems auth login` no longer hangs and then fails on a first login. The Safari OAuth flow read its tenant from `tokens.json` and bailed when it was absent, so the flow that obtains tokens required tokens to already exist; it now falls back to the `common` tenant. The redirect poll also assumed silent SSO with a 12-second budget, which never survived an account picker, MFA, or a PIV/CAC certificate prompt — it now polls every tab for three minutes and prints a visible "waiting for sign-in" notice instead of sitting silent
+- `teems auth login` records the tenant the token was actually issued for instead of the placeholder used to start the flow, so refreshes and the headless helper use the tenant-specific endpoint
+- Interrupting a command that is waiting on a child process (Safari sign-in, the headless helper, or the Swift compile) no longer prints `Open3` reader-thread `IOError` backtraces before exiting
 - `teems org` no longer hangs when the manager chain contains a cycle; cycle detection breaks the walk on the first repeated manager
 
 ## [0.3.0] - 2026-04-23
