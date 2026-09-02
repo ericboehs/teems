@@ -377,4 +377,42 @@ module AuthCommandTests
       end
     end
   end
+
+  # --certauth selects the certificate auth extractor mode; unknown flags fall through to Base
+  class OptionTest < Minitest::Test
+    include Helpers
+
+    def test_certauth_flag_selects_certauth_mode
+      assert_equal :certauth, captured_auth_mode(['login', '--certauth'])
+    end
+
+    def test_default_mode_without_flag
+      assert_equal :default, captured_auth_mode(['login'])
+    end
+
+    def test_unknown_flag_is_handled_by_base
+      assert_equal :default, captured_auth_mode(['login', '--verbose'])
+    end
+
+    private
+
+    def captured_auth_mode(args)
+      mode = nil
+      capture_output do |output|
+        runner = build_auth_runner(output: output, store: mock_token_store)
+        stub_extractor(runner) { |kwargs| mode = kwargs[:auth_mode] }
+        Teems::Commands::Auth.new(args, runner: runner).execute
+      end
+      mode
+    end
+
+    def stub_extractor(runner, &record)
+      extractor = Object.new
+      extractor.define_singleton_method(:extract) { nil }
+      runner.define_singleton_method(:token_extractor) do |**kwargs|
+        record.call(kwargs)
+        extractor
+      end
+    end
+  end
 end

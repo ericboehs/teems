@@ -104,6 +104,11 @@ module SafariOAuthTests
       url = @obj.build_authorize_url({ tenant: 't', hint: nil }, 'code')
       refute_includes url, 'login_hint'
     end
+
+    def test_build_authorize_url_with_blank_hint_omits_domain_hint
+      url = @obj.build_authorize_url({ tenant: 't', hint: '' }, 'code')
+      refute_includes url, 'domain_hint'
+    end
   end
 
   # Tests for OAuthCodeExchange module
