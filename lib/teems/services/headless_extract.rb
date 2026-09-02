@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'open3'
 require 'json'
 require 'net/http'
 require 'uri'
@@ -24,7 +23,7 @@ module Teems
 
       def compile_helper(source, binary)
         log('Compiling headless token helper...')
-        _stdout, stderr, status = Open3.capture3(*swiftc_command(source, binary))
+        _stdout, stderr, status = Support::Subprocess.capture3(*swiftc_command(source, binary))
         log_helper_stderr(stderr)
         status.success? ? binary : log_and_nil('Failed to compile helper')
       rescue Errno::ENOENT
@@ -117,7 +116,7 @@ module Teems
         return nil unless binary
 
         log('Trying headless token extraction...')
-        output, stderr, status = Open3.capture3(binary, *build_helper_args)
+        output, stderr, status = Support::Subprocess.capture3(binary, *build_helper_args)
         log_helper_stderr(stderr)
         handle_helper_result(output, status.exitstatus)
       rescue StandardError => e

@@ -117,5 +117,6 @@ module Teems
     autoload :ErrorLogger, 'teems/support/error_logger'
     autoload :Timezone, 'teems/support/timezone'
     autoload :TimeParsing, 'teems/support/time_parsing'
+    autoload :Subprocess, 'teems/support/subprocess'
   end
 end
