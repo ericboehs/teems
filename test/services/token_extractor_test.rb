@@ -441,4 +441,65 @@ module TokenExtractorTests
       results << nil
     end
   end
+
+  # Exercises the real run_applescript wrapper with capture3 stubbed, so both branches are
+  # covered on Linux (where osascript does not exist) as well as macOS.
+  class RunAppleScriptTest < Minitest::Test
+    FakeStatus = Struct.new(:success?, :exitstatus)
+
+    def test_returns_stripped_output_on_success
+      result = with_capture3(['  hi  ', '', FakeStatus.new(true, 0)]) do |extractor|
+        extractor.send(:run_applescript, 'return "hi"')
+      end
+
+      assert_equal 'hi', result
+    end
+
+    def test_returns_nil_and_logs_on_failure
+      err = StringIO.new
+      out = Teems::Formatters::Output.new(io: StringIO.new, err: err, color: false, mode: :verbose)
+      result = with_capture3(['', 'boom', FakeStatus.new(false, 1)], output: out) do |extractor|
+        extractor.send(:run_applescript, 'bad script')
+      end
+
+      assert_nil result
+      assert_includes err.string, 'AppleScript execution failed with status 1'
+    end
+
+    private
+
+    def with_capture3(response, output: nil)
+      extractor = Teems::Services::TokenExtractor.new(output: output)
+      Teems::Support::Subprocess.stub(:capture3, ->(*_args) { response }) do
+        yield extractor
+      end
+    end
+  end
+
+  # notify surfaces sign-in progress outside verbose mode and must tolerate a nil output
+  class NotifyTest < Minitest::Test
+    def test_notify_writes_to_output
+      io = StringIO.new
+      out = Teems::Formatters::Output.new(io: io, err: StringIO.new, color: false)
+      Teems::Services::TokenExtractor.new(output: out).send(:notify, 'signing in')
+
+      assert_includes io.string, 'signing in'
+    end
+
+    def test_notify_without_output_is_a_no_op
+      assert_nil Teems::Services::TokenExtractor.new.send(:notify, 'signing in')
+    end
+  end
+
+  # V1 localStorage does not always carry refresh token data
+  class V1ExtrasTest < Minitest::Test
+    include Helpers
+
+    def test_extract_v1_refresh_data_without_refresh_token
+      extractor = build_extractor
+      extractor.applescript_results << '{"auth_token":"a"}'
+
+      assert_empty extractor.send(:extract_v1_refresh_data)
+    end
+  end
 end
