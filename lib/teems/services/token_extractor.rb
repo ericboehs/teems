@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'open3'
 require_relative 'token_extractor_scripts'
 require_relative 'token_exchange_scripts'
 require_relative 'headless_extract'
@@ -58,7 +57,7 @@ module Teems
       end
 
       def run_applescript(script)
-        output, _stderr, status = Open3.capture3('osascript', '-e', script)
+        output, _stderr, status = Support::Subprocess.capture3('osascript', '-e', script)
         return applescript_failure(status) unless status.success?
 
         output.strip

@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'open3'
-
 module Teems
   module Services
     # Runs JavaScript in Safari's current tab via AppleScript
@@ -74,7 +72,7 @@ module Teems
       end
 
       def run_applescript(script)
-        out, _err, status = Open3.capture3('osascript', '-e', script)
+        out, _err, status = Support::Subprocess.capture3('osascript', '-e', script)
         return nil unless status.success?
 
         out.strip
