@@ -221,8 +221,8 @@ module Teems
 
       def print_login_banner
         puts 'Starting Teams authentication...'
-        puts 'Safari will open to teams.microsoft.com'
-        puts 'Please complete the login process'
+        puts 'Safari will open so you can sign in (PIV/CAC or MFA prompts appear there).'
+        puts 'Leave this running - it captures the tokens as soon as sign-in completes.'
         puts
       end
 
@@ -238,7 +238,9 @@ module Teems
 
       def suggest_manual_auth
         error('Failed to extract tokens automatically')
-        puts "\nTry manual extraction instead:\n  teems auth manual"
+        puts "\nRerun with -v to see where it stopped:\n  teems auth login -v"
+        puts "\nOn VPN with a PIV card, try:\n  teems auth login --certauth"
+        puts "\nOr extract the tokens by hand:\n  teems auth manual"
         1
       end
 
