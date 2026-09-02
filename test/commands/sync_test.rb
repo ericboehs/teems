@@ -9,7 +9,16 @@ module SyncCommandTests
     private
 
     def msg_response
-      { 'messages' => [sample_ng_msg_message], '_metadata' => {} }
+      { 'messages' => [recent_ng_msg_message], '_metadata' => {} }
+    end
+
+    # sample_ng_msg_message is pinned to 2026-01-20, but sync applies a rolling
+    # DEFAULT_SINCE_DAYS cutoff, so the shared fixture ages out of the window and these
+    # tests silently stop exercising merge/dedup. Keep the API payload inside the window.
+    def recent_ng_msg_message
+      sample_ng_msg_message.merge(
+        'composetime' => (Time.now - 3600).utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+      )
     end
 
     def msg_stub
