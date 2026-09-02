@@ -155,7 +155,9 @@ module Teems
 
     def configured_runner(output: test_output, account: mock_account)
       store = mock_token_store(account: account)
-      Runner.new(output: output, token_store: store, api_client: MockApiClient.new)
+      runner = Runner.new(output: output, token_store: store, api_client: MockApiClient.new)
+      runner.define_singleton_method(:token_extractor) { |**| NullExtractor.new }
+      runner
     end
 
     def save_xdg_env
