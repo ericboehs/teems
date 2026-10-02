@@ -15,10 +15,12 @@ module Teems
         '1f440_eyes' => "\u{1F440}", 'thumbsdown' => "\u{1F44E}"
       }.freeze
 
-      def initialize(chat_name:, chat_type: nil, synced_at: nil)
+      # image_link: optional callable returning a relative path for a locally saved InlineImage
+      def initialize(chat_name:, chat_type: nil, synced_at: nil, image_link: nil)
         @chat_name = chat_name
         @chat_type = chat_type
         @synced_at = synced_at
+        @image_link = image_link
       end
 
       # Format an array of Message objects into a Markdown string.
@@ -68,6 +70,7 @@ module Teems
         content = msg.content
         result = content.to_s.empty? ? [] : [content]
         result.concat(format_message_attachments(msg))
+        result.concat(msg.images.map { |image| format_image(image) })
         result.concat(format_message_reactions(msg))
       end
 
@@ -91,6 +94,12 @@ module Teems
         name = att['fileName'] || att['name'] || 'file'
         url = att['siteUrl']
         url&.start_with?('https://') ? "\u{1F4CE} [#{name}](#{url})" : "\u{1F4CE} #{name}"
+      end
+
+      def format_image(image)
+        label = "image: #{image.label}"
+        path = @image_link&.call(image)
+        path ? "![#{label}](#{path})" : "[#{label}]"
       end
 
       def format_message_reactions(msg)

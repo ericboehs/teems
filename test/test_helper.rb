@@ -33,6 +33,25 @@ module Teems
         'properties' => { 'emotions' => [{ 'key' => 'like', 'users' => [{ 'mri' => 'user1' }] }] } }
     end
 
+    # Synthetic inline (AMS) image markup as Teams emits it in RichText/Html content
+    SAMPLE_AMS_OBJECT_ID = '0-test-d1-0123456789abcdef'
+    SAMPLE_AMS_IMAGE_URL = "https://api.ams.test.teams.microsoft.com/v1/objects/#{SAMPLE_AMS_OBJECT_ID}/views/imgo".freeze
+
+    def sample_inline_image_html(alt: 'image', width: 640, height: 120)
+      %(<img src="#{SAMPLE_AMS_IMAGE_URL}" itemtype="http://schema.skype.com/AMSImage" itemscope="png" ) +
+        %(width="#{width}" height="#{height}" alt="#{alt}" id="x_#{SAMPLE_AMS_OBJECT_ID}" ) +
+        %(itemid="#{SAMPLE_AMS_OBJECT_ID}">)
+    end
+
+    def sample_image_message
+      sample_ng_msg_message.merge('content' => "<p>See the screenshot</p><p>#{sample_inline_image_html}</p>")
+    end
+
+    def sample_inline_image
+      Models::InlineImage.new(id: SAMPLE_AMS_OBJECT_ID, url: SAMPLE_AMS_IMAGE_URL, alt: 'image',
+                              width: 640, height: 120, format: 'png')
+    end
+
     def sample_system_message
       { 'id' => '1768935087319',
         'content' => '<addmember><target>8:orgid:abc</target></addmember>',

@@ -72,6 +72,11 @@ module Teems
       Services::TokenRefresher.new(token_store: @token_store, output: @output)
     end
 
+    # Downloader for inline message images; reads the current skype token on each request
+    def inline_image_downloader
+      Services::InlineImageDownloader.new(token_provider: -> { account.skype_token })
+    end
+
     # Attempt to refresh the skype_token
     def refresh_tokens
       token_refresher.refresh

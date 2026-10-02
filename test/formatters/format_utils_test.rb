@@ -60,6 +60,12 @@ module FormatUtilsTests
     def test_attachment_name_non_hash
       assert_equal 'simple', Teems::Formatters::FormatUtils.attachment_name('simple')
     end
+
+    def test_image_summary_joins_labels
+      images = [sample_inline_image, Teems::Models::InlineImage.new(url: SAMPLE_AMS_IMAGE_URL, alt: 'chart')]
+      assert_equal 'image (640x120), chart', Teems::Formatters::FormatUtils.image_summary(images)
+      assert_equal '', Teems::Formatters::FormatUtils.image_summary([])
+    end
   end
 
   # Tests for reaction formatting

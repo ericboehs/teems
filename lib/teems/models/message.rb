@@ -7,9 +7,12 @@ module Teems
     Message = Data.define(
       :id, :sender_id, :sender_name, :content, :created_at,
       :message_type, :reply_to_id, :reactions, :attachments, :importance,
-      :edited, :mentions
+      :edited, :mentions, :images
     ) do
       extend Parsing
+
+      # `images` (inline AMS images) defaults to empty so callers can omit it
+      def initialize(images: [], **attrs) = super
 
       def self.from_api(data)
         if data['message'] then from_teams_internal_api(data)
@@ -27,7 +30,7 @@ module Teems
         {
           id: data['id'], sender_id: data['from'],
           sender_name: data['imdisplayname'] || data['fromDisplayNameInToken'] || 'Unknown',
-          content: strip_html(data['content'] || ''),
+          **html_body_attrs(data['content']),
           created_at: parse_time(data['composetime'] || data['originalarrivaltime']),
           message_type: data['messagetype'],
           **ng_msg_extras(data, props)
@@ -57,7 +60,7 @@ module Teems
         new(
           id: data['id'], sender_id: msg['from'],
           sender_name: msg['imDisplayName'] || msg['fromDisplayNameInToken'] || 'Unknown',
-          content: strip_html(msg['content'] || ''),
+          **html_body_attrs(msg['content']),
           created_at: parse_time(msg['composeTime'] || data['latestMessageTime']),
           message_type: msg['type'], reply_to_id: nil, reactions: [],
           attachments: parse_files_json(msg.dig('properties', 'files')),
@@ -74,7 +77,7 @@ module Teems
           id: data['id'],
           sender_id: data.dig('from', 'user', 'id') || data.dig('from', 'application', 'id'),
           sender_name: extract_sender_name(data),
-          content: strip_html(data.dig('body', 'content') || ''),
+          **html_body_attrs(data.dig('body', 'content')),
           created_at: parse_time(data['createdDateTime']),
           **graph_extras(data)
         }

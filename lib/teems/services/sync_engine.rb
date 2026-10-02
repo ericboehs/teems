@@ -23,7 +23,8 @@ module Teems
             { 'type' => reaction[:type], 'count' => reaction[:count] }
           end,
           'attachments' => message.attachments, 'importance' => message.importance,
-          'edited' => message.edited, 'mentions' => message.mentions
+          'edited' => message.edited, 'mentions' => message.mentions,
+          'images' => message.images.map(&:as_json)
         }
       end
 
@@ -49,7 +50,8 @@ module Teems
           attachments: stored_default(data, 'attachments', []),
           importance: data['importance'],
           edited: stored_default(data, 'edited', false),
-          mentions: stored_default(data, 'mentions', []) }
+          mentions: stored_default(data, 'mentions', []),
+          images: Array(data['images']).filter_map { |image| Models::InlineImage.from_h(image) } }
       end
 
       def stored_default(data, key, fallback) = data[key] || fallback
@@ -140,10 +142,11 @@ module Teems
         filter_and_sort_messages(messages, start_time)
       end
 
-      def merge_and_write(chat, existing_raw, new_messages)
+      # Yields (chat_dir, merged_messages) before writing, e.g. to save inline images first
+      def merge_and_write(chat, existing_raw, new_messages, &)
         existing = existing_raw.map { |data| message_from_stored(data) }
         all_messages = merge_messages(existing, new_messages)
-        write_chat_files(chat, all_messages)
+        write_chat_files(chat, all_messages, &)
         all_messages
       end
 
@@ -172,10 +175,13 @@ module Teems
       def index_by_id(messages) = messages.to_h { |msg| [msg.id, msg] }
 
       def write_chat_files(chat, messages)
-        fmt = Formatters::MarkdownFormatter.new(chat_name: chat.display_name,
-                                                chat_type: chat.chat_type, synced_at: Time.now)
+        chat_id = chat.id
+        chat_dir = @sync_store.chat_dir(chat_id, state: @state)
+        yield(chat_dir, messages) if block_given?
+        fmt = Formatters::MarkdownFormatter.new(chat_name: chat.display_name, chat_type: chat.chat_type,
+                                                synced_at: Time.now, image_link: SyncImages.link_resolver(chat_dir))
         json = JSON.pretty_generate(messages.map { |msg| message_to_hash(msg) })
-        @sync_store.write_messages(chat.id, messages_md: fmt.format(messages), messages_json: json, state: @state)
+        @sync_store.write_messages(chat_id, messages_md: fmt.format(messages), messages_json: json, state: @state)
         write_metadata(chat)
       end
 

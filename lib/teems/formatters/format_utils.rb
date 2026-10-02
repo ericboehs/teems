@@ -26,6 +26,9 @@ module Teems
         att.is_a?(Hash) ? (att['fileName'] || att['name'] || 'file') : att.to_s
       end
 
+      # One-line description of a message's inline images, e.g. "image (881x179), chart"
+      def image_summary(images) = images.map(&:label).join(', ')
+
       def format_single_reaction(reaction, emoji_map)
         type = reaction[:type]
         emoji = emoji_map[type] || type

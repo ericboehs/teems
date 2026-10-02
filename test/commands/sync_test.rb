@@ -781,4 +781,69 @@ module SyncCommandTests
       end
     end
   end
+
+  # Tests opt-in inline image downloads (--images)
+  class ImagesTest < Minitest::Test
+    include SharedHelpers
+
+    CHAT_ID = '19:chat123@thread.v2'
+
+    def test_images_option_downloads_and_links_images
+      with_temp_config do
+        result = run_image_sync
+        markdown = load_synced_markdown(CHAT_ID)
+
+        assert_includes result[:stdout], 'Images downloaded: 1'
+        assert_includes markdown, "](images/#{SAMPLE_AMS_OBJECT_ID}.png)"
+        assert_equal SAMPLE_AMS_OBJECT_ID, load_synced_messages(CHAT_ID).first['images'].first['id']
+      end
+    end
+
+    def test_without_images_option_keeps_placeholder
+      with_temp_config do
+        result = run_sync(['--chat', CHAT_ID], stubs: { 'messages' => image_response })
+
+        refute_includes result[:stdout], 'Images downloaded'
+        assert_includes load_synced_markdown(CHAT_ID), '[image: image (640x120)]'
+      end
+    end
+
+    def test_images_option_backfills_unchanged_chats
+      with_temp_config do
+        run_sync(['--chat', CHAT_ID], stubs: { 'messages' => image_response })
+        result = run_image_sync(response: { 'messages' => [], '_metadata' => {} })
+
+        refute_match(/skipped/, result[:stdout])
+        assert_includes result[:stdout], 'Images downloaded: 1'
+      end
+    end
+
+    def test_help_mentions_images_option
+      result = capture_output { |out| Teems::Commands::Sync.new(['--help'], runner: configured_runner(output: out)).execute }
+      assert_includes result[:stdout], '--images'
+    end
+
+    private
+
+    def image_response
+      message = sample_image_message.merge('composetime' => (Time.now - 3600).utc.strftime('%Y-%m-%dT%H:%M:%S.000Z'))
+      { 'messages' => [message], '_metadata' => {} }
+    end
+
+    def run_image_sync(response: image_response)
+      runner, out, err = build_sync_runner
+      runner.api_client.stub('messages', response)
+      runner.define_singleton_method(:inline_image_downloader) { FakeImageDownloader.new }
+      Teems::Commands::Sync.new(['--images', '--chat', CHAT_ID], runner: runner).execute
+      sync_result(out, err)
+    end
+
+    # Returns a synthetic PNG for any image
+    class FakeImageDownloader
+      def fetch(image)
+        body = "\x89PNG-synthetic".b
+        Teems::Services::InlineImageDownloader::Result.new(body: body, extension: 'png', url: image.url)
+      end
+    end
+  end
 end

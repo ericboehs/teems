@@ -353,4 +353,32 @@ module MessageTests
        { 'mri' => '8:orgid:def', 'displayName' => 'Bob' }]
     end
   end
+
+  # Inline images survive HTML stripping in every API format
+  class InlineImagesTest < Minitest::Test
+    def test_ng_msg_message_keeps_inline_images
+      message = Teems::Models::Message.from_api(sample_image_message)
+
+      assert_equal 'See the screenshot', message.content
+      assert_equal [SAMPLE_AMS_OBJECT_ID], message.images.map(&:id)
+    end
+
+    def test_teams_internal_message_keeps_inline_images
+      data = { 'id' => '1', 'message' => { 'content' => sample_inline_image_html, 'type' => 'RichText/Html' } }
+      assert_equal 1, Teems::Models::Message.from_api(data).images.length
+    end
+
+    def test_graph_message_keeps_inline_images
+      data = sample_graph_message.merge('body' => { 'content' => sample_inline_image_html })
+      assert_equal 1, Teems::Models::Message.from_api(data).images.length
+    end
+
+    def test_images_default_to_empty
+      assert_empty Teems::Models::Message.from_api(sample_ng_msg_message).images
+      message = Teems::Models::Message.new(id: '1', sender_id: nil, sender_name: 'A', content: '', created_at: nil,
+                                           message_type: 'Text', reply_to_id: nil, reactions: [], attachments: [],
+                                           importance: nil, edited: false, mentions: [])
+      assert_empty message.images
+    end
+  end
 end

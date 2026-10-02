@@ -211,4 +211,25 @@ module MarkdownFormatterTests
       refute_includes result, '['
     end
   end
+
+  # Tests inline image placeholders and links to locally saved copies
+  class InlineImageTest < Minitest::Test
+    include Helpers
+
+    def test_format_image_placeholder
+      result = build_formatter.format([build_message(images: [sample_inline_image])])
+      assert_includes result, "Test message\n[image: image (640x120)]"
+    end
+
+    def test_format_image_links_saved_copy
+      formatter = Teems::Formatters::MarkdownFormatter.new(chat_name: 'Chat', image_link: ->(_image) { 'images/a.png' })
+      assert_includes formatter.format([build_message(images: [sample_inline_image])]),
+                      '![image: image (640x120)](images/a.png)'
+    end
+
+    def test_image_only_message_has_no_blank_content_line
+      result = build_formatter.format([build_message(content: '', images: [sample_inline_image])])
+      assert_includes result, "\n\n[image: image (640x120)]"
+    end
+  end
 end

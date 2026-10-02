@@ -21,8 +21,8 @@ module Teems
 
       def format(message)
         content = highlight_mentions(message.content, message.mentions)
-        [format_header(message), "  #{content}", format_attachments(message), format_reactions(message)]
-          .compact.join("\n")
+        [format_header(message), "  #{content}", format_attachments(message), format_images(message),
+         format_reactions(message)].compact.join("\n")
       end
 
       private
@@ -42,6 +42,11 @@ module Teems
         return unless attachments.any?
 
         "  #{@output.gray("\u{1F4CE} #{attachment_names(attachments)}")}"
+      end
+
+      def format_images(message)
+        summary = FormatUtils.image_summary(message.images)
+        "  #{@output.gray("\u{1F5BC}\u{FE0F} #{summary}")}" unless summary.empty?
       end
 
       def format_reactions(message)

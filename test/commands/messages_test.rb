@@ -269,6 +269,57 @@ module MessagesCommandTests
     end
   end
 
+  # Tests for message links in chats, which have no reply threads, and thread JSON exit codes
+  class ChatMessageLinkTest < Minitest::Test
+    include Helpers
+
+    URL = ThreadModeTest::URL_WITH_MSG_ID
+
+    def test_chat_message_without_reply_thread_shows_message
+      with_temp_config do
+        result = capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.api_client.stub_error('/replies', Teems::ApiError.new('HTTP 404', status_code: 404))
+          runner.api_client.stub('1768935087318', parent_msg)
+          assert_equal 0, Teems::Commands::Messages.new([URL], runner: runner).execute
+        end
+        assert_match(/Hello parent/, result[:stdout])
+        refute_match(/replies ---/, result[:stdout])
+      end
+    end
+
+    def test_replies_server_error_still_fails
+      with_temp_config do
+        result = capture_output do |output|
+          runner = configured_runner(output: output)
+          runner.api_client.stub_error('/replies', Teems::ApiError.new('boom', status_code: 500))
+          runner.api_client.stub('1768935087318', parent_msg)
+          Teems::Commands::Messages.new([URL], runner: runner).execute
+        end
+        assert_match(/Failed to fetch message: boom/, result[:stderr])
+      end
+    end
+
+    def test_thread_json_returns_success_exit_code
+      with_temp_config do
+        capture_output do |output|
+          runner = configured_runner(output: output)
+          stub_thread(runner, parent_msg, [])
+          assert_equal 0, Teems::Commands::Messages.new(['--json', URL], runner: runner).execute
+        end
+      end
+    end
+
+    private
+
+    def parent_msg = sample_ng_msg_message.merge('id' => '1768935087318', 'content' => '<p>Hello parent</p>')
+
+    def stub_thread(runner, parent, replies)
+      runner.api_client.stub('1768935087318/replies', { 'messages' => replies })
+      runner.api_client.stub('1768935087318', parent)
+    end
+  end
+
   # Tests for message display formatting and JSON output
   class DisplayTest < Minitest::Test
     include Helpers
@@ -688,6 +739,77 @@ module MessagesCommandTests
         yield api
         Teems::Commands::Messages.new(['--download', '-o', tmpdir, '19:abc@thread.v2'], runner: runner).execute
       end
+    end
+  end
+
+  # Tests for inline (pasted) images: JSON, display, and --download
+  class InlineImageTest < Minitest::Test
+    include DownloadHelpers
+
+    PNG = "\x89PNG-synthetic".b
+
+    def test_json_output_includes_images
+      result = run_messages(['--json', '19:abc@thread.v2'],
+                            stubs: { 'messages' => { 'messages' => [sample_image_message] } })
+      image = JSON.parse(result[:stdout]).first['images'].first
+
+      assert_equal SAMPLE_AMS_OBJECT_ID, image['id']
+      assert_equal SAMPLE_AMS_IMAGE_URL, image['url']
+      assert_includes image['full_size_url'], 'imgpsh_fullsize_anim'
+    end
+
+    def test_display_lists_inline_images
+      result = run_messages(['19:abc@thread.v2'], stubs: { 'messages' => { 'messages' => [sample_image_message] } })
+      assert_includes result[:stdout], "  \u{1F5BC}\u{FE0F} image (640x120)"
+    end
+
+    def test_download_saves_inline_images
+      with_download_dir do |tmpdir|
+        result = capture_output { |out| run_image_download(tmpdir, out, image_downloader(PNG)) }
+        path = File.join(tmpdir, "image-#{Digest::SHA256.hexdigest('1768935087318')[0, 6]}-1.png")
+
+        assert_equal PNG, File.binread(path)
+        assert_includes result[:stdout], "done (14 B) #{path}"
+        assert_includes result[:stdout], 'Downloaded 1 file to'
+        refute_includes result[:stdout], 'No downloadable'
+      end
+    end
+
+    def test_download_image_failure_is_reported
+      with_download_dir do |tmpdir|
+        result = capture_output { |out| run_image_download(tmpdir, out, image_downloader(Teems::Error.new('boom'))) }
+
+        assert_includes result[:stderr], 'failed (boom)'
+        refute_includes result[:stdout], 'Downloaded'
+      end
+    end
+
+    def test_runner_provides_image_downloader
+      with_temp_config do
+        runner = configured_runner
+        cmd = Teems::Commands::Messages.new(['19:abc@thread.v2'], runner: runner)
+        assert_instance_of Teems::Services::InlineImageDownloader, cmd.send(:image_downloader)
+      end
+    end
+
+    private
+
+    def image_downloader(outcome)
+      Object.new.tap do |downloader|
+        downloader.define_singleton_method(:fetch) do |image|
+          raise outcome if outcome.is_a?(Exception)
+
+          Teems::Services::InlineImageDownloader::Result.new(body: outcome, extension: 'png', url: image.url)
+        end
+      end
+    end
+
+    def run_image_download(tmpdir, out, downloader)
+      runner = configured_runner(output: out)
+      runner.api_client.stub('messages', { 'messages' => [sample_image_message] })
+      cmd = Teems::Commands::Messages.new(['--download', '-o', tmpdir, '19:abc@thread.v2'], runner: runner)
+      cmd.instance_variable_set(:@image_downloader, downloader)
+      cmd.execute
     end
   end
 end

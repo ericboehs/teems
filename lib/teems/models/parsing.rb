@@ -13,6 +13,11 @@ module Teems
         CGI.unescapeHTML(html.gsub(/<[^>]+>/, ' ')).gsub('&nbsp;', ' ').gsub(/\s+/, ' ').strip
       end
 
+      # Plain-text content plus the inline images that strip_html would discard
+      def html_body_attrs(html)
+        { content: strip_html(html || ''), images: InlineImage.parse_html(html) }
+      end
+
       def parse_time(time_str)
         return nil unless time_str
 

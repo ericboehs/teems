@@ -344,4 +344,52 @@ module SyncEngineTests
       end
     end
   end
+
+  # Tests inline image persistence in messages.json and links in messages.md
+  class InlineImageTest < Minitest::Test
+    include SharedHelpers
+
+    def test_images_round_trip_through_stored_json
+      with_temp_config do
+        hash = build_public_engine(:message_to_hash).message_to_hash(build_message(images: [sample_inline_image]))
+        stored = JSON.parse(JSON.generate(hash))
+
+        assert_includes stored['images'].first['full_size_url'], 'imgpsh_fullsize_anim'
+        assert_equal [sample_inline_image], build_engine.message_from_stored(stored).images
+      end
+    end
+
+    def test_stored_messages_without_images_load_empty
+      with_temp_config do
+        message = build_engine.message_from_stored(stored_msg_hash('m', 'A', created_at: '2026-01-20T10:00:00+00:00'))
+        assert_empty message.images
+      end
+    end
+
+    def test_merge_and_write_yields_chat_dir_and_links_saved_images
+      with_temp_config do
+        markdown = merge_with_saved_image
+        assert_includes markdown, "![image: image (640x120)](images/#{SAMPLE_AMS_OBJECT_ID}.png)"
+      end
+    end
+
+    private
+
+    def merge_with_saved_image
+      yielded = nil
+      new_messages = [build_message(images: [sample_inline_image])]
+      build_engine.merge_and_write(sample_engine_chat, [], new_messages) do |dir, msgs|
+        yielded = msgs
+        save_fake_image(dir)
+      end
+      assert_equal 1, yielded.length
+      store = Teems::Services::SyncStore.new
+      File.read(File.join(store.chat_dir(sample_engine_chat.id, state: store.load_state), 'messages.md'))
+    end
+
+    def save_fake_image(chat_dir)
+      FileUtils.mkdir_p(File.join(chat_dir, 'images'))
+      File.write(File.join(chat_dir, 'images', "#{SAMPLE_AMS_OBJECT_ID}.png"), 'x')
+    end
+  end
 end

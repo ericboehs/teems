@@ -11,6 +11,7 @@ module Teems
       OPTIONS:
         --since DAYS     Number of days of history to sync (default: 180)
         --chat CHAT_ID   Sync only this chat
+        --images         Also download inline (pasted) images into each chat's images/ dir
         --auth           Authenticate via Safari before syncing
         --dry-run        Show what would be synced without writing files
         -v, --verbose    Show debug output
@@ -20,11 +21,13 @@ module Teems
         teems sync                         # Sync 6 months of all chats
         teems sync --since 30              # Sync last 30 days
         teems sync --chat 19:abc@thread.v2 # Sync a single chat
+        teems sync --images                # Include pasted screenshots
         teems sync --dry-run               # Preview what would be synced
 
       OUTPUT:
         Files are stored in ~/.local/share/teems/sync/chats/
         Each chat gets: messages.md, messages.json, chat_metadata.json
+        (plus images/ with --images; messages.md links saved images, otherwise [image: ...])
     HELP
 
     # Handles syncing individual chats: fetch, merge, retry on 404
@@ -70,7 +73,9 @@ module Teems
 
       def process_fetched_messages(chat, new_messages)
         chat_id = chat.id
-        return skip_unchanged(chat_id) if new_messages.empty? && @sync_store.last_synced_time(@state, chat_id)
+        # --images rewrites unchanged chats too, so images in already-synced messages are backfilled
+        unchanged = new_messages.empty? && !@options[:images]
+        return skip_unchanged(chat_id) if unchanged && @sync_store.last_synced_time(@state, chat_id)
 
         merge_and_update(chat, new_messages)
       end
@@ -83,7 +88,9 @@ module Teems
 
       def merge_and_update(chat, new_messages)
         existing_raw = @sync_store.read_messages_json(chat.id, state: @state)
-        all_messages = sync_engine.merge_and_write(chat, existing_raw, new_messages)
+        all_messages = sync_engine.merge_and_write(chat, existing_raw, new_messages) do |chat_dir, messages|
+          save_chat_images(chat_dir, messages)
+        end
         update_chat_state(chat, all_messages)
       end
 
@@ -135,6 +142,23 @@ module Teems
           warn("  Failed to sync '#{display_name}': #{error.message}")
         end
         @stats[:errors] += 1
+      end
+    end
+
+    # Opt-in (--images) download of inline images into each synced chat directory
+    module SyncImageHandler
+      private
+
+      def save_chat_images(chat_dir, messages)
+        return unless @options[:images]
+
+        saved = sync_images.save(chat_dir, messages)
+        debug("  Saved #{saved} image(s)")
+        @stats[:images] += saved
+      end
+
+      def sync_images
+        @sync_images ||= Services::SyncImages.new(downloader: runner.inline_image_downloader, output: output)
       end
     end
 
@@ -211,6 +235,7 @@ module Teems
         skipped = @stats[:skipped]
         info("  Chats skipped (no new messages): #{skipped}") if skipped.positive?
         info("  Total messages: #{@stats[:messages_total]}")
+        info("  Images downloaded: #{@stats[:images]}") if @options[:images]
         display_error_count
       end
 
@@ -287,6 +312,7 @@ module Teems
     # Sync chat history locally as Markdown + JSON files
     class Sync < Base
       include SyncChatHandler
+      include SyncImageHandler
       include SyncDisplay
       include SyncAuth
 
@@ -318,6 +344,7 @@ module Teems
         '--since' => ->(opts, args) { opts[:since_days] = args.shift.to_i },
         '--chat' => ->(opts, args) { opts[:chat_id] = args.shift },
         '--dry-run' => ->(opts, _args) { opts[:dry_run] = true },
+        '--images' => ->(opts, _args) { opts[:images] = true },
         '--auth' => ->(opts, _args) { opts[:auth] = true }
       }.freeze
 
@@ -353,7 +380,7 @@ module Teems
       def init_sync_state
         @sync_store = Services::SyncStore.new
         @state = @sync_store.load_state
-        @stats = { synced: 0, skipped: 0, errors: 0, messages_total: 0 }
+        @stats = { synced: 0, skipped: 0, errors: 0, messages_total: 0, images: 0 }
         setup_api_logging
       end
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Inline images (screenshots pasted into a message) are no longer dropped when message HTML is stripped. `teems messages` lists them under the message, and `--json` includes an `images` array with the AMS URL, full-size URL, alt text, and dimensions.
+- `teems messages --download` saves inline images alongside file attachments, fetching the original-resolution AMS view (falling back to the message's preview URL) with the skype token. The token is only sent to Teams/AMS hosts over HTTPS and is dropped on redirects elsewhere.
+- `teems sync` records inline images in `messages.json` and renders `[image: alt (WxH)]` placeholders in `messages.md`. `teems sync --images` downloads them into each chat's `images/` directory, links them from `messages.md`, and backfills already-synced chats.
+
+### Fixed
+- `teems messages <teams-url>` for a message in a group or 1:1 chat no longer fails with "Failed to fetch message"; those chats have no reply threads, so the replies endpoint's 404 now means no replies.
+- `teems messages --json <teams-url>` no longer crashes with "no implicit conversion from nil to integer" after printing the thread.
+
 ## [0.3.2] - 2026-09-29
 
 ### Added

@@ -150,4 +150,21 @@ module MessageFormatterTests
       assert_includes formatter.format(message), expected_hash
     end
   end
+
+  # Tests inline image summary lines
+  class InlineImageTest < Minitest::Test
+    include Helpers
+
+    def test_format_shows_inline_images
+      formatter = Teems::Formatters::MessageFormatter.new(output: test_output)
+      result = formatter.format(build_message(images: [sample_inline_image, sample_inline_image]))
+
+      assert_includes result, "\u{1F5BC}\u{FE0F} image (640x120), image (640x120)"
+    end
+
+    def test_format_omits_images_line_when_none
+      formatter = Teems::Formatters::MessageFormatter.new(output: test_output)
+      refute_includes formatter.format(build_message), "\u{1F5BC}"
+    end
+  end
 end

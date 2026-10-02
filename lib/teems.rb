@@ -49,6 +49,8 @@ module Teems
     autoload :Chat, 'teems/models/chat'
     autoload :Event, 'teems/models/event'
     autoload :Message, 'teems/models/message'
+    autoload :InlineImage, 'teems/models/inline_image'
+    autoload :InlineImageParsing, 'teems/models/inline_image'
     autoload :Parsing, 'teems/models/parsing'
     autoload :User, 'teems/models/user'
     autoload :UserProfile, 'teems/models/user_profile'
@@ -64,11 +66,13 @@ module Teems
     autoload :TokenRefresher, 'teems/services/token_refresher'
     autoload :CacheStore, 'teems/services/cache_store'
     autoload :FileDownloader, 'teems/services/file_downloader'
+    autoload :InlineImageDownloader, 'teems/services/inline_image_downloader'
     autoload :TeamsUrlParser, 'teems/services/teams_url_parser'
     autoload :SyncStore, 'teems/services/sync_store'
     autoload :SyncDirNaming, 'teems/services/sync_dir_naming'
     autoload :SafariJsRunner, 'teems/services/safari_js_runner'
     autoload :SyncEngine, 'teems/services/sync_engine'
+    autoload :SyncImages, 'teems/services/sync_images'
   end
 
   # Output formatters for messages and terminal output

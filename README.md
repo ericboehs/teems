@@ -56,7 +56,11 @@ teems cal delete 3           # Delete event #3
 teems messages <chat-id>                    # Read from a chat
 teems messages <channel-id> -t <team-id>    # Read from a channel
 teems messages <chat-id> -n 50              # Show more messages
+teems messages <chat-id> --json             # JSON, including inline image refs
+teems messages <chat-id> --download         # Save attachments and pasted images
 ```
+
+Screenshots pasted into a message are listed under it (`🖼️ image (881x179)`) and included in `--json` as `images` (AMS `url`, `full_size_url`, `alt`, `width`, `height`). `--download` saves the original-resolution image to the downloads directory as `image-<hash>-<n>.<ext>`, using your Teams skype token. The token is only sent to Teams/AMS hosts over HTTPS.
 
 ### Channels and Chats
 
@@ -151,7 +155,10 @@ teems activity                        # Show activity feed
 
 ```bash
 teems sync             # Sync chat history locally
+teems sync --images    # Also save pasted images beside each chat
 ```
+
+Each chat gets `messages.md`, `messages.json`, and `chat_metadata.json` under `~/.local/share/teems/sync/chats/`. Inline images are recorded in `messages.json` and rendered in `messages.md` as `[image: alt (WxH)]`. With `--images`, they are downloaded to the chat's `images/` directory (named by AMS object id, so each is fetched once) and `messages.md` links the saved copy instead. `--images` also rewrites already-synced chats so images in older messages are backfilled.
 
 ## Global Options
 

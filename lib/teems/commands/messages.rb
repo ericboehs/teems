@@ -14,7 +14,7 @@ module Teems
       OPTIONS:
         -t, --team ID    Team ID (required for channel messages)
         -n, --limit N    Number of messages (default: 20)
-        --download       Download file attachments
+        --download       Download file attachments and inline images
         -o, --output-dir Directory for downloads (default: ~/.local/share/teems/downloads)
         -v, --verbose    Show debug output
         -q, --quiet      Suppress output
@@ -23,9 +23,12 @@ module Teems
       EXAMPLES:
         teems messages 19:abc123@thread.v2         # Read chat messages
         teems messages 19:abc123@thread.v2 -n 50   # Show 50 messages
+        teems messages 19:abc123@thread.v2 --download  # Save attachments + pasted images
         teems messages "https://teams.microsoft.com/l/message/19:abc@thread.v2/123?context=..."
                                                    # Show the linked message and its thread replies
     HELP
+
+    IMAGE_ICON = "\u{1F5BC}\u{FE0F}"
 
     # Display formatting for messages command
     module MessagesDisplay
@@ -45,6 +48,7 @@ module Teems
         puts format_message_header(message)
         puts "  #{formatted_content(message)}"
         display_attachments(message)
+        display_images(message)
         display_reactions(message)
         puts
       end
@@ -66,6 +70,11 @@ module Teems
         puts "  #{output.gray("\u{1F4CE} #{names.join(', ')}")}"
       end
 
+      def display_images(message)
+        summary = Formatters::FormatUtils.image_summary(message.images)
+        puts "  #{output.gray("#{IMAGE_ICON} #{summary}")}" unless summary.empty?
+      end
+
       def display_reactions(message)
         reactions = message.reactions
         return unless reactions.any?
@@ -85,7 +94,7 @@ module Teems
           created_at: message.created_at&.iso8601,
           importance: message.importance, reactions: message.reactions,
           attachments: message.attachments, edited: message.edited,
-          mentions: message.mentions }
+          mentions: message.mentions, images: message.images.map(&:as_json) }
       end
     end
 
@@ -95,14 +104,15 @@ module Teems
 
       def download_attachments(messages)
         attachments = find_downloadable(messages)
-        return puts('No downloadable attachments found') if attachments.empty?
+        images = inline_images(messages)
+        return puts('No downloadable attachments found') if attachments.empty? && images.empty?
 
-        execute_downloads(attachments)
+        execute_downloads(attachments, images)
       end
 
-      def execute_downloads(attachments)
+      def execute_downloads(attachments, images)
         dir = prepare_output_dir
-        count = attachments.sum { |att| download_one(att, dir) }
+        count = attachments.sum { |att| download_one(att, dir) } + images.sum { |entry| download_image(entry, dir) }
         puts "Downloaded #{count} file#{'s' if count != 1} to #{dir}" if count.positive?
       end
 
@@ -168,6 +178,29 @@ module Teems
       end
     end
 
+    # Download logic for images pasted inline into message bodies (Teams AMS objects)
+    module InlineImageDownload
+      private
+
+      # [message, image, 1-based position within the message] for every inline image
+      def inline_images(messages) = messages.flat_map { |msg| numbered_images(msg) }
+
+      def numbered_images(msg) = msg.images.map.with_index(1) { |image, number| [msg, image, number] }
+
+      def download_image(entry, dir)
+        msg, image, number = entry
+        print "#{IMAGE_ICON} Downloading #{image.label}..."
+        result = with_token_refresh { image_downloader.fetch(image) }
+        path = unique_path(dir, "image-#{msg.short_hash}-#{number}.#{result.extension}")
+        puts " done (#{Formatters::FormatUtils.format_bytes(File.binwrite(path, result.body))}) #{path}"
+        1
+      rescue StandardError => e
+        handle_download_error(e)
+      end
+
+      def image_downloader = @image_downloader ||= runner.inline_image_downloader
+    end
+
     # Fetch and render a single message and its thread replies
     module ThreadFetch
       private
@@ -175,7 +208,7 @@ module Teems
       def fetch_thread(thread_id, message_id)
         api = runner.messages_api
         parent_data = with_token_refresh { api.message(thread_id: thread_id, message_id: message_id) }
-        replies_data = with_token_refresh do
+        replies_data = fetch_replies do
           api.replies(thread_id: thread_id, message_id: message_id, limit: @options[:limit])
         end
         display_thread(parent_data, extract_messages_data(replies_data))
@@ -183,10 +216,19 @@ module Teems
         error("Failed to fetch message: #{e.message}")
       end
 
+      # Group and 1:1 chats have no reply threads; their replies endpoint returns 404
+      def fetch_replies(&)
+        with_token_refresh(&)
+      rescue ApiError => e
+        raise unless e.not_found?
+
+        {}
+      end
+
       def display_thread(parent_data, replies_data)
         parent = Models::Message.from_api(parent_data)
         replies = replies_data.map { |data| Models::Message.from_api(data) }.reject(&:system_message?).reverse
-        return output_json(thread_to_hash(parent, replies)) if @options[:json]
+        return output_json(thread_to_hash(parent, replies)) || 0 if @options[:json]
 
         render_thread(parent, replies)
         download_attachments([parent, *replies]) if @options[:download]
@@ -212,6 +254,7 @@ module Teems
     class Messages < Base
       include MessagesDisplay
       include AttachmentDownload
+      include InlineImageDownload
       include ThreadFetch
 
       def initialize(args, runner:)
