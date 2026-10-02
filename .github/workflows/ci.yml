@@ -37,4 +37,5 @@ jobs:
       - name: Run rubocop
         run: bundle exec rubocop
       - name: Run reek
-        run: bundle exec reek
+        # An explicit path is required: with no TTY, bare `reek` reads stdin and always passes
+        run: bundle exec reek .

@@ -17,6 +17,8 @@ module Teems
     module Subprocess
       module_function
 
+      # Named after Open3.capture3, which it wraps with the same signature and return value
+      # :reek:UncommunicativeMethodName
       def capture3(*command)
         previous = Thread.report_on_exception
         Thread.report_on_exception = false

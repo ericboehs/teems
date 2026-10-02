@@ -239,8 +239,8 @@ class TeemsTranscriptSyncTest < Minitest::Test
   def test_stopping_an_already_finished_hook_is_harmless
     pid = Process.spawn('true', pgroup: true)
     Process.wait(pid)
-    engine = Teems::Commands::TranscriptSyncEngine.new({}, test_output)
-    assert_nil engine.send(:stop_hook, pid)
+    hook = Teems::Commands::TranscriptPostSyncHook.new({}, paths: nil, output: test_output, quiet: false)
+    assert_nil hook.send(:stop, pid)
   end
 
   def test_download_is_private_and_idempotent

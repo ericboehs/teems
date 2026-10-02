@@ -7,7 +7,17 @@ module Teems
     # Converts Teams WebVTT transcripts into speaker-turn Markdown for local search indexes.
     # Consecutive cues from the same speaker are merged so each paragraph carries context.
     class TranscriptMarkdown
+      # One timed WebVTT cue: its start timestamp, speaker (nil when unattributed), and plain text
       Cue = Data.define(:start, :speaker, :text)
+
+      # Consecutive cues from one speaker, merged into a paragraph until it is too long to index well
+      Turn = Struct.new(:start, :speaker, :text) do
+        def self.from(cue) = new(cue.start, cue.speaker, +cue.text)
+
+        def accepts?(cue) = cue.speaker == speaker && text.length < MAX_TURN_CHARS
+
+        def add(cue) = text << ' ' << cue.text
+      end
 
       TIMING = /\A(?<start>(?:\d+:)?\d{2}:\d{2}\.\d{3})\s+-->/
       VOICE = /<v(?:\.[^\s>]+)?\s+([^>]+)>/
@@ -39,11 +49,7 @@ module Teems
 
       def append_cue(turns, cue)
         last = turns.last
-        if last && last[:speaker] == cue.speaker && last[:text].length < MAX_TURN_CHARS
-          last[:text] << ' ' << cue.text
-        else
-          turns << { start: cue.start, speaker: cue.speaker, text: +cue.text }
-        end
+        last&.accepts?(cue) ? last.add(cue) : turns << Turn.from(cue)
       end
 
       def cues
@@ -51,12 +57,10 @@ module Teems
         normalized.split(/\n{2,}/).filter_map { |block| parse_cue(block) }
       end
 
+      # Cue text is every line after the timing line; identifier lines before it are skipped
       def parse_cue(block)
-        lines = block.lines.map(&:chomp)
-        timing_index = lines.index { |line| TIMING.match?(line) }
-        return unless timing_index
-
-        build_cue(lines[timing_index][TIMING, :start], lines[(timing_index + 1)..].join(' '))
+        timing, *text = block.lines(chomp: true).drop_while { |line| !TIMING.match?(line) }
+        build_cue(timing[TIMING, :start], text.join(' ')) if timing
       end
 
       def build_cue(start, raw)
@@ -85,8 +89,8 @@ module Teems
       end
 
       def format_turn(turn)
-        speaker = turn[:speaker] || 'Unknown speaker'
-        "**#{speaker}** (#{turn[:start].sub(/\.\d+\z/, '')}): #{turn[:text]}"
+        speaker = turn.speaker || 'Unknown speaker'
+        "**#{speaker}** (#{turn.start.sub(/\.\d+\z/, '')}): #{turn.text}"
       end
     end
   end

@@ -613,10 +613,11 @@ module Teems
       private
 
       def output_meeting_json(target, classified)
+        call_events, recordings, transcripts = classified.values_at(:call_events, :recordings, :transcripts)
         output_json(thread_id: target[:thread_id],
-                    call_events: classified[:call_events].map { |event| json_call_event(event) },
-                    recordings: classified[:recordings].map { |rec| rec.slice(:time, :url, :call_id) },
-                    transcripts: classified[:transcripts].map { |item| item.slice(:time) })
+                    call_events: call_events.map { |event| json_call_event(event) },
+                    recordings: recordings.map { |rec| rec.slice(:time, :url, :call_id) },
+                    transcripts: transcripts.map { |item| item.slice(:time) })
         0
       end
 

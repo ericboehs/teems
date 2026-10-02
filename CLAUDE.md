@@ -12,7 +12,7 @@ rake test:models      # Run model tests only
 rake test:services    # Run service tests only
 rake test:commands    # Run command tests only
 bundle exec rubocop   # Lint
-bundle exec reek      # Code smell detection
+bundle exec reek .    # Code smell detection (the path matters: bare reek reads stdin when piped)
 rake console          # IRB with teems loaded
 ```
 

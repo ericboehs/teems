@@ -1,6 +1,10 @@
+# CI runs `reek .` (bare `reek` reads stdin when there is no TTY and checks nothing).
+# vendor holds CI's bundler-cache gems; tmp is gitignored scratch space.
 exclude_paths:
   - .bundle
   - test
+  - tmp
+  - vendor
 
 detectors:
   TooManyMethods:
