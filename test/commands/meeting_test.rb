@@ -325,6 +325,69 @@ module MeetingCommandTests
     end
   end
 
+  # Tests for JSON details and choosing among several recordings
+  class RecordingSelectionTest < Minitest::Test
+    include Helpers
+
+    def test_json_lists_recordings_and_call_events
+      data = json_details(two_recordings + [sample_call_event_message])
+      assert_equal thread_id, data['thread_id']
+      assert_equal [first_url, restart_url], recording_links(data)
+      assert_equal %w[Alice Bob], data['call_events'].first['participants']
+    end
+
+    def test_recording_url_selects_that_recording
+      assert_equal restart_url, selected_url(restart_url)
+    end
+
+    def test_defaults_to_first_recording
+      assert_equal first_url, selected_url(nil)
+    end
+
+    def test_unknown_recording_url_errors
+      result = run_meeting([thread_id, '--transcript', '--recording-url', 'https://example.sharepoint.com/other'],
+                           stubs: { 'messages' => meeting_messages_response(two_recordings) })
+      assert_match(/not a recording in this meeting/, result[:stderr])
+    end
+
+    private
+
+    def first_url = 'https://example.sharepoint.com/recording'
+    def restart_url = 'https://example.sharepoint.com/restart'
+
+    def two_recordings
+      [sample_recording_message,
+       sample_recording_message.merge('id' => '201', 'composetime' => '2026-01-20T11:30:00.000Z',
+                                      'content' => %(<a href="#{restart_url}">Play</a>))]
+    end
+
+    def json_details(messages)
+      result = run_meeting([thread_id, '--json'], stubs: { 'messages' => meeting_messages_response(messages) })
+      JSON.parse(result[:stdout])
+    end
+
+    def recording_links(data) = data['recordings'].map { |rec| rec['url'] }.sort
+
+    def selected_url(requested)
+      args = [thread_id, '--transcript'] + (requested ? ['--recording-url', requested] : [])
+      selected = nil
+      with_temp_config do
+        capture_output do |out|
+          cmd = meeting_with_recordings(args, out)
+          cmd.define_singleton_method(:execute_transcript_pipeline) { |url| (selected = url) && 0 }
+          cmd.execute
+        end
+      end
+      selected
+    end
+
+    def meeting_with_recordings(args, out)
+      runner = configured_runner(output: out)
+      runner.api_client.stub('messages', meeting_messages_response(two_recordings))
+      Teems::Commands::Meeting.new(args, runner: runner)
+    end
+  end
+
   # Tests for transcript download pipeline
   class TranscriptPipelineTest < Minitest::Test
     include Helpers

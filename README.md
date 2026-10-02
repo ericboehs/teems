@@ -87,10 +87,47 @@ teems meeting <thread-id> --transcript -o ~/Downloads  # Download transcript (VT
 teems meeting <thread-id> --recording -o ~/Downloads   # Download recording (MP4)
 teems meeting <thread-id> --recording --transcript -o ~/Downloads  # Both, with embedded subtitles
 teems meeting <event-id>                           # By calendar event ID (AAMk...)
+teems meeting <event-id> --date 2026-09-29 --json  # Call events + recording links as JSON
+teems meeting <event-id> --date 2026-09-29 --transcript --recording-url <url>  # A specific recording
 teems meeting "https://teams.microsoft.com/..."    # By Teams URL or recap link
 ```
 
 Recording download requires `ffmpeg` (`brew install ffmpeg`) and downloads via DASH streaming with 5 parallel threads. No browser required.
+
+#### Transcript sync
+
+```bash
+teems transcripts sync --dry-run          # Preview meetings and recording counts
+teems transcripts sync                    # First run: 30 days; later: 7 days
+teems transcripts sync --date 2026-09-28  # Retry a specific day
+teems transcripts sync --since 30         # Explicit historical backfill
+teems transcripts sync --no-post-sync     # Skip the configured post-sync command once
+```
+
+This saves **only WebVTT transcripts** in `~/.local/share/teems/transcripts/` on the machine running the command, separate from live-caption `meeting-capture` files. Each sync also writes speaker-turn Markdown copies to `~/.local/share/teems/transcripts-md/` (regenerated when missing or older than the VTT) for local search tools such as [qmd](https://github.com/tobi/qmd). Each recording keeps its own transcript, so a meeting restarted mid-session yields one VTT per recording. A private manifest in `~/.local/state/teems/transcript-sync.json` makes repeats idempotent and catches up after time away (up to 30 days). Data and state directories are mode 0700; transcripts and the manifest are mode 0600. The calendar scan retries unavailable transcripts within the lookback window; errors return a nonzero exit code. To run every evening on a GFE, schedule `teems transcripts sync` there via launchd.
+
+Coverage is **calendar Teams meetings with a saved and accessible recording transcript**, not every meeting attended: ad-hoc calls, meetings with no saved transcript/recording, and inaccessible organizer-owned artifacts cannot be recovered by this route. No audio/video is downloaded, and nothing is copied to another machine.
+
+To search the Markdown locally with qmd, keep it in a dedicated index so refreshes don't re-scan other collections:
+
+```bash
+qmd --index teems-transcripts collection add ~/.local/share/teems/transcripts-md --name teems-transcripts --mask '**/*.md'
+qmd --index teems-transcripts update && qmd --index teems-transcripts embed
+qmd --index teems-transcripts query "what did we decide about monitoring?"
+```
+
+To refresh that index automatically, set a post-sync command in `~/.config/teems/config.json`:
+
+```json
+{
+  "transcripts": {
+    "post_sync_command": "qmd --index teems-transcripts update && qmd --index teems-transcripts embed",
+    "post_sync_timeout": 900
+  }
+}
+```
+
+The command runs via `sh -c` only after a sync writes or regenerates Markdown; not on `--dry-run`, when nothing changed, or with `--no-post-sync`. It receives `TEEMS_TRANSCRIPTS_CHANGED` (newline-separated Markdown paths), `TEEMS_TRANSCRIPTS_CHANGED_COUNT`, `TEEMS_TRANSCRIPTS_MARKDOWN_DIR`, and `TEEMS_TRANSCRIPTS_DIR`, and is killed after `post_sync_timeout` seconds (default 300). A failure or timeout prints a warning but does not change the sync's exit code.
 
 ### People
 

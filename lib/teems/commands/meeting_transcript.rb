@@ -138,22 +138,37 @@ module Teems
       end
     end
 
+    # Chooses which recording's transcript to fetch (--recording-url, else the first link).
+    module MeetingRecordingSelection
+      private
+
+      def first_recording_url(classified)
+        @options[:recording_url] || recording_urls(classified).first
+      end
+
+      def unknown_recording_url?(classified)
+        requested = @options[:recording_url]
+        requested && !recording_urls(classified).include?(requested)
+      end
+
+      def recording_urls(classified) = classified[:recordings].filter_map { |rec| rec[:url] }
+    end
+
     # Downloads meeting transcripts via SharePoint API (no Safari required)
     module MeetingTranscript
+      include MeetingRecordingSelection
       include EmbedPageParser
       include MeetingFilename
 
       private
 
       def download_transcript(target, classified)
+        return error('--recording-url is not a recording in this meeting') if unknown_recording_url?(classified)
+
         sharing_url = target[:fileUrl] || first_recording_url(classified)
         return error('No recording sharing link found for transcript download') unless sharing_url
 
         execute_transcript_pipeline(sharing_url)
-      end
-
-      def first_recording_url(classified)
-        classified[:recordings].filter_map { |rec| rec[:url] }.first
       end
 
       def execute_transcript_pipeline(sharing_url)

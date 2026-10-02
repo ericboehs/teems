@@ -9,6 +9,7 @@ module Teems
       ['channels', 'List joined teams and channels'],
       ['chats', 'List recent chats'],
       ['meeting', 'View meeting details, chat, transcripts, and recordings'],
+      ['transcripts', 'Sync saved meeting transcripts to this machine'],
       ['messages', 'Read messages from a channel or chat'],
       ['sync', 'Sync chat history locally'],
       ['who', "Look up a user's profile"],
@@ -83,6 +84,7 @@ module Teems
             teems channels                 List all channels
             teems chats                    List recent chats
             teems messages <channel-id>    Read messages from a channel
+            teems transcripts sync         Download recent meeting transcripts
             teems who                      Show your profile
             teems who john                 Search for a user
             teems org                      Show your org chart

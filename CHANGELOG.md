@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.2] - 2026-09-29
+
+### Added
+- `teems transcripts sync` discovers calendar Teams meetings and downloads available WebVTT transcripts into a private XDG data directory. The first run scans 30 days; subsequent runs scan seven, with an idempotent manifest and catch-up after time away. `--date`, `--since`, and `--dry-run` are supported. Recordings and audio are not downloaded.
+- Transcript sync writes speaker-turn Markdown copies to `~/.local/share/teems/transcripts-md/` for local search indexes such as qmd.
+- Transcript sync can run a `transcripts.post_sync_command` from `config.json` (for example, a qmd index refresh) after a sync that changed Markdown. The command gets the changed paths in `TEEMS_TRANSCRIPTS_*` environment variables, is bounded by `post_sync_timeout` (default 300 seconds), and warns rather than failing the sync. `--no-post-sync` skips it for one run.
+- Transcript sync keeps one transcript per recording, so meetings that were restarted mid-session no longer lose the later recording's transcript. Existing per-meeting downloads are reused when identical rather than duplicated.
+- `teems meeting --json` prints call events, recording links, and transcript markers as JSON (the option was documented but ignored).
+- `teems meeting --transcript --recording-url URL` downloads the transcript for a specific recording in the meeting instead of the first one.
+
 ## [0.3.1] - 2026-09-02
 
 ### Added

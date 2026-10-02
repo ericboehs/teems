@@ -48,6 +48,7 @@ module Teems
       'channels' => Commands::Channels,
       'chats' => Commands::Chats,
       'meeting' => Commands::Meeting,
+      'transcripts' => Commands::Transcripts,
       'messages' => Commands::Messages,
       'sync' => Commands::Sync,
       'who' => Commands::Who,

@@ -78,6 +78,7 @@ module Teems
     autoload :MessageFormatter, 'teems/formatters/message_formatter'
     autoload :MarkdownFormatter, 'teems/formatters/markdown_formatter'
     autoload :CalendarFormatter, 'teems/formatters/calendar_formatter'
+    autoload :TranscriptMarkdown, 'teems/formatters/transcript_markdown'
   end
 
   # CLI commands implementing user-facing functionality
@@ -95,6 +96,7 @@ module Teems
     autoload :Ooo, 'teems/commands/ooo'
     autoload :Org, 'teems/commands/org'
     autoload :Meeting, 'teems/commands/meeting'
+    autoload :Transcripts, 'teems/commands/transcripts'
     autoload :Status, 'teems/commands/status'
   end
 
