@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.3] - 2026-10-02
 
 ### Added
 - Inline images (screenshots pasted into a message) are no longer dropped when message HTML is stripped. `teems messages` lists them under the message, and `--json` includes an `images` array with the AMS URL, full-size URL, alt text, and dimensions.
