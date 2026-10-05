@@ -284,6 +284,26 @@ module EventTests
       assert_match(/\d{4}-\d{2}-\d{2} \(all day\)/, event.date_display)
     end
 
+    def all_day_event(start_date, end_date)
+      Teems::Models::Event.from_api(sample_event_data.merge(
+                                      'isAllDay' => true,
+                                      'start' => { 'dateTime' => "#{start_date}T00:00:00.0000000" },
+                                      'end' => end_date && { 'dateTime' => "#{end_date}T00:00:00.0000000" }
+                                    ))
+    end
+
+    def test_date_display_single_all_day_event_shows_one_date
+      assert_equal '2026-11-12 (all day)', all_day_event('2026-11-12', '2026-11-13').date_display
+    end
+
+    def test_date_display_multi_day_all_day_event_shows_inclusive_span
+      assert_equal '2026-11-12 to 2026-11-13 (all day)', all_day_event('2026-11-12', '2026-11-14').date_display
+    end
+
+    def test_date_display_all_day_without_end_shows_first_day
+      assert_equal '2026-11-12 (all day)', all_day_event('2026-11-12', nil).date_display
+    end
+
     def test_date_display_timed_event
       event = Teems::Models::Event.from_api(sample_event_data)
       assert_match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}-\d{2}:\d{2}/, event.date_display)

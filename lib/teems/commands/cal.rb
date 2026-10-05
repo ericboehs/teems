@@ -34,7 +34,11 @@ module Teems
                              "tomorrow HH:MM", or "HH:MM" (assumes today)
         --end TIME           End time (default: start + 30 minutes)
         --duration MIN       Duration in minutes (alternative to --end)
-        --all-day            Create an all-day event (use with --date)
+        --all-day            Create an all-day event on --date (default: today)
+                             With --all-day, --start YYYY-MM-DD is an alias for
+                             --date, and --end YYYY-MM-DD is the last day
+                             (inclusive) of a multi-day event. --duration and
+                             timed --start/--end values are not allowed.
         --location TEXT      Event location
         --body TEXT          Event description (plain text)
         --html TEXT          Event description (HTML)
@@ -66,8 +70,11 @@ module Teems
         teems cal accept a3f2            # Accept by hash prefix
         teems cal decline 3 --comment "Out of office"
         teems cal create "Standup" --start "tomorrow 09:00" --duration 15
-        teems cal create "Review" --start "2026-03-20 14:00" --teams \
+        teems cal create "Review" --start "2026-03-20 14:00" --teams \\
           --attendees alice@example.com,bob@example.com
+        teems cal create "Day off" --all-day --date 2026-03-20
+        teems cal create "PTO" --all-day --date 2026-03-23 --end 2026-03-24 \\
+          --show-as oof --no-reminder  # One event spanning both days
         teems cal delete 3               # Delete event #3
         teems cal --json | jq ...        # JSON output, no prompt
     HELP
@@ -563,7 +570,15 @@ module Teems
       end
 
       def validate_conflicting_flags
-        conflict_error('--teams', '--no-teams') if @options[:teams] && @options[:no_teams]
+        return conflict_error('--teams', '--no-teams') if @options[:teams] && @options[:no_teams]
+
+        validate_all_day_flags if @options[:all_day]
+      end
+
+      def validate_all_day_flags
+        return conflict_error('--all-day', '--duration') if @options[:duration]
+
+        conflict_error('--date', '--start') if @options[:date] && @options[:start]
       end
 
       def conflict_error(flag_a, flag_b)
@@ -588,11 +603,66 @@ module Teems
       end
     end
 
+    # Resolves --all-day dates into Graph's all-day range, which runs from midnight on the
+    # first day to midnight after the last day. --end is inclusive, like `teems ooo --end`.
+    module CalAllDayTimes
+      include Support::TimeParsing
+
+      private
+
+      def resolve_all_day_times
+        first_day = all_day_first_day
+        return first_day if first_day.is_a?(Integer)
+
+        last_day = all_day_last_day(first_day)
+        return last_day if last_day.is_a?(Integer)
+
+        [midnight(first_day), midnight(last_day + 1)]
+      end
+
+      def all_day_first_day
+        start = @options[:start]
+        return all_day_option_date('--start', start) if start
+
+        date = @options[:date] || Date.today.to_s
+        Date.parse(date)
+      rescue Date::Error
+        all_day_error("Invalid date: #{date}")
+      end
+
+      def all_day_last_day(first_day)
+        raw = @options[:end]
+        return first_day unless raw
+
+        last_day = all_day_option_date('--end', raw)
+        return last_day if last_day.is_a?(Integer) || last_day >= first_day
+
+        all_day_error("--end #{last_day} is before the first day, #{first_day}")
+      end
+
+      # --start and --end name calendar days here, so a time of day is almost certainly a mistake
+      def all_day_option_date(flag, raw)
+        return Date.parse(raw) unless parse_time_input(raw)
+
+        all_day_error("#{flag} must be a date (YYYY-MM-DD) with --all-day, not a time: #{raw}")
+      rescue Date::Error
+        all_day_error("Invalid #{flag} date: #{raw}. Use YYYY-MM-DD")
+      end
+
+      def all_day_error(message)
+        error(message)
+        1
+      end
+
+      def midnight(date) = date.strftime('%Y-%m-%dT00:00:00')
+    end
+
     # Event creation subcommand
     module CalCreateActions
       include Support::TimeParsing
       include CalEventFields
       include CalCreateValidation
+      include CalAllDayTimes
 
       private
 
@@ -621,14 +691,6 @@ module Teems
 
       def resolve_create_times
         @options[:all_day] ? resolve_all_day_times : resolve_timed_event_times
-      end
-
-      def resolve_all_day_times
-        date = @options[:date] || Date.today.to_s
-        parsed = Date.parse(date)
-        [parsed.strftime('%Y-%m-%dT00:00:00'), (parsed + 1).strftime('%Y-%m-%dT00:00:00')]
-      rescue Date::Error
-        error("Invalid date: #{date}") || 1
       end
 
       def resolve_timed_event_times

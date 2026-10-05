@@ -48,6 +48,7 @@ module Teems
     autoload :Channel, 'teems/models/channel'
     autoload :Chat, 'teems/models/chat'
     autoload :Event, 'teems/models/event'
+    autoload :EventDisplay, 'teems/models/event_display'
     autoload :Message, 'teems/models/message'
     autoload :InlineImage, 'teems/models/inline_image'
     autoload :InlineImageParsing, 'teems/models/inline_image'

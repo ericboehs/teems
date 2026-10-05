@@ -486,6 +486,9 @@ module CalCommandTests
       assert_match(/--start/, stdout)
       assert_match(/--duration/, stdout)
       assert_match(/--all-day/, stdout)
+      assert_match(/--end YYYY-MM-DD is the last day/, stdout)
+      assert_match(/--all-day --date 2026-03-23 --end 2026-03-24 \\\n\s+--show-as oof/, stdout)
+      assert_match(/--teams \\\n\s+--attendees/, stdout)
       assert_match(/--teams/, stdout)
       assert_match(/--attendees/, stdout)
     end
@@ -762,6 +765,112 @@ module CalCommandTests
       attendees = runner.api_client.calls.first[:body][:attendees]
       assert_equal 1, attendees.length
       assert_equal 'a@x.com', attendees.first[:emailAddress][:address]
+    end
+  end
+
+  # Tests for multi-day all-day events: --end is the inclusive last day, Graph gets midnight after it
+  class CreateAllDayRangeTest < Minitest::Test
+    include SharedHelpers
+
+    def all_day_body(args)
+      calls = run_create_runner(['PTO', '--all-day', *args]).api_client.calls
+      assert_equal 1, calls.length
+      calls.first[:body]
+    end
+
+    def assert_all_day_range(args, start_dt, end_dt)
+      body = all_day_body(args)
+      assert_equal true, body[:isAllDay]
+      assert_equal "#{start_dt}T00:00:00", body[:start][:dateTime]
+      assert_equal "#{end_dt}T00:00:00", body[:end][:dateTime]
+    end
+
+    def test_end_makes_one_event_through_the_last_day
+      assert_all_day_range(%w[--date 2026-11-12 --end 2026-11-13], '2026-11-12', '2026-11-14')
+    end
+
+    def test_end_on_the_first_day_is_a_single_day
+      assert_all_day_range(%w[--date 2026-11-12 --end 2026-11-12], '2026-11-12', '2026-11-13')
+    end
+
+    def test_end_across_month_and_year_boundaries
+      assert_all_day_range(%w[--date 2026-11-30 --end 2026-12-01], '2026-11-30', '2026-12-02')
+      assert_all_day_range(%w[--date 2026-12-31 --end 2027-01-01], '2026-12-31', '2027-01-02')
+    end
+
+    def test_start_is_an_alias_for_date
+      assert_all_day_range(%w[--start 2026-11-12 --end 2026-11-13], '2026-11-12', '2026-11-14')
+      assert_all_day_range(%w[--start 2026-11-12], '2026-11-12', '2026-11-13')
+    end
+
+    def test_end_without_a_first_day_starts_today
+      today = Date.today
+      assert_all_day_range(['--end', (today + 2).iso8601], today.iso8601, (today + 3).iso8601)
+    end
+
+    def test_pto_invite_options_apply_to_the_single_event
+      body = all_day_body(%w[--date 2026-11-12 --end 2026-11-13 --attendees team@example.com
+                             --show-as free --no-rsvp --no-reminder --no-teams])
+      assert_equal 'team@example.com', body.dig(:attendees, 0, :emailAddress, :address)
+      assert_equal({ showAs: 'free', responseRequested: false, isReminderOn: false, isOnlineMeeting: false },
+                   body.slice(:showAs, :responseRequested, :isReminderOn, :isOnlineMeeting))
+      assert_equal '2026-11-14T00:00:00', body.dig(:end, :dateTime)
+    end
+
+    def test_created_multi_day_event_shows_its_span
+      event_data = sample_event_data.merge(
+        'isAllDay' => true,
+        'start' => { 'dateTime' => '2026-11-12T00:00:00.0000000', 'timeZone' => 'America/Chicago' },
+        'end' => { 'dateTime' => '2026-11-14T00:00:00.0000000', 'timeZone' => 'America/Chicago' }
+      )
+      result = run_create(%w[PTO --all-day --date 2026-11-12 --end 2026-11-13], stub_response: event_data)
+      assert_match(/2026-11-12 to 2026-11-13 \(all day\)/, result[:stdout])
+    end
+  end
+
+  # Tests that bad --all-day ranges fail before any event is created
+  class CreateAllDayValidationTest < Minitest::Test
+    include SharedHelpers
+
+    def assert_rejected(args, message)
+      runner = nil
+      result = with_temp_config do
+        capture_output do |output|
+          runner = configured_runner(output: output)
+          assert_equal 1, Teems::Commands::Cal.new(['create', 'PTO', '--all-day', *args], runner: runner).execute
+        end
+      end
+      assert_empty runner.api_client.calls
+      assert_match message, result[:stderr]
+    end
+
+    def test_end_before_first_day
+      assert_rejected(%w[--date 2026-11-12 --end 2026-11-11], /--end 2026-11-11 is before the first day, 2026-11-12/)
+    end
+
+    def test_timed_end
+      assert_rejected(['--date', '2026-11-12', '--end', '2026-11-13 17:00'], /--end must be a date .*not a time/)
+      assert_rejected(%w[--date 2026-11-12 --end 17:00], /--end must be a date/)
+    end
+
+    def test_non_date_end
+      assert_rejected(%w[--date 2026-11-12 --end someday], /Invalid --end date: someday\. Use YYYY-MM-DD/)
+    end
+
+    def test_duration
+      assert_rejected(%w[--date 2026-11-12 --duration 60], /Cannot use --all-day and --duration together/)
+    end
+
+    def test_timed_start
+      assert_rejected(['--start', 'tomorrow 09:00'], /--start must be a date .*not a time/)
+    end
+
+    def test_non_date_start
+      assert_rejected(%w[--start someday], /Invalid --start date: someday/)
+    end
+
+    def test_date_and_start_together
+      assert_rejected(%w[--date 2026-11-12 --start 2026-11-12], /Cannot use --date and --start together/)
     end
   end
 

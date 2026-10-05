@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `teems cal create --all-day --end YYYY-MM-DD` creates one multi-day all-day event. `--end` is the last day, inclusive (like `teems ooo --end`), so `--date 2026-11-12 --end 2026-11-13` covers both days. Leaving out `--end` still creates a single-day event.
+- `teems cal create --all-day --start YYYY-MM-DD` works as an alias for `--date`.
+
+### Changed
+- `teems cal create --all-day` now rejects options it used to silently ignore: `--duration`, an `--end` before the first day, a time of day in `--start` or `--end`, and `--date` combined with `--start`.
+- The created-event summary shows the date range of a multi-day all-day event (`2026-11-12 to 2026-11-13 (all day)`).
+
+### Fixed
+- `teems cal --help` examples that continue onto a second line render as two lines instead of being run together.
+
 ## [0.3.3] - 2026-10-02
 
 ### Added
