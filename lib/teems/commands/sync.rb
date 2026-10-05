@@ -162,6 +162,25 @@ module Teems
       end
     end
 
+    # Warns about sync folders that older teems versions gave to more than one chat
+    module SyncSharedDirs
+      private
+
+      def warn_shared_dirs(shared)
+        return if shared.empty?
+
+        folders = shared.map { |path, ids| "  #{path} (#{ids.length} chats)" }
+        warn(["#{shared.length} folder(s) in #{File.join(@sync_store.sync_dir, 'chats')} mix messages from " \
+              'several chats (an older teems gave those chats the same folder name):',
+              *folders, shared_dirs_plan].join("\n"))
+      end
+
+      def shared_dirs_plan
+        'These folders are left as they are. Each affected chat syncs to its own folder, ' \
+          "re-fetching up to #{since_days} days of history. Delete the old folders once you've checked the new ones."
+      end
+    end
+
     # Chat list fetching, dry-run display, and summary reporting
     module SyncDisplay
       private
@@ -196,6 +215,7 @@ module Teems
       end
 
       def show_dry_run(chats)
+        warn_shared_dirs(@sync_store.shared_dirs(@state))
         syncable = chats.reject { |chat| skip_reason(chat['id']) }
         display_dry_run_list(chats.length - syncable.length, syncable)
       end
@@ -315,6 +335,7 @@ module Teems
       include SyncImageHandler
       include SyncDisplay
       include SyncAuth
+      include SyncSharedDirs
 
       DEFAULT_SINCE_DAYS = 180
       SKIP_PREFIXES = %w[48:].freeze
@@ -369,6 +390,7 @@ module Teems
       end
 
       def sync_all_chats(chats)
+        warn_shared_dirs(@sync_store.detach_shared_dirs(@state))
         chats.each_with_index { |chat_data, index| sync_or_skip_chat(chat_data, "[#{index + 1}/#{chats.length}]") }
         save_state_safely
         show_summary
@@ -404,7 +426,8 @@ module Teems
         error("Warning: Failed to save sync state: #{e.message}")
       end
 
-      def since_time = Time.now - ((@options[:since_days] || DEFAULT_SINCE_DAYS) * 86_400)
+      def since_days = @options[:since_days] || DEFAULT_SINCE_DAYS
+      def since_time = Time.now - (since_days * 86_400)
 
       def setup_api_logging
         out = output

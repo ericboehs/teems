@@ -309,4 +309,30 @@ module ChatTests
       Teems::Models::Chat.from_api(data)
     end
   end
+
+  # ng.msg reports 1:1 chats with threadType 'chat', the same as group chats
+  class NgMsgOneOnOneTest < Minitest::Test
+    DM_ID = '19:11111111-2222-3333-4444-555555555555_66666666-7777-8888-9999-000000000000@unq.gbl.spaces'
+
+    def test_one_to_one_product_thread_type_is_one_on_one
+      chat = ngmsg_chat(DM_ID, 'threadType' => 'chat', 'productThreadType' => 'OneToOneChat')
+      assert_equal 'oneOnOne', chat.chat_type
+      assert_equal '1:1 Chat', chat.display_name
+    end
+
+    def test_unique_roster_id_is_one_on_one_without_product_thread_type
+      assert_equal 'oneOnOne', ngmsg_chat(DM_ID, 'threadType' => 'chat').chat_type
+    end
+
+    def test_group_chat_stays_group
+      chat = ngmsg_chat('19:abc123@thread.v2', 'threadType' => 'chat', 'productThreadType' => 'Chat')
+      assert_equal 'group', chat.chat_type
+    end
+
+    private
+
+    def ngmsg_chat(id, thread_props)
+      Teems::Models::Chat.from_api('id' => id, 'threadProperties' => thread_props, 'properties' => {})
+    end
+  end
 end

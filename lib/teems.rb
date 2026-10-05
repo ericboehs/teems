@@ -71,6 +71,7 @@ module Teems
     autoload :TeamsUrlParser, 'teems/services/teams_url_parser'
     autoload :SyncStore, 'teems/services/sync_store'
     autoload :SyncDirNaming, 'teems/services/sync_dir_naming'
+    autoload :SyncDirOwnership, 'teems/services/sync_dir_ownership'
     autoload :SafariJsRunner, 'teems/services/safari_js_runner'
     autoload :SyncEngine, 'teems/services/sync_engine'
     autoload :SyncImages, 'teems/services/sync_images'

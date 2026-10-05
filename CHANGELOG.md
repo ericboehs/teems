@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `teems sync` no longer merges different chats into one folder. Folder names used to identify generic chats ("Group Chat", "1:1 Chat") by the first 20 characters of the chat ID, which every 1:1 chat with the same person starts with, and named chats by their title alone. Every chat folder name now ends with the chat's full ID, and a name that would still clash (IDs differing only in letter case on a case-insensitive filesystem) falls back to the ID plus a hash.
+- 1:1 chats are classified as 1:1 chats (`dms/`, "1:1 Chat") instead of group chats.
+
+### Changed
+- On its first run, `teems sync` detaches folders that an older version gave to more than one chat. The folders and their files are left untouched (the path is recorded as `legacy_shared_dir` in `sync_state.json`), and each affected chat re-syncs up to `--since` days of history into its own folder. `teems sync` warns with the list of these folders, and `teems sync --dry-run` reports them without changing anything. Other existing chat folders are renamed in place to the new naming.
+
 ## [0.3.4] - 2026-10-05
 
 ### Added

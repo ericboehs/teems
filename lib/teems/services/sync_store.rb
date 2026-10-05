@@ -54,7 +54,7 @@ module Teems
         entry = (state['chats'] ||= {})[chat_id] ||= {}
         entry.merge!('last_synced_at' => synced_at.iso8601, 'message_count' => count,
                      'display_name' => display_name, 'chat_type' => chat_type,
-                     'dir_name' => build_dir_name(chat_id, display_name))
+                     'dir_name' => dir_name_for(entry, chat_id, display_name))
         state
       end
 
@@ -79,9 +79,11 @@ module Teems
       def apply_display_info(entry, chat_id, display_name)
         return unless display_name
 
-        entry.merge!('display_name' => display_name,
-                     'dir_name' => build_dir_name(chat_id, display_name))
+        entry.merge!('display_name' => display_name, 'dir_name' => dir_name_for(entry, chat_id, display_name))
       end
+
+      # ensure_dir_name owns the directory name; this only fills it in for callers that skipped it
+      def dir_name_for(entry, chat_id, display_name) = entry['dir_name'] || build_dir_name(chat_id, display_name)
     end
 
     # Chat directory resolution for SyncStore
@@ -146,6 +148,7 @@ module Teems
     # Stores chat history as Markdown + JSON in XDG data directory.
     class SyncStore
       include SyncDirNaming
+      include SyncDirOwnership
       include SyncFileOps
       include SyncStateQuery
       include SyncStateMutation
@@ -184,6 +187,9 @@ module Teems
       def ensure_dir_name(state, chat_info:)
         chat_id, display_name, chat_type = chat_info.values_at(:chat_id, :display_name, :chat_type)
         new_dir_name = build_dir_name(chat_id, display_name)
+        if dir_claimed?(state, chat_id, File.join(type_dir(chat_type), new_dir_name))
+          new_dir_name = fallback_dir_name(chat_id)
+        end
         entry = (state['chats'] ||= {})[chat_id] ||= {}
         rename_entry_dir(entry, new_dir_name, chat_type)
         new_dir_name

@@ -846,4 +846,91 @@ module SyncCommandTests
       end
     end
   end
+
+  # Chats must never share a sync folder (older versions merged 1:1 chats and same-titled chats)
+  class SeparateFoldersTest < Minitest::Test
+    include SharedHelpers
+
+    ME = '11111111-2222-3333-4444-555555555555'
+    DM_A = "19:#{ME}_aaaaaaaa-0000-0000-0000-000000000001@unq.gbl.spaces".freeze
+    DM_B = "19:#{ME}_bbbbbbbb-0000-0000-0000-000000000002@unq.gbl.spaces".freeze
+    # The folder older versions gave both chats: "Group Chat" plus a 20-character ID prefix
+    LEGACY_DIR = 'Group Chat (19_11111111-2222-333)'
+
+    def test_one_on_one_chats_with_a_common_id_prefix_sync_to_separate_folders
+      with_temp_config do
+        run_dm_sync
+        assert_equal ['msg-a'], synced_ids(DM_A)
+        assert_equal ['msg-b'], synced_ids(DM_B)
+        assert_includes chat_dir(DM_A), '/chats/dms/'
+      end
+    end
+
+    def test_existing_shared_folder_is_left_untouched_and_each_chat_resyncs
+      with_temp_config do
+        legacy_dir, snapshot = seed_legacy_folder
+        result = run_dm_sync
+        assert_equal snapshot, dir_snapshot(legacy_dir)
+        assert_equal [['msg-a'], ['msg-b']], [synced_ids(DM_A), synced_ids(DM_B)]
+        assert_includes result[:stderr], "groups/#{LEGACY_DIR} (2 chats)"
+        legacy = Teems::Services::SyncStore.new.load_state.dig('chats', DM_A, 'legacy_shared_dir')
+        assert_equal "groups/#{LEGACY_DIR}", legacy
+      end
+    end
+
+    def test_dry_run_reports_shared_folders_without_changing_state
+      with_temp_config do
+        seed_legacy_folder
+        state_before = Teems::Services::SyncStore.new.load_state
+        result = run_dm_sync(['--dry-run'])
+        assert_includes result[:stderr], 'mix messages from several chats'
+        assert_equal state_before, Teems::Services::SyncStore.new.load_state
+      end
+    end
+
+    private
+
+    def run_dm_sync(args = [])
+      runner, out, err = build_sync_runner
+      api = runner.api_client
+      # Stubs match by substring in insertion order, so the per-chat paths go before the list path
+      { DM_A => 'msg-a', DM_B => 'msg-b' }.each do |chat_id, message_id|
+        api.stub("#{URI.encode_www_form_component(chat_id)}/messages", dm_messages(message_id))
+      end
+      api.stub('/v1/users/ME/conversations', { 'conversations' => [dm_chat(DM_A), dm_chat(DM_B)] })
+      Teems::Commands::Sync.new(args, runner: runner).execute
+      sync_result(out, err)
+    end
+
+    def dm_chat(chat_id)
+      { 'id' => chat_id, 'properties' => {},
+        'threadProperties' => { 'threadType' => 'chat', 'productThreadType' => 'OneToOneChat' } }
+    end
+
+    def dm_messages(message_id)
+      { 'messages' => [recent_ng_msg_message.merge('id' => message_id)], '_metadata' => {} }
+    end
+
+    def seed_legacy_folder
+      store = Teems::Services::SyncStore.new
+      entry = { 'dir_name' => LEGACY_DIR, 'chat_type' => 'group', 'last_synced_at' => Time.now.utc.iso8601 }
+      store.save_state({ 'chats' => { DM_A => entry, DM_B => entry.dup } })
+      dir = File.join(store.sync_dir, 'chats', 'groups', LEGACY_DIR)
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, 'messages.json'), JSON.generate([old_message_fixture]))
+      File.write(File.join(dir, 'messages.md'), '# legacy')
+      [dir, dir_snapshot(dir)]
+    end
+
+    def dir_snapshot(dir)
+      Dir.children(dir).sort.to_h { |name| [name, File.binread(File.join(dir, name))] }
+    end
+
+    def synced_ids(chat_id) = load_synced_messages(chat_id).map { |message| message['id'] }
+
+    def chat_dir(chat_id)
+      store = Teems::Services::SyncStore.new
+      store.chat_dir(chat_id, state: store.load_state)
+    end
+  end
 end
