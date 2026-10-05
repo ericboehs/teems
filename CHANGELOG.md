@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.4] - 2026-10-05
 
 ### Added
 - `teems cal create --all-day --end YYYY-MM-DD` creates one multi-day all-day event. `--end` is the last day, inclusive (like `teems ooo --end`), so `--date 2026-11-12 --end 2026-11-13` covers both days. Leaving out `--end` still creates a single-day event.
