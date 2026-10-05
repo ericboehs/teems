@@ -24,6 +24,7 @@ module Teems
       :event_type
     ) do
       extend Parsing
+      include EventDisplay
 
       def self.from_api(data)
         new(**event_attrs(data))
@@ -89,29 +90,6 @@ module Teems
       def all_day? = is_all_day
       def cancelled? = is_cancelled
       def recurring? = %w[occurrence exception].include?(event_type)
-
-      def time_range_display
-        return 'ALL DAY' if all_day?
-        return '' unless start_time && end_time
-
-        "#{start_time.strftime('%H:%M')}-#{end_time.strftime('%H:%M')}"
-      end
-
-      def date_display
-        if all_day?
-          "#{start_time&.strftime('%Y-%m-%d')} (all day)"
-        elsif start_time && end_time
-          "#{start_time.strftime('%Y-%m-%d %H:%M')}-#{end_time.strftime('%H:%M')}"
-        end
-      end
-
-      def create_summary_lines
-        lines = []
-        lines << date_display if date_display
-        lines << "Location: #{location}" if location && !location.empty?
-        lines << "Teams link: #{online_meeting_url}" if online_meeting_url
-        lines
-      end
 
       def required_attendees = attendees.select { |att| att[:type] == 'required' }
       def optional_attendees = attendees.select { |att| att[:type] == 'optional' }

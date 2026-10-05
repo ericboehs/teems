@@ -47,8 +47,11 @@ teems cal show 3             # View details for event #3
 teems cal accept 3           # Accept event #3
 teems cal decline 3          # Decline event #3
 teems cal create "Standup" --start "tomorrow 09:00" --attendees alice@example.com
+teems cal create "PTO" --all-day --date 2026-11-12 --end 2026-11-13 --show-as oof
 teems cal delete 3           # Delete event #3
 ```
+
+All-day events cover `--date` (or `--start YYYY-MM-DD`; default today). Add `--end YYYY-MM-DD` for a multi-day event: like `teems ooo --end`, it is the last day of the event, inclusive. The example above is one event covering November 12 and 13.
 
 ### Messages
 
