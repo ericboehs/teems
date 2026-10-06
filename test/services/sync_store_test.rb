@@ -934,6 +934,27 @@ module SyncStoreTests
       end
     end
 
+    def test_a_failed_rename_keeps_the_old_folder_in_state
+      with_store(entry: owner('Old Title')) do |store, state|
+        before = state.dig('chats', CHAT).dup
+        File.stub(:rename, ->(*) { raise Errno::EACCES, 'synthetic' }) do
+          assert_raises(Errno::EACCES) { store.ensure_chat_dir(state, chat_info: info('Planning')) }
+        end
+        assert_equal before, state.dig('chats', CHAT)
+        assert_equal :move, store.ensure_chat_dir(state, chat_info: info('Planning')).kind, 'retried next run'
+      end
+    end
+
+    def test_a_case_only_title_change_renames_the_folder
+      old_name = 'planning (19_planning_thread.v2)'
+      with_store(entry: owner('planning').merge('dir_name' => old_name)) do |store, state|
+        move = store.ensure_chat_dir(state, chat_info: info('Planning'))
+        assert_equal [:move, "groups/#{old_name}", "groups/#{FULL_NAME}"], move.to_h.values_at(:kind, :from, :to)
+        assert_equal [FULL_NAME], Dir.children(path(store, 'groups'))
+        assert_equal ['m1'], stored_ids(store, move.to)
+      end
+    end
+
     def test_write_dir_map_records_moves
       with_temp_config do
         store = Teems::Services::SyncStore.new

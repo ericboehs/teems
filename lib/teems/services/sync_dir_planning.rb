@@ -74,11 +74,17 @@ module Teems
         from ? DirMove.new(chat_id, from, to, existing_dir_kind(others, from, to)) : request.first_move(to)
       end
 
-      # Like plan_chat_dir, then renames the old directory when that is safe
+      # Like plan_chat_dir, then renames the old directory when that is safe. If the rename fails, the
+      # chat's entry is restored so state never points at a directory its files weren't moved to.
       def ensure_chat_dir(state, chat_info:)
+        entry = (state['chats'] ||= {})[chat_info[:chat_id]] ||= {}
+        saved = entry.dup
         move = plan_chat_dir(state, chat_info)
         rename_chat_dir(move) if move.kind == :move
         move
+      rescue SystemCallError
+        entry.replace(saved)
+        raise
       end
 
       # Records directory changes (paths relative to root) as dir-maps/<time>.json; returns its path
@@ -104,10 +110,15 @@ module Teems
       def existing_dir_kind(others, from, to)
         return :kept if from == to
         return :release if owned?(others, from)
-        return :retarget unless File.directory?(chats_path(from))
 
-        File.exist?(chats_path(to)) ? :repoint : :move
+        from_path = chats_path(from)
+        return :retarget unless File.directory?(from_path)
+
+        target_taken?(from_path, chats_path(to)) ? :repoint : :move
       end
+
+      # On a case-insensitive volume a case-only rename finds the chat's own directory at the new path
+      def target_taken?(from_path, to_path) = File.exist?(to_path) && !File.identical?(from_path, to_path)
 
       def rename_chat_dir(move)
         new_path = chats_path(move.to)
