@@ -30,16 +30,20 @@ module Teems
       end
 
       def self.from_ngmsg(data)
-        thread_props = data['threadProperties'] || {}
+        id = data['id']
         props = data['properties'] || {}
         new(
-          id: data['id'],
-          topic: thread_props['topic'] || thread_props['spaceThreadTopic'],
-          chat_type: normalize_chat_type(thread_props['threadType']),
-          created_at: parse_time(thread_props['createdat']),
+          id: id,
           last_updated: parse_time(props['lastimreceivedtime']),
+          **ngmsg_thread(id, data['threadProperties'] || {}),
           **ngmsg_status(props, data['lastMessage'])
         )
+      end
+
+      def self.ngmsg_thread(id, thread_props)
+        { topic: thread_props['topic'] || thread_props['spaceThreadTopic'],
+          chat_type: ngmsg_chat_type(id, thread_props),
+          created_at: parse_time(thread_props['createdat']) }
       end
 
       def self.ngmsg_status(props, last_message)
@@ -50,6 +54,13 @@ module Teems
           favorite: props['favorite'] == 'true',
           pinned: props['ispinned'] == 'true'
         }
+      end
+
+      # ng.msg reports 1:1 chats with threadType 'chat', like group chats. They are marked by
+      # productThreadType 'OneToOneChat' and a "19:<user>_<user>@unq.gbl.spaces" ID.
+      def self.ngmsg_chat_type(id, thread_props)
+        one_on_one = thread_props['productThreadType'] == 'OneToOneChat' || id.to_s.end_with?('@unq.gbl.spaces')
+        one_on_one ? 'oneOnOne' : normalize_chat_type(thread_props['threadType'])
       end
 
       # Normalize ng.msg threadType to a consistent chat type.
@@ -78,6 +89,9 @@ module Teems
       end
 
       def chat_type_label = CHAT_TYPE_LABELS.fetch(chat_type, chat_type)
+
+      # What sync uses to name and place the chat's directory
+      def sync_identity = { chat_id: id, display_name: display_name, chat_type: chat_type }
 
       def unread? = unread
       def favorite? = favorite
