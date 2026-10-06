@@ -4,10 +4,11 @@ module Teems
   module Services
     # Directory naming helpers for SyncStore.
     #
-    # Every chat directory name ends with the chat's full sanitized ID, so two chats can never
-    # share a directory. Older teems versions keyed generic labels ("Group Chat") by a 20-character
-    # ID prefix and named chats by their title alone, which merged unrelated chats; see
-    # SyncDirOwnership for how directories left over from that are handled.
+    # A chat directory name ends with the chat's full sanitized ID, so two chats can't share one.
+    # Older teems versions keyed generic labels ("Group Chat") by a 20-character ID prefix and
+    # named chats by their title alone, which merged unrelated chats. Those names are kept for
+    # chats that still own their directory (see SyncDirPlanning); SyncDirOwnership handles
+    # directories that ended up shared.
     module SyncDirNaming
       MAX_DIR_NAME_LENGTH = 100
       # Most filesystems limit one path component to 255 bytes

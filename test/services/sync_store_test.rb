@@ -4,6 +4,14 @@ require 'test_helper'
 
 # Tests for SyncStore state persistence, directory naming, message storage, and corruption handling
 module SyncStoreTests
+  # The directory name a chat syncs into after SyncStore#ensure_chat_dir
+  module DirNameHelper
+    def ensure_dir_name(store, state, chat_info:)
+      store.ensure_chat_dir(state, chat_info: chat_info)
+      state.dig('chats', chat_info[:chat_id], 'dir_name')
+    end
+  end
+
   # Tests sync directory paths, state save/load, chat state updates, and atomic writes
   class BasicTest < Minitest::Test
     def test_sync_dir_uses_xdg_data_home
@@ -192,13 +200,15 @@ module SyncStoreTests
 
   # Tests directory name sanitization, generic label suffixes, truncation, and fallback naming
   class DirNamingTest < Minitest::Test
+    include DirNameHelper
+
     def test_build_dir_name_sanitizes_unsafe_chars
       with_temp_config do
         store = Teems::Services::SyncStore.new
         state = { 'chats' => {} }
-        dir_name = store.ensure_dir_name(state,
-                                         chat_info: { chat_id: '19:abc@thread.v2',
-                                                      display_name: 'Project: Design/Review <Q1>' })
+        dir_name = ensure_dir_name(store, state,
+                                   chat_info: { chat_id: '19:abc@thread.v2',
+                                                display_name: 'Project: Design/Review <Q1>' })
         assert_equal 'Project- Design-Review -Q1- (19_abc_thread.v2)', dir_name
         %w[: / < >].each { |ch| refute_includes dir_name, ch }
       end
@@ -209,9 +219,9 @@ module SyncStoreTests
         store = Teems::Services::SyncStore.new
         state = { 'chats' => {} }
         ['Group Chat', '1:1 Chat', 'Meeting Chat'].each do |label|
-          dir_name = store.ensure_dir_name(state,
-                                           chat_info: { chat_id: '19:abc123def456@thread.v2',
-                                                        display_name: label })
+          dir_name = ensure_dir_name(store, state,
+                                     chat_info: { chat_id: '19:abc123def456@thread.v2',
+                                                  display_name: label })
           assert_match(/\(19_abc123def456_thread\.v2\)\z/, dir_name, "#{label} should end with the full ID")
         end
       end
@@ -220,8 +230,8 @@ module SyncStoreTests
     def test_named_topics_end_with_full_id
       with_temp_config do
         state = { 'chats' => {} }
-        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(
-          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'EERT Sprint Planning' }
+        dir_name = ensure_dir_name(
+          Teems::Services::SyncStore.new, state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'EERT Sprint Planning' }
         )
         assert_equal 'EERT Sprint Planning (19_abc_thread.v2)', dir_name
       end
@@ -230,8 +240,8 @@ module SyncStoreTests
     def test_null_display_name_falls_back_to_sanitized_id
       with_temp_config do
         state = { 'chats' => {} }
-        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(
-          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: nil }
+        dir_name = ensure_dir_name(
+          Teems::Services::SyncStore.new, state, chat_info: { chat_id: '19:abc@thread.v2', display_name: nil }
         )
         assert_equal '19_abc_thread.v2', dir_name
       end
@@ -255,8 +265,8 @@ module SyncStoreTests
     def test_long_display_name_is_truncated
       with_temp_config do
         state = { 'chats' => {} }
-        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(
-          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'A' * 200 }
+        dir_name = ensure_dir_name(
+          Teems::Services::SyncStore.new, state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'A' * 200 }
         )
         assert_equal "#{'A' * Teems::Services::SyncStore::MAX_DIR_NAME_LENGTH} (19_abc_thread.v2)", dir_name
       end
@@ -265,8 +275,8 @@ module SyncStoreTests
     def test_trailing_dots_and_spaces_stripped_from_dir_name
       with_temp_config do
         state = { 'chats' => {} }
-        dir_name = Teems::Services::SyncStore.new.ensure_dir_name(
-          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'My Chat...' }
+        dir_name = ensure_dir_name(
+          Teems::Services::SyncStore.new, state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'My Chat...' }
         )
         assert_equal 'My Chat (19_abc_thread.v2)', dir_name
       end
@@ -275,6 +285,8 @@ module SyncStoreTests
 
   # Tests directory renaming on topic or type change and collision avoidance
   class DirRenamingTest < Minitest::Test
+    include DirNameHelper
+
     def test_ensure_dir_name_renames_on_topic_change
       with_temp_config do
         chat_id = '19:abc@thread.v2'
@@ -326,8 +338,8 @@ module SyncStoreTests
       with_temp_config do
         store, state = build_store_with_state('19:abc@thread.v2', dir_name: 'Old Name', chat_type: 'group')
         old_dir, new_dir = setup_collision_dirs(store)
-        store.ensure_dir_name(
-          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'New Name', chat_type: 'group' }
+        ensure_dir_name(
+          store, state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'New Name', chat_type: 'group' }
         )
         assert File.directory?(old_dir), 'Old dir should still exist since rename was skipped'
         assert_equal '# Existing content', File.read(File.join(new_dir, 'messages.md'))
@@ -337,7 +349,7 @@ module SyncStoreTests
     private
 
     def ensure_dir(store, state, chat_info)
-      store.ensure_dir_name(state, chat_info: chat_info)
+      ensure_dir_name(store, state, chat_info: chat_info)
     end
 
     def update_and_load_chat_state(chat_id, display_name:, chat_type:)
@@ -416,6 +428,8 @@ module SyncStoreTests
 
   # Tests chat type to subdirectory mapping and type storage in state
   class TypeSubdirectoryTest < Minitest::Test
+    include DirNameHelper
+
     TYPE_TO_SUBDIR = {
       'group' => 'groups', 'oneOnOne' => 'dms', 'meeting' => 'meetings',
       'channel' => 'channels', 'space' => 'spaces'
@@ -478,8 +492,8 @@ module SyncStoreTests
     def test_ensure_dir_name_stores_chat_type_in_state
       with_temp_config do
         state = { 'chats' => {} }
-        Teems::Services::SyncStore.new.ensure_dir_name(
-          state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'My Chat', chat_type: 'group' }
+        ensure_dir_name(
+          Teems::Services::SyncStore.new, state, chat_info: { chat_id: '19:abc@thread.v2', display_name: 'My Chat', chat_type: 'group' }
         )
         assert_equal 'group', state.dig('chats', '19:abc@thread.v2', 'chat_type')
       end
@@ -584,6 +598,8 @@ module SyncStoreTests
 
   # Every chat gets its own directory, keyed by its full ID
   class DirUniquenessTest < Minitest::Test
+    include DirNameHelper
+
     # 1:1 chat IDs embed both users' IDs, so every DM with the same person first shares a long prefix
     ME = '11111111-2222-3333-4444-555555555555'
     DM_A = "19:#{ME}_aaaaaaaa-0000-0000-0000-000000000001@unq.gbl.spaces".freeze
@@ -645,16 +661,54 @@ module SyncStoreTests
     private
 
     def dir_for(store, state, chat_id, display_name, chat_type)
-      store.ensure_dir_name(state, chat_info: { chat_id: chat_id, display_name: display_name, chat_type: chat_type })
+      ensure_dir_name(store, state, chat_info: { chat_id: chat_id, display_name: display_name, chat_type: chat_type })
       store.chat_dir(chat_id, state: state)
+    end
+  end
+
+  # Two 1:1 chats an older version put in one folder, plus a chat with a folder of its own
+  module SharedDirFixtures
+    SHARED = 'Group Chat (19_11111111-2222-333)'
+    DM_A = DirUniquenessTest::DM_A
+    DM_B = DirUniquenessTest::DM_B
+
+    private
+
+    def legacy_state
+      synced = { 'chat_type' => 'group', 'last_synced_at' => '2026-01-20T12:00:00Z' }
+      { 'chats' => { DM_A => synced.merge('dir_name' => SHARED), DM_B => synced.merge('dir_name' => SHARED),
+                     '19:unique@thread.v2' => synced.merge('dir_name' => 'Unique Chat (19_unique_thread.v2)') } }
+    end
+
+    def seed_shared_dir(store)
+      dir = File.join(store.sync_dir, 'chats', 'groups', SHARED)
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, 'messages.json'),
+                 JSON.generate([{ 'id' => 'legacy-2', 'created_at' => '2025-06-01T08:00:00Z' },
+                                { 'id' => 'legacy-1', 'created_at' => '2025-02-01T08:00:00Z' }, 'junk']))
+      File.write(File.join(dir, 'messages.md'), '# legacy')
+      [dir, dir_snapshot(dir)]
+    end
+
+    def dir_snapshot(dir)
+      Dir.children(dir).sort.to_h { |name| [name, File.binread(File.join(dir, name))] }
+    end
+
+    def with_detached_state
+      with_temp_config do
+        store = Teems::Services::SyncStore.new
+        state = legacy_state
+        shared_dir, = seed_shared_dir(store)
+        store.detach_shared_dirs(state)
+        yield store, state, shared_dir
+      end
     end
   end
 
   # Directories that older versions gave to more than one chat are detected and detached
   class SharedDirsTest < Minitest::Test
-    SHARED = 'Group Chat (19_11111111-2222-333)'
-    DM_A = DirUniquenessTest::DM_A
-    DM_B = DirUniquenessTest::DM_B
+    include DirNameHelper
+    include SharedDirFixtures
 
     def test_shared_dirs_lists_dirs_used_by_more_than_one_chat
       store = Teems::Services::SyncStore.new
@@ -662,9 +716,22 @@ module SyncStoreTests
     end
 
     def test_shared_dirs_ignores_letter_case
-      state = { 'chats' => { 'a' => { 'dir_name' => 'Standup', 'chat_type' => 'meeting' },
-                             'b' => { 'dir_name' => 'standup', 'chat_type' => 'meeting' } } }
+      synced = { 'chat_type' => 'meeting', 'message_count' => 1 }
+      state = { 'chats' => { 'a' => synced.merge('dir_name' => 'Standup'),
+                             'b' => synced.merge('dir_name' => 'standup') } }
       assert_equal({ 'meetings/Standup' => %w[a b] }, Teems::Services::SyncStore.new.shared_dirs(state))
+    end
+
+    def test_never_synced_chats_do_not_count_as_owners
+      state = legacy_state
+      state['chats'][DM_B] = { 'dir_name' => SHARED, 'chat_type' => 'group', 'unavailable' => true }
+      assert_empty Teems::Services::SyncStore.new.shared_dirs(state)
+    end
+
+    def test_chats_with_a_cleared_cursor_still_count_as_owners
+      state = legacy_state
+      state['chats'][DM_B] = state['chats'][DM_B].except('last_synced_at').merge('message_count' => 3)
+      assert_equal({ "groups/#{SHARED}" => [DM_A, DM_B] }, Teems::Services::SyncStore.new.shared_dirs(state))
     end
 
     def test_detach_leaves_files_untouched_and_resets_cursors
@@ -694,26 +761,8 @@ module SyncStoreTests
 
     private
 
-    def legacy_state
-      synced = { 'chat_type' => 'group', 'last_synced_at' => '2026-01-20T12:00:00Z' }
-      { 'chats' => { DM_A => synced.merge('dir_name' => SHARED), DM_B => synced.merge('dir_name' => SHARED),
-                     '19:unique@thread.v2' => synced.merge('dir_name' => 'Unique Chat (19_unique_thread.v2)') } }
-    end
-
-    def seed_shared_dir(store)
-      dir = File.join(store.sync_dir, 'chats', 'groups', SHARED)
-      FileUtils.mkdir_p(dir)
-      File.write(File.join(dir, 'messages.json'), JSON.generate([{ 'id' => 'legacy-1' }]))
-      File.write(File.join(dir, 'messages.md'), '# legacy')
-      [dir, dir_snapshot(dir)]
-    end
-
-    def dir_snapshot(dir)
-      Dir.children(dir).sort.to_h { |name| [name, File.binread(File.join(dir, name))] }
-    end
-
     def ensure_dm(store, state, chat_id)
-      store.ensure_dir_name(state, chat_info: { chat_id: chat_id, display_name: '1:1 Chat', chat_type: 'oneOnOne' })
+      ensure_dir_name(store, state, chat_info: { chat_id: chat_id, display_name: '1:1 Chat', chat_type: 'oneOnOne' })
       store.chat_dir(chat_id, state: state)
     end
 
@@ -721,6 +770,180 @@ module SyncStoreTests
       assert_nil entry['dir_name']
       assert_nil entry['last_synced_at']
       assert_equal "groups/#{SHARED}", entry['legacy_shared_dir']
+    end
+  end
+
+  # Detached chats keep enough history to re-sync fully, and their old folders stay on record
+  class SharedDirHistoryTest < Minitest::Test
+    include SharedDirFixtures
+
+    def test_detach_only_one_chat_still_detaches_the_others_later
+      with_temp_config do
+        store = Teems::Services::SyncStore.new
+        state = legacy_state
+        assert_equal({ "groups/#{SHARED}" => [DM_A] }, store.detach_shared_dirs(state, only: DM_A))
+        assert_equal SHARED, state.dig('chats', DM_B, 'dir_name')
+        assert_empty store.detach_shared_dirs(state, only: '19:unique@thread.v2')
+        assert_equal({ "groups/#{SHARED}" => [DM_B] }, store.detach_shared_dirs(state))
+      end
+    end
+
+    def test_resync_starts_at_the_oldest_message_in_the_shared_dir
+      with_detached_state do |store, state|
+        assert_equal Time.parse('2025-02-01T08:00:00Z'), store.resync_from(state, DM_A)
+        store.update_chat_state(state, DM_A, attrs: { last_synced_at: Time.now, message_count: 1 })
+        refute state.dig('chats', DM_A).key?('resync_from')
+      end
+    end
+
+    def test_unreadable_shared_dir_messages_are_left_alone
+      with_temp_config do
+        store = Teems::Services::SyncStore.new
+        state = legacy_state
+        shared_dir, = seed_shared_dir(store)
+        File.write(File.join(shared_dir, 'messages.json'), '{not json')
+        store.detach_shared_dirs(state)
+        assert_nil store.resync_from(state, DM_A)
+        assert_equal '{not json', File.read(File.join(shared_dir, 'messages.json')), 'never renamed as corrupt'
+      end
+    end
+
+    def test_legacy_shared_dirs_lists_detached_dirs_while_they_exist
+      with_detached_state do |store, state, shared_dir|
+        assert_equal({ "groups/#{SHARED}" => [DM_A, DM_B] }, store.legacy_shared_dirs(state))
+        FileUtils.rm_rf(shared_dir)
+        assert_empty store.legacy_shared_dirs(state)
+      end
+    end
+  end
+
+  # A chat that owns "groups/<title>" and has one synthetic stored message
+  module DirPlanningFixtures
+    CHAT = '19:planning@thread.v2'
+    OTHER = '19:other@thread.v2'
+    FULL_NAME = 'Planning (19_planning_thread.v2)'
+
+    private
+
+    def owner(display_name)
+      { 'dir_name' => display_name, 'chat_type' => 'group', 'display_name' => display_name,
+        'last_synced_at' => '2026-01-20T12:00:00Z', 'message_count' => 1 }
+    end
+
+    def info(display_name) = { chat_id: CHAT, display_name: display_name, chat_type: 'group' }
+
+    def with_store(entry:, others: {})
+      with_temp_config do
+        store = Teems::Services::SyncStore.new
+        dir_name = entry['dir_name']
+        seed_dir(store, "groups/#{dir_name}") if dir_name
+        yield store, { 'chats' => { CHAT => entry }.merge(others) }
+      end
+    end
+
+    def seed_dir(store, relative)
+      FileUtils.mkdir_p(path(store, relative))
+      File.write(path(store, "#{relative}/messages.json"), JSON.generate([{ 'id' => 'm1' }]))
+    end
+
+    def path(store, relative) = File.join(store.sync_dir, 'chats', relative)
+
+    def stored_ids(store, relative)
+      JSON.parse(File.read(path(store, "#{relative}/messages.json"))).map { |message| message['id'] }
+    end
+  end
+
+  # Existing folders keep their names; only new, detached and changed chats get full-ID names
+  class DirPlanningTest < Minitest::Test
+    include DirPlanningFixtures
+
+    def test_unchanged_chats_keep_their_folder
+      with_store(entry: owner('Planning')) do |store, state|
+        move = store.ensure_chat_dir(state, chat_info: info('Planning'))
+        assert_equal [:kept, 'groups/Planning', 'groups/Planning'], [move.kind, move.from, move.to]
+        assert File.directory?(path(store, 'groups/Planning'))
+      end
+    end
+
+    def test_a_renamed_chat_moves_to_a_full_id_folder
+      with_store(entry: owner('Old Title')) do |store, state|
+        move = store.ensure_chat_dir(state, chat_info: info('Planning'))
+        assert_equal [:move, "groups/#{FULL_NAME}"], [move.kind, move.to]
+        assert_equal "groups/Old Title → groups/#{FULL_NAME}", move.to_s
+        assert_equal ['m1'], stored_ids(store, move.to)
+        refute File.exist?(path(store, 'groups/Old Title'))
+      end
+    end
+
+    def test_migrate_gives_unchanged_chats_a_full_id_folder
+      with_store(entry: owner('Planning')) do |store, state|
+        migrate = info('Planning').merge(migrate: true)
+        assert_equal [:move, "groups/#{FULL_NAME}"],
+                     store.ensure_chat_dir(state, chat_info: migrate).to_h.values_at(:kind, :to)
+        assert_equal :kept, store.ensure_chat_dir(state, chat_info: migrate).kind
+      end
+    end
+
+    def test_unknown_name_and_type_keep_the_stored_ones
+      with_store(entry: owner('Planning')) do |store, state|
+        assert_equal :kept, store.ensure_chat_dir(state, chat_info: { chat_id: CHAT }).kind
+        store.update_chat_state(state, CHAT, attrs: { last_synced_at: Time.now, message_count: 2 })
+        assert_equal %w[Planning group Planning],
+                     state.dig('chats', CHAT).values_at('display_name', 'chat_type', 'dir_name')
+      end
+    end
+
+    def test_new_and_detached_chats
+      with_store(entry: { 'legacy_shared_dir' => 'groups/Shared', 'chat_type' => 'group' }) do |store, state|
+        assert_equal [:split, 'groups/Shared'],
+                     store.plan_chat_dir(state, info('Planning')).to_h.values_at(:kind, :from)
+        assert_equal [:new, nil],
+                     store.plan_chat_dir(state, info('Other').merge(chat_id: OTHER)).to_h.values_at(:kind, :from)
+      end
+    end
+  end
+
+  # Moves never overwrite a folder or take one that holds another chat's messages
+  class DirMoveSafetyTest < Minitest::Test
+    include DirPlanningFixtures
+
+    def test_an_existing_target_is_used_and_the_old_folder_left_alone
+      with_store(entry: owner('Old Title')) do |store, state|
+        seed_dir(store, "groups/#{FULL_NAME}")
+        assert_equal :repoint, store.ensure_chat_dir(state, chat_info: info('Planning')).kind
+        assert_equal ['m1'], stored_ids(store, 'groups/Old Title')
+      end
+    end
+
+    def test_a_missing_old_folder_is_just_retargeted
+      with_store(entry: owner('Old Title')) do |store, state|
+        FileUtils.rm_rf(path(store, 'groups/Old Title'))
+        assert_equal :retarget, store.ensure_chat_dir(state, chat_info: info('Planning')).kind
+        assert_equal FULL_NAME, state.dig('chats', CHAT, 'dir_name')
+      end
+    end
+
+    def test_a_never_synced_chat_leaves_the_owners_folder_alone
+      dead = { 'dir_name' => 'Old Title', 'chat_type' => 'group', 'display_name' => 'Old Title' }
+      with_store(entry: owner('Old Title'), others: { OTHER => dead }) do |store, state|
+        assert_equal :kept, store.ensure_chat_dir(state, chat_info: info('Old Title')).kind
+        move = store.ensure_chat_dir(state, chat_info: info('Old Title').merge(chat_id: OTHER))
+        assert_equal [:release, 'groups/Old Title', 'groups/Old Title (19_other_thread.v2)'],
+                     move.to_h.values_at(:kind, :from, :to)
+        assert_equal ['m1'], stored_ids(store, 'groups/Old Title')
+      end
+    end
+
+    def test_write_dir_map_records_moves
+      with_temp_config do
+        store = Teems::Services::SyncStore.new
+        move = Teems::Services::SyncDirPlanning::DirMove.new(CHAT, 'groups/Planning', "groups/#{FULL_NAME}", :move)
+        map_path = store.write_dir_map([move], time: Time.new(2026, 10, 6, 18, 0, 0))
+        assert map_path.end_with?('/sync/dir-maps/20261006-180000.json')
+        map = JSON.parse(File.read(map_path))
+        assert_equal [File.join(store.sync_dir, 'chats'), [move.to_h.transform_keys(&:to_s).merge('kind' => 'move')]],
+                     map.values_at('root', 'moves')
+      end
     end
   end
 end

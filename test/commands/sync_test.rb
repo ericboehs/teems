@@ -883,7 +883,7 @@ module SyncCommandTests
         seed_legacy_folder
         state_before = Teems::Services::SyncStore.new.load_state
         result = run_dm_sync(['--dry-run'])
-        assert_includes result[:stderr], 'mix messages from several chats'
+        assert_includes result[:stdout], "Shared folders that would be detached (1):\n  groups/#{LEGACY_DIR} (2 chats)"
         assert_equal state_before, Teems::Services::SyncStore.new.load_state
       end
     end
@@ -931,6 +931,308 @@ module SyncCommandTests
     def chat_dir(chat_id)
       store = Teems::Services::SyncStore.new
       store.chat_dir(chat_id, state: store.load_state)
+    end
+  end
+
+  # Upgrading from a version that named folders by title or ID prefix. Fixture: two 1:1s sharing a
+  # legacy folder, a 1:1 that owns its legacy folder under groups/, and a group chat that owns
+  # "Planning"; every folder holds synthetic messages.
+  module FolderUpgradeHelpers
+    include SharedHelpers
+
+    ME = SeparateFoldersTest::ME
+    DM_A = SeparateFoldersTest::DM_A
+    DM_B = SeparateFoldersTest::DM_B
+    DM_SOLO = "19:99999999-8888-7777-6666-555555555555_#{ME}@unq.gbl.spaces".freeze
+    GROUP = '19:planning@thread.v2'
+    SHARED_DIR = 'groups/Group Chat (19_11111111-2222-333)'
+    SOLO_DIR = 'groups/Group Chat (19_99999999-8888-777)'
+    GROUP_DIR = 'groups/Planning'
+    DAY = 86_400
+
+    private
+
+    def seed_upgrade(extra: {})
+      Teems::Services::SyncStore.new.save_state('chats' => legacy_chats.merge(extra))
+      seed_folder(SHARED_DIR, [stored_message('shared-oldest', 400), stored_message('shared-recent', 10)])
+      seed_folder(SOLO_DIR, [stored_message('solo-old', 30)])
+      seed_folder(GROUP_DIR, [stored_message('plan-old', 30)])
+    end
+
+    def legacy_chats
+      synced = { 'chat_type' => 'group', 'display_name' => 'Group Chat', 'message_count' => 1,
+                 'last_synced_at' => (Time.now - DAY).utc.iso8601 }
+      { DM_A => synced.merge('dir_name' => File.basename(SHARED_DIR)),
+        DM_B => synced.merge('dir_name' => File.basename(SHARED_DIR)),
+        DM_SOLO => synced.merge('dir_name' => File.basename(SOLO_DIR)),
+        GROUP => synced.merge('dir_name' => 'Planning', 'display_name' => 'Planning') }
+    end
+
+    def seed_folder(path, messages)
+      FileUtils.mkdir_p(chats_path(path))
+      File.write(File.join(chats_path(path), 'messages.json'), JSON.generate(messages))
+      File.write(File.join(chats_path(path), 'messages.md'), '# synthetic')
+    end
+
+    def stored_message(id, days_ago)
+      old_message_fixture.merge('id' => id, 'created_at' => (Time.now - (days_ago * DAY)).utc.iso8601)
+    end
+
+    def run_upgrade_sync(args = [], interrupt: nil)
+      runner, out, err = build_sync_runner
+      api = runner.api_client
+      api.stub_error(messages_path(interrupt), Interrupt.new) if interrupt
+      chat_messages.each { |id, messages| api.stub(messages_path(id), { 'messages' => messages, '_metadata' => {} }) }
+      api.stub('/v1/users/ME/conversations', { 'conversations' => chat_list })
+      Teems::Commands::Sync.new(args, runner: runner).execute
+      sync_result(out, err).merge(api: api)
+    end
+
+    def chat_messages
+      { DM_SOLO => [api_message('solo-new')], DM_A => [api_message('a-old', 300), api_message('a-new')],
+        DM_B => [api_message('b-new')], GROUP => [api_message('plan-new')] }
+    end
+
+    def chat_list
+      dms = [DM_SOLO, DM_A, DM_B].map do |id|
+        { 'id' => id, 'properties' => {},
+          'threadProperties' => { 'threadType' => 'chat', 'productThreadType' => 'OneToOneChat' } }
+      end
+      dms << { 'id' => GROUP, 'properties' => {},
+               'threadProperties' => { 'threadType' => 'chat', 'topic' => 'Planning' } }
+    end
+
+    def api_message(id, days_ago = 0)
+      composed = Time.now - 3600 - (days_ago * DAY)
+      sample_ng_msg_message.merge('id' => id, 'composetime' => composed.utc.strftime('%Y-%m-%dT%H:%M:%S.000Z'))
+    end
+
+    def messages_path(chat_id) = "#{URI.encode_www_form_component(chat_id)}/messages"
+
+    def load_state = Teems::Services::SyncStore.new.load_state
+
+    def chat_entry(chat_id) = load_state.dig('chats', chat_id)
+
+    def chats_path(path) = File.join(Teems::Services::SyncStore.new.sync_dir, 'chats', path)
+
+    def relative_chat_dir(chat_id)
+      entry = chat_entry(chat_id)
+      File.join(Teems::Services::SyncDirNaming.type_dir(entry['chat_type']), entry['dir_name'])
+    end
+
+    def synced_ids(chat_id) = load_synced_messages(chat_id).map { |message| message['id'] }
+
+    def synced_ids_for(*chat_ids) = chat_ids.map { |chat_id| synced_ids(chat_id) }
+
+    def stored_ids(path) = JSON.parse(File.read(File.join(chats_path(path), 'messages.json'))).map { |msg| msg['id'] }
+
+    # Every file and directory under root, with file contents and modification times
+    def tree_snapshot(root)
+      Dir.glob('**/*', File::FNM_DOTMATCH, base: root).reject { |rel| File.basename(rel) == '.' }.sort.to_h do |rel|
+        path = File.join(root, rel)
+        [rel, File.directory?(path) ? :dir : [File.binread(path), File.mtime(path)]]
+      end
+    end
+  end
+
+  # Folders one chat owns keep their names; changed and migrated chats get full-ID folders
+  class FolderUpgradeRenameTest < Minitest::Test
+    include FolderUpgradeHelpers
+
+    def test_a_misfiled_dm_moves_to_dms_with_its_history
+      with_temp_config do
+        seed_upgrade
+        result = run_upgrade_sync
+        solo_dir = relative_chat_dir(DM_SOLO)
+        assert_match(%r{\Adms/1-1 Chat \(19_99999999-.*_unq\.gbl\.spaces\)\z}, solo_dir)
+        refute File.exist?(chats_path(SOLO_DIR))
+        assert_equal %w[solo-old solo-new], synced_ids(DM_SOLO)
+        assert_includes result[:stdout], "Folder: #{SOLO_DIR} → #{solo_dir}\n"
+      end
+    end
+
+    def test_a_folder_one_chat_owns_keeps_its_name
+      with_temp_config do
+        seed_upgrade
+        result = run_upgrade_sync
+        assert_equal [GROUP_DIR, %w[plan-old plan-new]], [relative_chat_dir(GROUP), synced_ids(GROUP)]
+        refute_includes result[:stdout], "Folder: #{GROUP_DIR}"
+      end
+    end
+
+    def test_sync_chat_keeps_the_stored_name_and_type
+      with_temp_config do
+        seed_upgrade
+        run_upgrade_sync(['--chat', GROUP])
+        assert_equal GROUP_DIR, relative_chat_dir(GROUP)
+        assert_equal %w[Planning group], chat_entry(GROUP).values_at('display_name', 'chat_type')
+      end
+    end
+
+    def test_warns_when_a_move_leaves_the_old_folder_behind
+      with_temp_config do
+        seed_upgrade
+        planned = Teems::Services::SyncStore.new.plan_chat_dir(load_state, chat_id: DM_SOLO, display_name: '1:1 Chat',
+                                                                           chat_type: 'oneOnOne')
+        FileUtils.mkdir_p(chats_path(planned.to))
+        assert_includes run_upgrade_sync[:stderr], "Folder: #{planned} (the new folder already exists: switching " \
+                                                   'to it, the old folder is left in place)'
+        assert_equal ['solo-old'], stored_ids(SOLO_DIR)
+      end
+    end
+
+    def test_migrate_dirs_dry_run_previews_without_writing
+      with_temp_config do |root|
+        seed_upgrade
+        before = tree_snapshot(root)
+        result = run_upgrade_sync(%w[--dry-run --migrate-dirs])
+        assert_includes result[:stdout], "  #{GROUP_DIR} → groups/Planning (19_planning_thread.v2)\n"
+        assert_equal before, tree_snapshot(root)
+      end
+    end
+
+    def test_migrate_dirs_renames_kept_folders_and_writes_a_map
+      with_temp_config do
+        seed_upgrade
+        result = run_upgrade_sync(['--migrate-dirs'])
+        new_dir = 'groups/Planning (19_planning_thread.v2)'
+        assert_equal [new_dir, %w[plan-old plan-new]], [relative_chat_dir(GROUP), synced_ids(GROUP)]
+        moves = JSON.parse(File.read(result[:stdout][/Folder map: (\S+)/, 1]))['moves']
+        assert_includes moves, { 'chat_id' => GROUP, 'from' => GROUP_DIR, 'to' => new_dir, 'kind' => 'move' }
+      end
+    end
+
+    def test_help_mentions_migrate_dirs
+      result = capture_output { |out| Teems::Commands::Sync.new(['--help'], runner: configured_runner(output: out)).execute }
+      assert_includes result[:stdout], '--migrate-dirs'
+    end
+  end
+
+  # Upgrading never loses history: interrupted runs resume, and split chats re-fetch far enough back
+  class FolderUpgradeSafetyTest < Minitest::Test
+    include FolderUpgradeHelpers
+
+    def test_resumes_after_an_interrupted_run
+      with_temp_config do
+        seed_upgrade
+        state_before = load_state
+        assert_raises(Interrupt) { run_upgrade_sync(interrupt: GROUP) }
+        assert_equal state_before, load_state, 'state is only saved at the end of a run'
+        refute_includes run_upgrade_sync[:stderr], 'left in place'
+        assert_equal [%w[solo-old solo-new], %w[a-old a-new], %w[plan-old plan-new]],
+                     synced_ids_for(DM_SOLO, DM_A, GROUP)
+        assert_equal %w[shared-oldest shared-recent], stored_ids(SHARED_DIR)
+      end
+    end
+
+    def test_a_never_synced_chat_does_not_make_a_folder_shared
+      with_temp_config do
+        dead = { 'dir_name' => 'Planning', 'chat_type' => 'group', 'display_name' => 'Planning', 'unavailable' => true }
+        seed_upgrade(extra: { '19:gone@thread.v2' => dead })
+        refute_includes run_upgrade_sync[:stderr], GROUP_DIR
+        assert_equal [GROUP_DIR, %w[plan-old plan-new]], [relative_chat_dir(GROUP), synced_ids(GROUP)]
+        assert_nil chat_entry(GROUP)['legacy_shared_dir']
+      end
+    end
+
+    def test_a_chat_with_a_cleared_cursor_still_owns_its_folder
+      with_temp_config do
+        seed_upgrade(extra: { DM_B => legacy_chats[DM_B].except('last_synced_at') })
+        assert_includes run_upgrade_sync[:stderr], "#{SHARED_DIR} (2 chats)"
+      end
+    end
+
+    def test_split_chats_refetch_back_to_the_oldest_legacy_message
+      with_temp_config do
+        seed_upgrade
+        result = run_upgrade_sync
+        oldest = Time.now - (400 * DAY)
+        assert_equal %w[a-old a-new], synced_ids(DM_A), 'a 300-day-old message is older than --since 180'
+        assert_includes result[:stdout], "re-fetching from #{oldest.strftime('%Y-%m-%d')}"
+        assert_in_delta oldest, start_time(result[:api], DM_A), 5
+      end
+    end
+
+    private
+
+    def start_time(api, chat_id)
+      Time.at(api.calls.find { |call| call[:path].include?(messages_path(chat_id)) }.dig(:params, :startTime) / 1000.0)
+    end
+
+    def test_shared_folder_warning_says_to_keep_the_old_folders
+      with_temp_config do
+        seed_upgrade
+        stderr = run_upgrade_sync[:stderr]
+        assert_includes stderr,
+                        "Older history may still exist only in the old folders, so keep them until you've checked"
+        refute_match(/delete/i, stderr)
+      end
+    end
+  end
+
+  # --dry-run previews every folder change; --chat only splits that chat; old folders stay listed
+  class FolderUpgradeReportTest < Minitest::Test
+    include FolderUpgradeHelpers
+
+    def test_dry_run_touches_nothing
+      with_temp_config do |root|
+        seed_upgrade
+        before = tree_snapshot(root)
+        run_upgrade_sync(['--dry-run'])
+        assert_equal before, tree_snapshot(root)
+      end
+    end
+
+    def test_dry_run_lists_every_folder_change
+      with_temp_config do
+        seed_upgrade
+        stdout = run_upgrade_sync(['--dry-run'])[:stdout]
+        assert_match(%r{Folder changes \(3\):\n  #{Regexp.escape(SOLO_DIR)} → dms/1-1 Chat \(19_99999999-[^)]+\)\n},
+                     stdout)
+        splits = [DM_A, DM_B].map { |id| "  #{SHARED_DIR} → dms/1-1 Chat (#{id.tr(':@', '__')}) (split from a shared" }
+        splits.each { |line| assert_includes stdout, line }
+        assert_includes stdout, "Shared folders that would be detached (1):\n  #{SHARED_DIR} (2 chats)"
+        refute_includes stdout, "#{GROUP_DIR} →"
+      end
+    end
+
+    def test_dry_run_without_changes
+      with_temp_config do
+        run_upgrade_sync
+        assert_includes run_upgrade_sync(['--dry-run'])[:stdout], 'Folder changes: none'
+      end
+    end
+
+    def test_sync_chat_splits_only_that_chat
+      with_temp_config do
+        seed_upgrade
+        assert_includes run_upgrade_sync(['--chat', DM_A])[:stderr], "#{SHARED_DIR} (1 chat)\n"
+        assert_equal SHARED_DIR, chat_entry(DM_A)['legacy_shared_dir']
+        assert_equal File.basename(SHARED_DIR), chat_entry(DM_B)['dir_name']
+        assert chat_entry(DM_B)['last_synced_at'], 'other chats keep their cursors'
+      end
+    end
+
+    def test_the_rest_of_a_shared_folder_splits_when_it_syncs
+      with_temp_config do
+        seed_upgrade
+        run_upgrade_sync(['--chat', DM_A])
+        assert_includes run_upgrade_sync[:stderr], "#{SHARED_DIR} (1 chat)\n"
+        assert_equal SHARED_DIR, chat_entry(DM_B)['legacy_shared_dir']
+      end
+    end
+
+    def test_old_shared_folders_are_listed_while_they_exist
+      with_temp_config do
+        seed_upgrade
+        listing = "Old shared folders still on disk (they may hold history the new folders don't):\n  " \
+                  "#{SHARED_DIR} (2 chats)"
+        refute_includes run_upgrade_sync[:stdout], listing, 'the first run already warned about them'
+        assert_includes run_upgrade_sync[:stdout], listing
+        assert_includes run_upgrade_sync(['--dry-run'])[:stdout], listing
+        FileUtils.rm_rf(chats_path(SHARED_DIR))
+        refute_includes run_upgrade_sync[:stdout], 'Old shared folders'
+      end
     end
   end
 end

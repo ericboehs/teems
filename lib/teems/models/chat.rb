@@ -90,6 +90,9 @@ module Teems
 
       def chat_type_label = CHAT_TYPE_LABELS.fetch(chat_type, chat_type)
 
+      # What sync uses to name and place the chat's directory
+      def sync_identity = { chat_id: id, display_name: display_name, chat_type: chat_type }
+
       def unread? = unread
       def favorite? = favorite
       def pinned? = pinned
