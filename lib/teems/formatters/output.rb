@@ -22,6 +22,14 @@ module Teems
       end
     end
 
+    # Stands in for stdout or stderr once its reader has gone away (see Output#to_stdout)
+    module NullIO
+      def self.puts(*) = nil
+      def self.print(*) = nil
+      def self.flush = self
+      def self.tty? = false
+    end
+
     # Terminal output with ANSI color support
     class Output
       include OutputColors
@@ -52,23 +60,23 @@ module Teems
       def tty? = @io.tty?
 
       def puts(message = '')
-        write_unless_quiet { @io.puts(message) }
+        write_unless_quiet { |io| io.puts(message) }
       end
 
       def print(message)
-        write_unless_quiet { @io.print(message) }
+        write_unless_quiet { |io| io.print(message) }
       end
 
       def flush
-        @io.flush
+        to_stdout(&:flush)
       end
 
       def error(message)
-        @err.puts(colorize("#{red('Error:')} #{message}"))
+        to_stderr { |err| err.puts(colorize("#{red('Error:')} #{message}")) }
       end
 
       def warn(message)
-        write_unless_quiet { @err.puts(colorize("#{yellow('Warning:')} #{message}")) }
+        to_stderr { |err| err.puts(colorize("#{yellow('Warning:')} #{message}")) } unless quiet?
       end
 
       def success(message)
@@ -82,13 +90,31 @@ module Teems
       def debug(message)
         return unless verbose?
 
-        @err.puts(colorize("#{gray('[debug]')} #{message}"))
+        to_stderr { |err| err.puts(colorize("#{gray('[debug]')} #{message}")) }
       end
 
       private
 
-      def write_unless_quiet
-        yield unless quiet?
+      def write_unless_quiet(&)
+        to_stdout(&) unless quiet?
+      end
+
+      # A reader that stops early (`teems ... | head`) is not an error: drop the
+      # rest of stdout and let the command finish quietly. Raising instead would
+      # surface as "Unexpected error: Broken pipe", or be caught by a per-item
+      # rescue and reported as a failed chat or download.
+      def to_stdout
+        yield @io
+      rescue Errno::EPIPE
+        @io = NullIO
+      end
+
+      # The same for stderr, which `teems ... 2>&1 | head` closes along with stdout. A
+      # warning that raised here would also escape the per-item rescues that report it.
+      def to_stderr
+        yield @err
+      rescue Errno::EPIPE
+        @err = NullIO
       end
 
       def wrap(color, text)

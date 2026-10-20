@@ -148,4 +148,71 @@ module OutputTests
       refute normal_output.quiet?
     end
   end
+
+  # Tests that a reader closing stdout early (`teems ... | head`) is not an error
+  class BrokenPipeTest < Minitest::Test
+    # stdout whose reader has gone away: every write fails with EPIPE
+    class BrokenIO
+      attr_reader :writes
+
+      def initialize = @writes = 0
+      def tty? = false
+      def puts(*) = fail_write
+      def print(*) = fail_write
+      def flush = fail_write
+
+      private
+
+      def fail_write
+        @writes += 1
+        raise Errno::EPIPE
+      end
+    end
+
+    def setup
+      @io = BrokenIO.new
+      @err = StringIO.new
+      @output = Teems::Formatters::Output.new(io: @io, err: @err, color: false)
+    end
+
+    def test_puts_stops_writing_after_broken_pipe
+      @output.puts('one')
+      @output.puts('two')
+      assert_equal 1, @io.writes
+    end
+
+    def test_print_stops_writing_after_broken_pipe
+      @output.print('one')
+      @output.print('two')
+      assert_equal 1, @io.writes
+    end
+
+    def test_flush_stops_after_broken_pipe
+      @output.flush
+      @output.flush
+      assert_equal 1, @io.writes
+    end
+
+    def test_broken_stdout_is_not_a_tty
+      @output.puts('one')
+      refute_predicate @output, :tty?
+    end
+
+    def test_stderr_still_writes_after_broken_pipe
+      @output.puts('one')
+      @output.warn('careful')
+      @output.error('bad')
+      assert_equal "Warning: careful\nError: bad\n", @err.string
+    end
+
+    # `teems ... 2>&1 | head` closes both streams
+    def test_stderr_stops_writing_after_broken_pipe
+      err = BrokenIO.new
+      output = Teems::Formatters::Output.new(io: StringIO.new, err: err, color: false, mode: :verbose)
+      output.warn('one')
+      output.error('two')
+      output.debug('three')
+      assert_equal 1, err.writes
+    end
+  end
 end

@@ -436,4 +436,44 @@ module CLITests
       assert_equal 'UTF-8 UTF-8', stdout
     end
   end
+
+  # A reader closing stdout early (`teems help | head`) is not an error
+  class BrokenPipeTest < Minitest::Test
+    def test_closed_stdout_exits_quietly
+      with_temp_config do |dir|
+        err = StringIO.new
+        with_closed_stdout do |stdout|
+          output = Teems::Formatters::Output.new(io: stdout, err: err, color: false)
+          assert_equal 0, Teems::CLI.new(['help'], output: output).run
+        end
+        assert_empty err.string
+        assert_empty Dir.glob("#{dir}/**/*.log")
+      end
+    end
+
+    # `teems ... 2>&1 | head`: errors go to the same closed pipe
+    def test_closed_stdout_and_stderr_exit_quietly
+      with_temp_config do |dir|
+        with_closed_stdout do |pipe|
+          output = Teems::Formatters::Output.new(io: pipe, err: pipe, color: false)
+          assert_equal 1, Teems::CLI.new(['bogus'], output: output).run
+        end
+        assert_empty Dir.glob("#{dir}/**/*.log")
+      end
+    end
+
+    private
+
+    # A pipe whose reader has already exited, like stdout under `| head`. sync makes the
+    # first write fail: a buffered writer would only fail once output passed the pipe
+    # buffer (~64KB), and Ruby ignores EPIPE when it flushes at exit.
+    def with_closed_stdout
+      reader, writer = IO.pipe
+      reader.close
+      writer.sync = true
+      yield writer
+    ensure
+      writer&.close
+    end
+  end
 end
