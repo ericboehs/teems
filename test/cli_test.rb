@@ -412,17 +412,28 @@ module CLITests
   # launchd and `env -i` start bin/teems without a locale, where Ruby reads files as US-ASCII
   class NoLocaleTest < Minitest::Test
     BIN = File.expand_path('../bin/teems', __dir__)
+    LOCALE = %w[LANG LC_ALL LC_CTYPE].to_h { |name| [name, nil] }.freeze
+    # Stands in for Teems::CLI (defined first, so the autoload never loads the real one) and
+    # prints the encoding of each argument bin/teems hands it
+    ARGS_PROBE = 'module Teems; class CLI; def initialize(args) = (@args = args); ' \
+                 'def run = (print(@args.map(&:encoding).join(" ")) || 0); end; end; load ARGV.shift'
 
     def test_reads_utf8_files_without_a_locale
       with_temp_config do
         Teems::Services::TokenStore.new.save(auth_token: 'a', skype_token: 's', name: 'Zoë Café')
-        locale = %w[LANG LC_ALL LC_CTYPE].to_h { |name| [name, nil] }
 
-        stdout, status = Open3.capture2(locale, RbConfig.ruby, BIN, 'auth', 'status')
+        stdout, status = Open3.capture2(LOCALE, RbConfig.ruby, BIN, 'auth', 'status')
 
         assert_predicate status, :success?
         assert_includes stdout.force_encoding(Encoding::UTF_8), 'Authenticated as: Zoë Café'
       end
+    end
+
+    def test_passes_utf8_arguments_without_a_locale
+      stdout, status = Open3.capture2(LOCALE, RbConfig.ruby, '-e', ARGS_PROBE, BIN, 'mail', 'Événements')
+
+      assert_predicate status, :success?
+      assert_equal 'UTF-8 UTF-8', stdout
     end
   end
 end

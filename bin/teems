@@ -2,11 +2,13 @@
 # frozen_string_literal: true
 
 # launchd and `env -i` start teems without a locale, where Ruby reads files (tokens, sync
-# indexes, legacy mail) as US-ASCII and fails on the first accented name. Everything teems
-# reads and writes is UTF-8.
+# indexes, legacy mail) as US-ASCII and fails on the first accented name, and passes
+# arguments as raw bytes, so "Événements" matches no folder. Everything teems reads, writes
+# and is given is UTF-8.
 Encoding.default_external = Encoding::UTF_8
+args = ARGV.map { |arg| arg.dup.force_encoding(Encoding::UTF_8) }
 
 $LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
 require 'teems'
 
-exit Teems::CLI.new(ARGV).run
+exit Teems::CLI.new(args).run
