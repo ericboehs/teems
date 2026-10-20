@@ -169,23 +169,27 @@ module Teems
 
       def help_text = HELP
 
-      # Under --no-login only the silent headless login is tried, never Safari
-      def auto_login = @options[:no_login] ? silent_login : super
-
       private
 
       def run_authenticated(handler)
         auth = require_auth
         return auth if auth
 
-        with_token_refresh { send(handler) }
-      rescue ApiError
-        raise
+        with_token_refresh { fresh_attempt(handler) }
+      rescue ApiError => e
+        api_error_result('Mail request failed', e)
       rescue Teems::Error => e
         error(e.message)
       end
 
-      def mail_api = @mail_api ||= Api::Mail.new(api_client, runner.account)
+      # The folder tree is cached for one attempt: a retry after a token refresh starts over
+      # with the new token
+      def fresh_attempt(handler)
+        @mail_folders = nil
+        send(handler)
+      end
+
+      def mail_api = runner.mail_api
       def mail_folders = @mail_folders ||= Services::MailFolders.new(mail_api)
       def mail_formatter = Formatters::MailFormatter.new(output: output)
       def id_cache = Services::MailIdCache.new

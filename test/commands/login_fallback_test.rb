@@ -8,16 +8,12 @@ class LoginFallbackTest < Minitest::Test
   # Exposes with_token_refresh; silent: true logs in like --no-login does
   class LoginCommand < Teems::Commands::Base
     def initialize(args, runner:, silent: false)
-      @silent = silent
       super(args, runner: runner)
+      @options[:no_login] = silent
     end
 
     def execute = 0
     def run(&) = with_token_refresh(&)
-
-    protected
-
-    def auto_login = @silent ? silent_login : super
   end
 
   TOKENS = { auth_token: 'fresh-auth', skype_token: 'fresh-skype' }.freeze

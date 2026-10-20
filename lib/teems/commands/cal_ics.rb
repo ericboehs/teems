@@ -8,12 +8,6 @@ module Teems
       ICS_DEFAULTS = { days: 60, days_back: 7, name: 'Outlook (teems)' }.freeze
       DAY_SECONDS = 86_400
 
-      protected
-
-      # Under --no-login only the silent headless login is tried, never Safari, so servers
-      # and launchd jobs never open a window
-      def auto_login = @options[:no_login] ? silent_login : super
-
       private
 
       def export_ics

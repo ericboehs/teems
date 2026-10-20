@@ -8,6 +8,7 @@ module Teems
     def chats_api = Api::Chats.new(api_client, account)
     def messages_api = Api::Messages.new(api_client, account)
     def calendar_api = Api::Calendar.new(api_client, account)
+    def mail_api = Api::Mail.new(api_client, account)
     def users_api = Api::Users.new(api_client, account)
     def files_api = Api::Files.new(api_client, account)
   end

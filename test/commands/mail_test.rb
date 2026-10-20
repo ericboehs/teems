@@ -93,14 +93,16 @@ class MailCommandTest < Minitest::Test
     end
   end
 
-  def test_api_errors_propagate_to_the_cli
+  def test_api_errors_are_reported_like_other_commands
     with_temp_config do
-      capture_output do |output|
+      result = capture_output do |output|
         runner = configured_runner(output: output)
         runner.api_client.stub_error('/messages', Teems::ApiError.new('HTTP 500', status_code: 500))
-
-        assert_raises(Teems::ApiError) { Teems::Commands::Mail.new(%w[list], runner: runner).execute }
+        @code = Teems::Commands::Mail.new(%w[list], runner: runner).execute
       end
+
+      assert_equal 1, @code
+      assert_includes result[:stderr], 'Mail request failed: HTTP 500'
     end
   end
 
@@ -289,10 +291,44 @@ class MailCommandTest < Minitest::Test
         runner.api_client.stub('/mailFolders/inbox', sample_mail_folder)
         runner.api_client.stub_error('/messages/delta', Teems::ApiError.new('Invalid token', status_code: 401))
 
-        error = assert_raises(Teems::ApiError) { Teems::Commands::Mail.new(%w[sync --no-login], runner: runner).execute }
-        assert_equal 'Re-authentication failed', error.message
+        assert_equal 1, Teems::Commands::Mail.new(%w[sync --no-login], runner: runner).execute
+        assert_includes output.instance_variable_get(:@err).string, 'Mail request failed: Re-authentication failed'
         assert_equal 1, extractor.silent_calls
       end
+    end
+  end
+
+  # The first request fails as expired, the refresh saves a new token, and the retry must
+  # carry it rather than the account the command started with
+  def refreshed_token_calls(args, stubs)
+    capture_output do |output|
+      runner = configured_runner(output: output, account: mock_account(auth_token: 'old'))
+      store = runner.token_store
+      fresh = mock_account(auth_token: 'new')
+      runner.define_singleton_method(:refresh_tokens) { store.instance_variable_set(:@account, fresh) }
+      runner.api_client.stub_transient_error('/v1.0/me/', Teems::ApiError.new('Invalid token', status_code: 401))
+      stubs.each { |path, response| runner.api_client.stub(path, response) }
+      @code = Teems::Commands::Mail.new(args, runner: runner).execute
+      @tokens = runner.api_client.calls.map { |call| call[:account].auth_token }
+    end
+    @tokens
+  end
+
+  def test_list_retries_with_the_refreshed_token
+    with_temp_config do
+      assert_equal %w[old new], refreshed_token_calls(%w[list], '/messages' => messages('m1'))
+      assert_equal 0, @code
+    end
+  end
+
+  def test_sync_retries_with_the_refreshed_token
+    with_temp_config do |dir|
+      tokens = refreshed_token_calls(['sync', '--dir', File.join(dir, 'mail')],
+                                     '/mailFolders/inbox' => sample_mail_folder, **sync_stubs)
+
+      assert_equal 0, @code
+      assert_equal 'old', tokens.first
+      assert_equal ['new'], tokens.drop(1).uniq
     end
   end
 

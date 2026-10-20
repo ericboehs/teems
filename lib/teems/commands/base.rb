@@ -14,6 +14,11 @@ module Teems
       def puts(message = '') = @options[:quiet] || output.puts(message)
       def print(msg) = @options[:quiet] || output.print(msg)
       def output_json(data) = output.puts(JSON.pretty_generate(data))
+
+      def api_error_result(prefix, err)
+        error("#{prefix}: #{err.message}")
+        1
+      end
     end
 
     # Option validation helpers for CLI commands
@@ -159,11 +164,9 @@ module Teems
         yield
       end
 
-      def auto_login = save_extracted_tokens(&:extract)
-
-      # Like auto_login, but only the headless helper with the cached sign-in session, which
-      # opens no window: what launchd and cron jobs can use (--no-login)
-      def silent_login = save_extracted_tokens(&:extract_silently)
+      # Under --no-login (for commands that take it) only the silent headless login is tried,
+      # never Safari, so servers, launchd and cron jobs never open a window
+      def auto_login = save_extracted_tokens(&(@options[:no_login] ? :extract_silently : :extract))
 
       def save_extracted_tokens
         tokens = yield(runner.token_extractor)

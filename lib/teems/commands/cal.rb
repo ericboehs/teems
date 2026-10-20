@@ -312,11 +312,6 @@ module Teems
         resolve_event_id || 1
       end
 
-      def api_error_result(prefix, err)
-        error("#{prefix}: #{err.message}")
-        1
-      end
-
       def render_single_event(event_id)
         event = fetch_event_for_display(event_id)
         render_event_output(event)
