@@ -28,10 +28,16 @@ module Teems
         api_error_result('Failed to fetch calendar', e)
       end
 
+      # With --all-calendars, a shared calendar that cannot be read is warned about and left
+      # out, so one calendar does not take down the feed
       def fetch_feed_events(now)
         api = runner.calendar_api
-        views = @options[:all_calendars] ? api.calendar_views : [Api::Calendar::DEFAULT_VIEW]
-        api.feed_events(from: ics_start(now), to: ics_end(now), views: views)
+        range = { from: ics_start(now), to: ics_end(now) }
+        return api.feed_events(**range) unless @options[:all_calendars]
+
+        api.feed_events(**range, views: api.calendar_views) do |name, error|
+          warn("Skipped calendar #{name.inspect}: #{error.message}")
+        end
       end
 
       def ics_option(key) = @options[key] || ICS_DEFAULTS.fetch(key)

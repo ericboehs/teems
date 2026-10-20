@@ -32,7 +32,8 @@ module Teems
 
       ICS OPTIONS:
         --all-calendars      Every calendar (holidays, shared ones), not just the
-                             default one
+                             default one. One that cannot be read is skipped with
+                             a warning
         --days N             Days ahead to include (default: 60)
         --days-back N        Days back to include (default: 7)
         --exclude-attendee ADDRS
