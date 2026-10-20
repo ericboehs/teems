@@ -38,7 +38,8 @@ module Teems
                              accepted (comma separated), e.g. ones already on
                              another calendar you subscribe to
         --name NAME          Calendar name (default: "Outlook (teems)")
-        --no-login           Never open Safari to sign in (for servers, launchd)
+        --no-login           Never open Safari: renew expired tokens silently
+                             from the cached sign-in, or fail (servers, launchd)
 
       CREATE OPTIONS:
         --start TIME         Start time: "YYYY-MM-DD HH:MM", "today HH:MM",

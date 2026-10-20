@@ -80,9 +80,11 @@ class CalIcsCommandTest < Minitest::Test
     with_temp_config do
       capture_output do |output|
         runner = unconfigured_runner(output)
-        runner.define_singleton_method(:token_extractor) { |**| raise 'must not open Safari' }
+        extractor = Teems::TestHelpers::SilentOnlyExtractor.new
+        runner.define_singleton_method(:token_extractor) { |**| extractor }
 
         assert_equal 1, Teems::Commands::Cal.new(%w[ics --no-login], runner: runner).execute
+        assert_equal 1, extractor.silent_calls
       end
     end
   end

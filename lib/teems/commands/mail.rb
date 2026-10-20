@@ -112,7 +112,8 @@ module Teems
           --since DAYS      First sync of a folder: only mail from the last DAYS days,
                             or "all" (default 90). Later runs fetch only changes.
           --attachments     Also download file attachments to <Folder>/attachments/
-          --no-login        Never open Safari to log in (for launchd and cron)
+          --no-login        Never open Safari: renew expired tokens silently from the
+                            cached sign-in, or fail (for launchd and cron)
 
         Folders are names ("Inbox", "Sent Items", "Projects/EERT"), well-known names
         (inbox, archive, sent, drafts, deleted, junk), or Graph folder IDs. IDs from
@@ -166,8 +167,8 @@ module Teems
 
       def help_text = HELP
 
-      # Never opens Safari under --no-login; token refresh still works
-      def auto_login = @options[:no_login] ? nil : super
+      # Under --no-login only the silent headless login is tried, never Safari
+      def auto_login = @options[:no_login] ? silent_login : super
 
       private
 

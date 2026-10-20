@@ -176,10 +176,12 @@ class MailCommandTest < Minitest::Test
       capture_output do |output|
         runner = Teems::Runner.new(output: output, token_store: mock_token_store(configured: false),
                                    api_client: MockApiClient.new)
-        runner.define_singleton_method(:token_extractor) { |**| raise 'must not open Safari' }
+        extractor = Teems::TestHelpers::SilentOnlyExtractor.new
+        runner.define_singleton_method(:token_extractor) { |**| extractor }
 
         assert_equal 1, Teems::Commands::Mail.new(%w[list --no-login], runner: runner).execute
         assert_includes output.instance_variable_get(:@err).string, 'Not authenticated'
+        assert_equal 1, extractor.silent_calls
       end
     end
   end

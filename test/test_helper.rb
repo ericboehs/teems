@@ -231,6 +231,25 @@ module Teems
     # Returns nil from extract, preventing real Safari/headless auth in tests
     class NullExtractor
       def extract = nil
+      def extract_silently = nil
+    end
+
+    # Extractor for --no-login: the silent headless login answers with tokens (nil when
+    # there is no cached session), and opening Safari fails the test
+    class SilentOnlyExtractor
+      attr_reader :silent_calls
+
+      def initialize(tokens = nil)
+        @tokens = tokens
+        @silent_calls = 0
+      end
+
+      def extract = raise('must not open Safari')
+
+      def extract_silently
+        @silent_calls += 1
+        @tokens
+      end
     end
 
     # Mock token store class

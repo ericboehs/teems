@@ -61,7 +61,7 @@ teems cal ics --days 30 --days-back 0          # A different window
 teems cal ics --exclude-attendee me@other.example --name "Work" --no-login
 ```
 
-`teems cal ics` prints your calendar as an iCalendar file, for a local server that Calendar.app subscribes to. Every occurrence of a recurring meeting is its own event. Events keep their invitees, responses and description, and Teams meetings carry their join link (`URL`, `CONFERENCE`) so Calendar.app shows a Join button. Cancelled meetings are marked `STATUS:CANCELLED` and free time is `TRANSP:TRANSPARENT`. `--exclude-attendee` leaves out events those addresses organize or have accepted, such as ones already on another calendar you subscribe to. `--no-login` makes it fail instead of opening Safari when the tokens have expired, which is what you want from launchd or a server.
+`teems cal ics` prints your calendar as an iCalendar file, for a local server that Calendar.app subscribes to. Every occurrence of a recurring meeting is its own event. Events keep their invitees, responses and description, and Teams meetings carry their join link (`URL`, `CONFERENCE`) so Calendar.app shows a Join button. Cancelled meetings are marked `STATUS:CANCELLED` and free time is `TRANSP:TRANSPARENT`. `--exclude-attendee` leaves out events those addresses organize or have accepted, such as ones already on another calendar you subscribe to. `--no-login` never opens Safari: expired tokens are renewed silently from the cached sign-in session when possible, and otherwise the command fails, which is what you want from launchd or a server.
 
 ### Mail
 

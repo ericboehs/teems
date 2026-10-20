@@ -298,6 +298,10 @@ module Teems
         try_headless_extract || try_safari_oauth || safari_extract
       end
 
+      # Only the headless helper: renews tokens from the cached sign-in session without
+      # opening Safari or any window, or returns nil when there is no such session
+      def extract_silently = try_headless_extract
+
       def manual_instructions = MANUAL_TOKEN_INSTRUCTIONS
 
       private

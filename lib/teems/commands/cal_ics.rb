@@ -10,8 +10,9 @@ module Teems
 
       protected
 
-      # --no-login keeps servers and launchd jobs from opening Safari to sign in
-      def auto_login = @options[:no_login] ? nil : super
+      # Under --no-login only the silent headless login is tried, never Safari, so servers
+      # and launchd jobs never open a window
+      def auto_login = @options[:no_login] ? silent_login : super
 
       private
 
