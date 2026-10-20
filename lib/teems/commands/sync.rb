@@ -13,7 +13,9 @@ module Teems
         --chat CHAT_ID   Sync only this chat
         --images         Also download inline (pasted) images into each chat's images/ dir
         --auth           Authenticate via Safari before syncing
-        --dry-run        Show what would be synced without writing files
+        --dry-run        Show what would be synced and every folder change, without writing anything
+        --migrate-dirs   Also rename existing chat folders to "<name> (<chat ID>)" and write
+                         a map of old to new paths (sync/dir-maps/)
         -v, --verbose    Show debug output
         -q, --quiet      Suppress output
 
@@ -23,11 +25,13 @@ module Teems
         teems sync --chat 19:abc@thread.v2 # Sync a single chat
         teems sync --images                # Include pasted screenshots
         teems sync --dry-run               # Preview what would be synced
+        teems sync --dry-run --migrate-dirs # Preview renaming every folder
 
       OUTPUT:
         Files are stored in ~/.local/share/teems/sync/chats/
         Each chat gets: messages.md, messages.json, chat_metadata.json
         (plus images/ with --images; messages.md links saved images, otherwise [image: ...])
+        New chats get a "<name> (<chat ID>)" folder; existing folders keep their names.
     HELP
 
     # Handles syncing individual chats: fetch, merge, retry on 404
@@ -62,10 +66,7 @@ module Teems
       end
 
       def sync_single_chat(chat)
-        @sync_store.ensure_dir_name(
-          @state, chat_info: { chat_id: chat.id, display_name: chat.display_name,
-                               chat_type: chat.chat_type }
-        )
+        report_dir_move(@sync_store.ensure_chat_dir(@state, chat_info: dir_info(chat)))
         new_messages = fetch_new_messages(chat)
         debug("  Fetched #{new_messages.length} new message(s)")
         process_fetched_messages(chat, new_messages)
@@ -82,7 +83,7 @@ module Teems
 
       def fetch_new_messages(chat)
         chat_id = chat.id
-        start_time = @sync_store.last_synced_time(@state, chat_id) || since_time
+        start_time = @sync_store.last_synced_time(@state, chat_id) || resync_start(@state, chat_id)
         with_token_refresh { sync_engine.fetch_all_messages(chat_id, start_time) }
       end
 
@@ -198,12 +199,13 @@ module Teems
       def show_dry_run(chats)
         syncable = chats.reject { |chat| skip_reason(chat['id']) }
         display_dry_run_list(chats.length - syncable.length, syncable)
+        show_dir_plan(syncable)
+        0
       end
 
       def display_dry_run_list(skipped_count, syncable)
         display_dry_run_header(skipped_count, syncable.length)
         syncable.each { |chat| format_dry_run_chat(chat) }
-        0
       end
 
       def display_dry_run_header(skipped, syncable_count)
@@ -228,6 +230,7 @@ module Teems
         success('Sync complete!')
         show_summary_stats
         info("  Output: #{@sync_store.sync_dir}")
+        show_folder_summary
       end
 
       def show_summary_stats
@@ -315,6 +318,7 @@ module Teems
       include SyncImageHandler
       include SyncDisplay
       include SyncAuth
+      include SyncFolders
 
       DEFAULT_SINCE_DAYS = 180
       SKIP_PREFIXES = %w[48:].freeze
@@ -345,6 +349,7 @@ module Teems
         '--chat' => ->(opts, args) { opts[:chat_id] = args.shift },
         '--dry-run' => ->(opts, _args) { opts[:dry_run] = true },
         '--images' => ->(opts, _args) { opts[:images] = true },
+        '--migrate-dirs' => ->(opts, _args) { opts[:migrate_dirs] = true },
         '--auth' => ->(opts, _args) { opts[:auth] = true }
       }.freeze
 
@@ -369,6 +374,7 @@ module Teems
       end
 
       def sync_all_chats(chats)
+        detach_shared_dirs
         chats.each_with_index { |chat_data, index| sync_or_skip_chat(chat_data, "[#{index + 1}/#{chats.length}]") }
         save_state_safely
         show_summary
@@ -404,7 +410,8 @@ module Teems
         error("Warning: Failed to save sync state: #{e.message}")
       end
 
-      def since_time = Time.now - ((@options[:since_days] || DEFAULT_SINCE_DAYS) * 86_400)
+      def since_days = @options[:since_days] || DEFAULT_SINCE_DAYS
+      def since_time = Time.now - (since_days * 86_400)
 
       def setup_api_logging
         out = output

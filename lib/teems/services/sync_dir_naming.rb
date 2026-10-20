@@ -2,10 +2,17 @@
 
 module Teems
   module Services
-    # Directory naming helpers for SyncStore
+    # Directory naming helpers for SyncStore.
+    #
+    # A chat directory name ends with the chat's full sanitized ID, so two chats can't share one.
+    # Older teems versions keyed generic labels ("Group Chat") by a 20-character ID prefix and
+    # named chats by their title alone, which merged unrelated chats. Those names are kept for
+    # chats that still own their directory (see SyncDirPlanning); SyncDirOwnership handles
+    # directories that ended up shared.
     module SyncDirNaming
-      GENERIC_LABELS = ['Group Chat', '1:1 Chat', 'Meeting Chat', 'Channel', 'Space'].freeze
       MAX_DIR_NAME_LENGTH = 100
+      # Most filesystems limit one path component to 255 bytes
+      MAX_DIR_NAME_BYTES = 255
       TYPE_DIRS = {
         'oneOnOne' => 'dms', 'group' => 'groups', 'meeting' => 'meetings',
         'channel' => 'channels', 'space' => 'spaces'
@@ -21,21 +28,20 @@ module Teems
         id.gsub(/[:@]/, '_')
       end
 
-      def sanitize_display_name(name)
+      def sanitize_display_name(name, max_bytes: MAX_DIR_NAME_BYTES)
         return nil if name.to_s.strip.empty?
 
-        sanitized = name.strip.gsub(%r{[/\\:*?"<>|]}, '-').gsub(/\s+/, ' ')
-        sanitized = sanitized[0, MAX_DIR_NAME_LENGTH].gsub(/[\s.]+\z/, '')
+        sanitized = name.strip.gsub(%r{[/\\:*?"<>|]}, '-').gsub(/\s+/, ' ')[0, MAX_DIR_NAME_LENGTH]
+        sanitized = sanitized.byteslice(0, max_bytes).scrub('').gsub(/[\s.]+\z/, '')
         sanitized.empty? ? nil : sanitized
       end
 
+      # "<display name> (<full sanitized chat ID>)", or just the sanitized ID when there is no name
       def build_dir_name(chat_id, display_name)
-        sanitized = sanitize_display_name(display_name)
         safe_id = sanitize_id(chat_id)
-        return safe_id unless sanitized
-        return sanitized unless GENERIC_LABELS.include?(display_name.strip)
-
-        "#{sanitized} (#{safe_id[0, 20]})"
+        label_bytes = [MAX_DIR_NAME_BYTES - safe_id.bytesize - ' ()'.bytesize, 0].max
+        label = sanitize_display_name(display_name, max_bytes: label_bytes)
+        label ? "#{label} (#{safe_id})" : safe_id
       end
     end
   end

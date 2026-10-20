@@ -48,13 +48,11 @@ module Teems
 
     # Chat state mutation operations for SyncStore
     module SyncStateMutation
+      # A nil display name or chat type (sync --chat) keeps the stored one
       def update_chat_state(state, chat_id, attrs:)
-        display_name, synced_at, count, chat_type =
-          attrs.values_at(:display_name, :last_synced_at, :message_count, :chat_type)
         entry = (state['chats'] ||= {})[chat_id] ||= {}
-        entry.merge!('last_synced_at' => synced_at.iso8601, 'message_count' => count,
-                     'display_name' => display_name, 'chat_type' => chat_type,
-                     'dir_name' => build_dir_name(chat_id, display_name))
+        dir_name = dir_name_for(entry, chat_id, attrs[:display_name])
+        entry.merge!(synced_fields(attrs, dir_name)).delete('resync_from')
         state
       end
 
@@ -68,6 +66,13 @@ module Teems
 
       private
 
+      def synced_fields(attrs, dir_name)
+        display_name, synced_at, count, chat_type =
+          attrs.values_at(:display_name, :last_synced_at, :message_count, :chat_type)
+        { 'last_synced_at' => synced_at.iso8601, 'message_count' => count, 'display_name' => display_name,
+          'chat_type' => chat_type, 'dir_name' => dir_name }.compact
+      end
+
       def apply_unavailable(entry)
         entry.merge!('unavailable' => true, 'unavailable_at' => Time.now.iso8601)
       end
@@ -79,9 +84,11 @@ module Teems
       def apply_display_info(entry, chat_id, display_name)
         return unless display_name
 
-        entry.merge!('display_name' => display_name,
-                     'dir_name' => build_dir_name(chat_id, display_name))
+        entry.merge!('display_name' => display_name, 'dir_name' => dir_name_for(entry, chat_id, display_name))
       end
+
+      # ensure_chat_dir owns the directory name; this only fills it in for callers that skipped it
+      def dir_name_for(entry, chat_id, display_name) = entry['dir_name'] || build_dir_name(chat_id, display_name)
     end
 
     # Chat directory resolution for SyncStore
@@ -118,40 +125,17 @@ module Teems
       end
     end
 
-    # Directory rename helpers for SyncStore
-    module SyncRenameOps
-      private
-
-      def rename_entry_dir(entry, new_dir_name, chat_type)
-        old_name = entry['dir_name']
-        old_type = entry['chat_type']
-        if old_name && (old_name != new_dir_name || old_type != chat_type)
-          move_chat_dir(chat_type_path(old_type, old_name),
-                        chat_type_path(chat_type, new_dir_name))
-        end
-        entry.merge!('dir_name' => new_dir_name, 'chat_type' => chat_type)
-      end
-
-      def move_chat_dir(old_path, new_path)
-        return if old_path == new_path || !File.directory?(old_path) || File.exist?(new_path)
-
-        FileUtils.mkdir_p(File.dirname(new_path))
-        File.rename(old_path, new_path)
-      end
-
-      def chat_type_path(type, name) = File.join(sync_dir, SyncStore::CHATS_DIR, type_dir(type), name)
-    end
-
     # Manages local sync state and file storage for the sync command.
     # Stores chat history as Markdown + JSON in XDG data directory.
     class SyncStore
       include SyncDirNaming
+      include SyncDirOwnership
+      include SyncDirPlanning
       include SyncFileOps
       include SyncStateQuery
       include SyncStateMutation
       include SyncChatDir
       include SyncChatWrite
-      include SyncRenameOps
 
       SYNC_DIR = 'sync'
       STATE_FILE = 'sync_state.json'
@@ -179,14 +163,6 @@ module Teems
       def save_state(state)
         FileUtils.mkdir_p(sync_dir)
         atomic_write(File.join(sync_dir, STATE_FILE), JSON.pretty_generate(state))
-      end
-
-      def ensure_dir_name(state, chat_info:)
-        chat_id, display_name, chat_type = chat_info.values_at(:chat_id, :display_name, :chat_type)
-        new_dir_name = build_dir_name(chat_id, display_name)
-        entry = (state['chats'] ||= {})[chat_id] ||= {}
-        rename_entry_dir(entry, new_dir_name, chat_type)
-        new_dir_name
       end
     end
   end
