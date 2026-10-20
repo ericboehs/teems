@@ -41,6 +41,29 @@ module FormatUtilsTests
       assert_equal 'report.pdf', Teems::Formatters::FormatUtils.safe_filename('/path/to/report.pdf')
     end
 
+    def test_safe_filename_rejects_names_that_are_not_files
+      ['.', '..', '/', 'x/..', "\0"].each do |name|
+        assert_equal 'file', Teems::Formatters::FormatUtils.safe_filename(name), name.inspect
+      end
+    end
+
+    def test_safe_filename_drops_control_characters_and_invalid_bytes
+      assert_equal 'ab.pdf', Teems::Formatters::FormatUtils.safe_filename("a\0\nb\xFF.pdf".dup.force_encoding('UTF-8'))
+    end
+
+    def test_safe_filename_shortens_long_names_keeping_the_extension
+      name = Teems::Formatters::FormatUtils.safe_filename("#{'é' * 200}.pdf")
+      assert_operator name.bytesize, :<=, 255
+      assert name.valid_encoding?
+      assert name.end_with?('é.pdf')
+    end
+
+    def test_safe_filename_drops_an_implausibly_long_extension_when_shortening
+      name = Teems::Formatters::FormatUtils.safe_filename("report.#{'x' * 300}")
+      assert_equal 255, name.bytesize
+      assert name.start_with?('report.xxx')
+    end
+
     def test_safe_filename_empty_returns_file
       assert_equal 'file', Teems::Formatters::FormatUtils.safe_filename('')
     end

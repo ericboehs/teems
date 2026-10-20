@@ -476,6 +476,38 @@ module TokenExtractorTests
     end
   end
 
+  # extract_silently uses only the headless helper: its tokens, or nil without a cached
+  # sign-in session, and never Safari
+  class ExtractSilentlyTest < Minitest::Test
+    FakeStatus = Struct.new(:success?, :exitstatus)
+
+    # Headless helper present and the skype exchange stubbed; touching Safari fails the test
+    class HelperOnlyExtractor < Teems::Services::TokenExtractor
+      private
+
+      def ensure_helper_binary = '/tmp/teems-test-helper'
+      def exchange_skype_via_http(_spaces_token) = 'skype-token'
+      def run_applescript(_script) = raise('must not open Safari')
+    end
+
+    def test_returns_the_helpers_tokens
+      json = '{"auth_token":"graph-token","skype_spaces_token":"spaces"}'
+      tokens = with_helper([json, '', FakeStatus.new(true, 0)], &:extract_silently)
+
+      assert_equal %w[graph-token skype-token], tokens.values_at(:auth_token, :skype_token)
+    end
+
+    def test_returns_nil_without_a_cached_session
+      assert_nil with_helper(['', '', FakeStatus.new(false, 2)], &:extract_silently)
+    end
+
+    private
+
+    def with_helper(response)
+      Teems::Support::Subprocess.stub(:capture3, ->(*_args, **_opts) { response }) { yield HelperOnlyExtractor.new }
+    end
+  end
+
   # notify surfaces sign-in progress outside verbose mode and must tolerate a nil output
   class NotifyTest < Minitest::Test
     def test_notify_writes_to_output

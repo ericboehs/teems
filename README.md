@@ -53,6 +53,32 @@ teems cal delete 3           # Delete event #3
 
 All-day events cover `--date` (or `--start YYYY-MM-DD`; default today). Add `--end YYYY-MM-DD` for a multi-day event: like `teems ooo --end`, it is the last day of the event, inclusive. The example above is one event covering November 12 and 13.
 
+#### ICS feed
+
+```bash
+teems cal ics > work.ics                       # 7 days back through 60 days ahead
+teems cal ics --days 30 --days-back 0          # A different window
+teems cal ics --exclude-attendee me@other.example --name "Work" --no-login
+```
+
+`teems cal ics` prints your calendar as an iCalendar file, for a local server that Calendar.app subscribes to. Every occurrence of a recurring meeting is its own event. Events keep their invitees, responses and description, and Teams meetings carry their join link (`URL`, `CONFERENCE`) so Calendar.app shows a Join button. Cancelled meetings are marked `STATUS:CANCELLED` and free time is `TRANSP:TRANSPARENT`. It reads your default calendar; `--all-calendars` adds the others (holidays, shared calendars), keeping an event that is on two of them once and skipping, with a warning, a shared calendar you cannot read. `--exclude-attendee` leaves out events those addresses organize or have accepted, such as ones already on another calendar you subscribe to. `--no-login` never opens Safari: expired tokens are renewed silently from the cached sign-in session when possible, and otherwise the command fails, which is what you want from launchd or a server.
+
+### Mail
+
+```bash
+teems mail list                     # 20 newest Inbox messages (alias: recent)
+teems mail list Archive 50 --unread # Folder and count, unread only
+teems mail read 3fa2c1              # Headers, plain-text body, numbered links
+teems mail read 3fa2c1 --html       # Raw HTML body
+teems mail folders                  # Unread and total counts
+teems mail search "from:alice subject:report" --folder Inbox
+teems mail sync Inbox "Sent Items" --since 30
+```
+
+Mail is read-only: teems never sends, moves, deletes or flags messages, and reading one does not mark it read. Message IDs in `list` and `search` output are short handles that `read` accepts (`--tsv` prints the full Graph IDs). `search` uses Graph's KQL `$search`.
+
+`teems mail sync` keeps a Markdown copy of each message in `~/.local/share/teems/sync/mail/<Folder>/` (or `--dir`) with an `index.json` per folder. The first run of a folder fetches `--since` days (default 90, or `all`); later runs fetch only what changed, using Graph delta links stored in `~/.local/state/teems/mail-sync.json`. Messages that leave the folder keep their file and are marked `removed_at` in the index. `--attachments` also saves file attachments. A lock file keeps overlapping runs (launchd) from colliding. Syncing into a directory filled by the older AppleScript-based outlook-cli sync adopts its files instead of writing duplicates.
+
 ### Messages
 
 ```bash

@@ -14,6 +14,11 @@ module Teems
       def puts(message = '') = @options[:quiet] || output.puts(message)
       def print(msg) = @options[:quiet] || output.print(msg)
       def output_json(data) = output.puts(JSON.pretty_generate(data))
+
+      def api_error_result(prefix, err)
+        error("#{prefix}: #{err.message}")
+        1
+      end
     end
 
     # Option validation helpers for CLI commands
@@ -127,25 +132,44 @@ module Teems
 
       # Execute a block with automatic token refresh on 401
       # Usage: with_token_refresh { runner.messages_api.chat_messages(chat_id: id) }
-      def with_token_refresh
+      def with_token_refresh(&)
         yield
       rescue ApiError => e
-        raise unless e.unauthorized? || e.message.include?('expired')
+        raise unless token_expired?(e)
 
-        attempt_token_refresh
-        yield
+        attempt_token_refresh == :refreshed ? retry_with_login(&) : yield
       end
 
+      def token_expired?(error) = error.unauthorized? || error.message.include?('expired')
+
+      # :refreshed, or :logged_in when only a new login worked; raises when neither did
       def attempt_token_refresh
         debug('Token expired, attempting refresh...')
-        return debug('Token refreshed, retrying request...') if runner.refresh_tokens
+        return :refreshed.tap { debug('Token refreshed, retrying request...') } if runner.refresh_tokens
 
         debug('Token refresh failed, re-authenticating...')
         raise ApiError, 'Re-authentication failed' unless auto_login
+
+        :logged_in
       end
 
-      def auto_login
-        tokens = runner.token_extractor.extract
+      # A refresh can succeed without renewing the Graph token (the authsvc fallback renews
+      # only the skype token), so a request still rejected after one gets a login attempt
+      def retry_with_login
+        yield
+      rescue ApiError => e
+        raise unless token_expired?(e) && auto_login
+
+        debug('Logged in again, retrying request...')
+        yield
+      end
+
+      # Under --no-login (for commands that take it) only the silent headless login is tried,
+      # never Safari, so servers, launchd and cron jobs never open a window
+      def auto_login = save_extracted_tokens(&(@options[:no_login] ? :extract_silently : :extract))
+
+      def save_extracted_tokens
+        tokens = yield(runner.token_extractor)
         return unless tokens&.[](:auth_token) && tokens[:skype_token]
 
         runner.token_store.save(**tokens)

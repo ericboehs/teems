@@ -50,6 +50,7 @@ module Teems
       'meeting' => Commands::Meeting,
       'transcripts' => Commands::Transcripts,
       'messages' => Commands::Messages,
+      'mail' => Commands::Mail,
       'sync' => Commands::Sync,
       'who' => Commands::Who,
       'org' => Commands::Org,

@@ -11,6 +11,7 @@ module Teems
       ['meeting', 'View meeting details, chat, transcripts, and recordings'],
       ['transcripts', 'Sync saved meeting transcripts to this machine'],
       ['messages', 'Read messages from a channel or chat'],
+      ['mail', 'Read Outlook mail: list, read, folders, search, sync'],
       ['sync', 'Sync chat history locally'],
       ['who', "Look up a user's profile"],
       ['org', 'Show org chart for a user'],
@@ -85,6 +86,8 @@ module Teems
             teems chats                    List recent chats
             teems messages <channel-id>    Read messages from a channel
             teems transcripts sync         Download recent meeting transcripts
+            teems mail list --unread       Unread messages in the Inbox
+            teems mail read 3f9a2c1b       Read a message from the list
             teems who                      Show your profile
             teems who john                 Search for a user
             teems org                      Show your org chart

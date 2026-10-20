@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- `teems mail`, read-only Outlook mail over Microsoft Graph with the same tokens as the rest of teems. `list [folder] [count]` (alias `recent`) shows the newest messages, with `--unread` for unread only. `read <id>` prints headers and a plain-text body with a numbered list of links (tracking redirects such as Safe Links unwrapped), or the raw HTML with `--html`. `folders` shows unread and total counts, and `search <query>` runs a KQL `$search`, optionally limited to one folder. List and search IDs are short handles that `read` accepts. Reading a message does not mark it read.
+- `teems mail sync [folder...]` keeps one Markdown file per message plus an `index.json` per folder, fetching only changes after the first run (Graph delta). It is safe to run from launchd: `--no-login` never opens Safari, a lock prevents overlapping runs, and the index is only rewritten when something changed. Messages that leave a folder keep their file and get `removed_at` in the index. Files written by the AppleScript outlook-cli sync in the same directory are adopted, matched on received time, subject and sender, instead of being duplicated. `--attachments` also downloads file attachments.
+- `teems cal ics` prints the calendar as an iCalendar feed (default 7 days back through 60 ahead; `--days`, `--days-back`), with attendees, responses, descriptions and Teams join links. `--exclude-attendee` leaves out events given addresses organize or have accepted, `--name` sets the calendar name, and `--no-login` keeps it from opening Safari. This replaces the outlook-cli calendar feed, which stopped updating when Outlook lost EWS.
+
 ### Fixed
 - `teems sync` no longer merges different chats into one folder. Folder names used to identify generic chats ("Group Chat", "1:1 Chat") by the first 20 characters of the chat ID, which every 1:1 chat with the same person starts with, and named chats by their title alone. New chats, and chats whose title or type changes, now get a folder name ending with the chat's full ID. A name already used by another chat is never handed out, and a name that would still clash (IDs differing only in letter case on a case-insensitive filesystem) falls back to the ID plus a hash.
 - 1:1 chats are classified as 1:1 chats (`dms/`, "1:1 Chat") instead of group chats.

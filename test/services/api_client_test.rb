@@ -132,6 +132,18 @@ module ApiClientTests
       assert_match(/HTTP 500/, error.message)
     end
 
+    def test_handle_response_keeps_graph_error_codes
+      client = ExposedApiClient.new
+      bodies = ['{"error":{"code":"syncStateNotFound","message":"Gone"}}', '<html>Bad</html>', '{"error":',
+                '{"error":"text"}', '']
+
+      codes = bodies.map do |body|
+        assert_raises(Teems::ApiError) { client.handle_response(build_http_response('400', 'Bad', body)) }.error_code
+      end
+
+      assert_equal ['syncStateNotFound', nil, nil, nil, nil], codes
+    end
+
     def test_handle_response_200_parses_json
       client = ExposedApiClient.new
       response = build_http_response('200', 'OK', '{"key":"value"}')

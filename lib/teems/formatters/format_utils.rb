@@ -4,6 +4,13 @@ module Teems
   module Formatters
     # Shared stateless formatting utilities used across commands and formatters
     module FormatUtils
+      # Longest file name most filesystems allow, in bytes
+      NAME_MAX = 255
+      # Names File.basename can return that are not a file in the directory
+      UNSAFE_NAMES = ['', '.', '..', '/'].freeze
+      # Longer "extensions" are just dots in a long name, and are cut with the rest of it
+      MAX_EXTENSION = 16
+
       module_function
 
       def truncate(text, max = 120)
@@ -17,9 +24,23 @@ module Teems
         end
       end
 
+      # A name safe to join onto a directory: no path or control characters, not "." or "..",
+      # and short enough for the filesystem (keeping the extension when it has to be cut)
       def safe_filename(name)
-        base = File.basename(name)
-        base.empty? ? 'file' : base
+        base = File.basename(name.to_s.scrub('').gsub(/[[:cntrl:]]/, ''))
+        UNSAFE_NAMES.include?(base) ? 'file' : fit_filename(base)
+      end
+
+      def fit_filename(base)
+        return base if base.bytesize <= NAME_MAX
+
+        ext = kept_extension(base)
+        "#{base.delete_suffix(ext).byteslice(0, NAME_MAX - ext.bytesize).scrub('')}#{ext}"
+      end
+
+      def kept_extension(base)
+        ext = File.extname(base)
+        ext.bytesize > MAX_EXTENSION ? '' : ext
       end
 
       def attachment_name(att)
