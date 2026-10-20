@@ -22,7 +22,7 @@ module Teems
       end
     end
 
-    # Stands in for stdout once its reader has gone away (see Output#to_stdout)
+    # Stands in for stdout or stderr once its reader has gone away (see Output#to_stdout)
     module NullIO
       def self.puts(*) = nil
       def self.print(*) = nil
@@ -72,11 +72,11 @@ module Teems
       end
 
       def error(message)
-        @err.puts(colorize("#{red('Error:')} #{message}"))
+        to_stderr { |err| err.puts(colorize("#{red('Error:')} #{message}")) }
       end
 
       def warn(message)
-        @err.puts(colorize("#{yellow('Warning:')} #{message}")) unless quiet?
+        to_stderr { |err| err.puts(colorize("#{yellow('Warning:')} #{message}")) } unless quiet?
       end
 
       def success(message)
@@ -90,7 +90,7 @@ module Teems
       def debug(message)
         return unless verbose?
 
-        @err.puts(colorize("#{gray('[debug]')} #{message}"))
+        to_stderr { |err| err.puts(colorize("#{gray('[debug]')} #{message}")) }
       end
 
       private
@@ -107,6 +107,14 @@ module Teems
         yield @io
       rescue Errno::EPIPE
         @io = NullIO
+      end
+
+      # The same for stderr, which `teems ... 2>&1 | head` closes along with stdout. A
+      # warning that raised here would also escape the per-item rescues that report it.
+      def to_stderr
+        yield @err
+      rescue Errno::EPIPE
+        @err = NullIO
       end
 
       def wrap(color, text)

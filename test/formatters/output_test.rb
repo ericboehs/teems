@@ -204,5 +204,15 @@ module OutputTests
       @output.error('bad')
       assert_equal "Warning: careful\nError: bad\n", @err.string
     end
+
+    # `teems ... 2>&1 | head` closes both streams
+    def test_stderr_stops_writing_after_broken_pipe
+      err = BrokenIO.new
+      output = Teems::Formatters::Output.new(io: StringIO.new, err: err, color: false, mode: :verbose)
+      output.warn('one')
+      output.error('two')
+      output.debug('three')
+      assert_equal 1, err.writes
+    end
   end
 end
