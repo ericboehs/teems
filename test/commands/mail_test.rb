@@ -265,6 +265,21 @@ class MailCommandTest < Minitest::Test
     end
   end
 
+  # A regular file where the Archive folder should be: writing there fails with a SystemCallError
+  def test_sync_reports_a_folder_it_cannot_write_and_syncs_the_rest
+    with_temp_config do |dir|
+      root = File.join(dir, 'mail')
+      FileUtils.mkdir_p(root)
+      File.write(File.join(root, 'Archive'), '')
+      result = run_mail(['sync', 'archive', 'Inbox', '--dir', root, '--json'],
+                        stubs: { '/mailFolders/archive' => sample_mail_folder('Archive'), **sync_stubs })
+
+      assert_equal 1, result[:code]
+      assert_equal ['Inbox'], JSON.parse(result[:stdout]).keys
+      assert_match(/archive: .*(File exists|Not a directory)/, result[:stderr])
+    end
+  end
+
   def test_sync_leaves_expired_tokens_to_the_login_retry
     with_temp_config do
       capture_output do |output|

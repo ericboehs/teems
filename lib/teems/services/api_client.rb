@@ -83,8 +83,18 @@ module Teems
         when Net::HTTPTooManyRequests then raise_rate_limit(response)
         else
           code = response.code
-          raise ApiError.new("HTTP #{code}: #{response.message}", status_code: code.to_i)
+          raise ApiError.new("HTTP #{code}: #{response.message}",
+                             status_code: code.to_i, error_code: error_code(response.body))
         end
+      end
+
+      # Graph explains a 4xx as {"error": {"code": ...}}; other services may not
+      def error_code(body)
+        text = body.to_s
+        error = JSON.parse(text)['error'] if text.start_with?('{')
+        error['code'] if error.is_a?(Hash)
+      rescue JSON::ParserError
+        nil
       end
 
       def raise_rate_limit(response)

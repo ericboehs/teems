@@ -16,10 +16,12 @@ module Teems
 
   # Error raised when a Teams API request fails (4xx/5xx responses)
   class ApiError < Error
-    attr_reader :status_code
+    # error_code is the service's own code (Graph's error.code, e.g. "syncStateNotFound")
+    attr_reader :status_code, :error_code
 
-    def initialize(message = nil, status_code: nil)
+    def initialize(message = nil, status_code: nil, error_code: nil)
       @status_code = status_code
+      @error_code = error_code
       super(message)
     end
 
@@ -82,6 +84,7 @@ module Teems
     autoload :MailFolders, 'teems/services/mail_folders'
     autoload :MailIdCache, 'teems/services/mail_id_cache'
     autoload :MailLegacyFiles, 'teems/services/mail_legacy_files'
+    autoload :MailSyncAttachments, 'teems/services/mail_sync_attachments'
     autoload :MailSyncEngine, 'teems/services/mail_sync_engine'
     autoload :MailSyncFolder, 'teems/services/mail_sync_folder'
     autoload :MailSyncIndex, 'teems/services/mail_sync_folder'

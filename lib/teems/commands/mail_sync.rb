@@ -55,7 +55,8 @@ module Teems
       end
 
       # [path, stats], or nil when the folder failed. Expired tokens are raised for
-      # with_token_refresh; a folder interrupted by anything else resumes on the next run.
+      # with_token_refresh; a folder interrupted by anything else, local file errors
+      # included, resumes on the next run.
       def sync_one(engine, store, name)
         folder = mail_folders.resolve(name)
         path = folder.path
@@ -63,7 +64,7 @@ module Teems
         stats = engine.sync(folder)
         sync_info("  #{sync_summary(stats)}")
         [path, stats]
-      rescue Teems::Error => e
+      rescue Teems::Error, SystemCallError => e
         raise if e.is_a?(ApiError) && token_expired?(e)
 
         warn("#{name}: #{e.message}")

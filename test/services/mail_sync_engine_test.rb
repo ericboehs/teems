@@ -256,16 +256,80 @@ class MailSyncEngineTest < Minitest::Test
     end
   end
 
+  def save_delta_link(store, token)
+    store.save_index('Inbox', {})
+    store.save_state({ 'inbox-id' => { 'delta_link' => "https://g/delta?$deltatoken=#{token}" } })
+  end
+
   def test_rejected_delta_link_restarts_once
+    rejections = [Teems::ApiError.new('HTTP 400: Bad Request', status_code: 400, error_code: 'SyncStateNotFound'),
+                  Teems::ApiError.new('HTTP 410: Gone', status_code: 410)]
+    rejections.each do |rejection|
+      with_store do |store|
+        save_delta_link(store, 'bad')
+        @client = MockApiClient.new
+        @api = Teems::Api::Mail.new(@client, mock_account)
+        @client.stub_error('deltatoken=bad', rejection)
+        @client.stub('/messages/delta', { 'value' => [], '@odata.deltaLink' => 'https://g/delta?$deltatoken=d1' })
+
+        engine(store).sync(INBOX)
+
+        assert_equal 'https://g/delta?$deltatoken=d1', store.load_state.dig('inbox-id', 'delta_link')
+      end
+    end
+  end
+
+  def test_a_second_rejection_raises_graphs_error
     with_store do |store|
-      store.save_index('Inbox', {})
-      store.save_state({ 'inbox-id' => { 'delta_link' => 'https://g/delta?$deltatoken=bad' } })
-      @client.stub_error('deltatoken=bad', Teems::ApiError.new('HTTP 400: Bad Request', status_code: 400))
-      @client.stub('/messages/delta', { 'value' => [], '@odata.deltaLink' => 'https://g/delta?$deltatoken=d1' })
+      save_delta_link(store, 'bad')
+      gone = Teems::ApiError.new('HTTP 410: Gone', status_code: 410)
+      %w[deltatoken=bad /messages/delta].each { |path| @client.stub_error(path, gone) }
 
-      engine(store).sync(INBOX)
+      error = assert_raises(Teems::ApiError) { engine(store).sync(INBOX) }
+      assert_equal 410, error.status_code
+      assert_equal 2, @client.calls.length
+    end
+  end
 
-      assert_equal 'https://g/delta?$deltatoken=d1', store.load_state.dig('inbox-id', 'delta_link')
+  def test_other_bad_requests_keep_the_delta_link
+    with_store do |store|
+      save_delta_link(store, 'good')
+      @client.stub_error('deltatoken=good', Teems::ApiError.new('HTTP 400: Bad Request', status_code: 400,
+                                                                                         error_code: 'BadRequest'))
+
+      assert_raises(Teems::ApiError) { engine(store).sync(INBOX) }
+      assert_equal 1, @client.calls.length
+      assert_equal 'https://g/delta?$deltatoken=good', store.load_state.dig('inbox-id', 'delta_link')
+    end
+  end
+
+  # One message whose attachments cannot be listed used to restart the folder on every run
+  def test_unlistable_attachments_are_skipped_without_a_restart
+    with_store do |store|
+      save_delta_link(store, 'good')
+      @client.stub_error('/attachments', Teems::ApiError.new('HTTP 400: Bad Request', status_code: 400))
+      @client.stub('deltatoken=good', { 'value' => [sample_mail_message('id' => 'm1', 'hasAttachments' => true)],
+                                        '@odata.deltaLink' => 'https://g/delta?$deltatoken=d2' })
+      warnings = []
+
+      stats = engine(store, on_warning: ->(message) { warnings << message }).sync(INBOX)
+
+      assert_equal 1, stats[:created]
+      assert_match(/\ASkipped attachments of message \S+: HTTP 400/, warnings.first)
+      refute(@client.calls.any? { |call| call[:path].include?('/messages/delta') && !call[:path].include?('token') })
+      assert_equal 'https://g/delta?$deltatoken=d2', store.load_state.dig('inbox-id', 'delta_link')
+    end
+  end
+
+  def test_a_full_disk_leaves_the_page_for_the_next_run
+    with_store do |store|
+      @client.stub('/attachments/big', { 'contentBytes' => ['x'].pack('m0') })
+      stub_attachment_message([{ 'id' => 'big', 'name' => 'big.bin', 'size' => 1 }])
+
+      File.stub(:binwrite, ->(*) { raise Errno::ENOSPC }) do
+        assert_raises(Errno::ENOSPC) { engine(store, attachments: true).sync(INBOX) }
+      end
+      assert_nil store.load_state['inbox-id']
     end
   end
 end
