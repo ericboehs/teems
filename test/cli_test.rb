@@ -436,4 +436,31 @@ module CLITests
       assert_equal 'UTF-8 UTF-8', stdout
     end
   end
+
+  # A reader closing stdout early (`teems help | head`) is not an error
+  class BrokenPipeTest < Minitest::Test
+    def test_closed_stdout_exits_quietly
+      with_temp_config do |dir|
+        err = StringIO.new
+        with_closed_stdout do |stdout|
+          output = Teems::Formatters::Output.new(io: stdout, err: err, color: false)
+          assert_equal 0, Teems::CLI.new(['help'], output: output).run
+        end
+        assert_empty err.string
+        assert_empty Dir.glob("#{dir}/**/*.log")
+      end
+    end
+
+    private
+
+    # A pipe whose reader has already exited, like stdout under `| head`
+    def with_closed_stdout
+      reader, writer = IO.pipe
+      reader.close
+      writer.sync = true
+      yield writer
+    ensure
+      writer&.close
+    end
+  end
 end
