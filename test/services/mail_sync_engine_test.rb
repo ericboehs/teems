@@ -207,5 +207,66 @@ class MailSyncEngineTest < Minitest::Test
       refute(@client.calls.any? { |call| call[:path].include?('ref1') })
     end
   end
+
+  def stub_attachment_message(attachments)
+    @client.stub('/attachments', { 'value' => attachments })
+    @client.stub('/messages/delta', { 'value' => [sample_mail_message('id' => 'm1', 'hasAttachments' => true)],
+                                      '@odata.deltaLink' => 'https://g/delta?$deltatoken=d1' })
+  end
+
+  def test_attachments_that_cannot_be_saved_are_skipped_with_a_warning
+    with_store do |store|
+      @client.stub('/attachments/dots', { 'contentBytes' => ['x'].pack('m0') })
+      @client.stub_error('/attachments/gone', Teems::ApiError.new('HTTP 404: Not Found', status_code: 404))
+      @client.stub('/attachments/clash', { 'contentBytes' => ['y'].pack('m0') })
+      stub_attachment_message([{ 'id' => 'dots', 'name' => '..', 'size' => 1 },
+                               { 'id' => 'gone', 'name' => 'gone.pdf', 'size' => 1 },
+                               { 'id' => 'clash', 'name' => 'clash.txt', 'size' => 1 }])
+      dir = File.join(store.folder_dir('Inbox'), 'attachments', mail('m1').short_id)
+      FileUtils.mkdir_p(File.join(dir, 'clash.txt'))
+      warnings = []
+
+      stats = engine(store, attachments: true, on_warning: ->(message) { warnings << message }).sync(INBOX)
+
+      assert_equal 1, stats[:created]
+      assert_equal 'x', File.read(File.join(dir, 'file'))
+      assert_equal 2, warnings.size
+      assert_match(/"gone.pdf" of message \S+: HTTP 404/, warnings.first)
+      assert_match(/"clash.txt" of message \S+: Is a directory/, warnings.last)
+      assert_equal 'https://g/delta?$deltatoken=d1', store.load_state.dig('inbox-id', 'delta_link')
+    end
+  end
+
+  def test_skipped_attachments_need_no_warning_handler
+    with_store do |store|
+      @client.stub_error('/attachments/gone', Teems::ApiError.new('HTTP 404: Not Found', status_code: 404))
+      stub_attachment_message([{ 'id' => 'gone', 'name' => 'gone.pdf', 'size' => 1 }])
+
+      assert_equal 1, engine(store, attachments: true).sync(INBOX)[:created]
+    end
+  end
+
+  def test_transient_attachment_errors_leave_the_page_for_the_next_run
+    with_store do |store|
+      @client.stub_error('/attachments/busy', Teems::ApiError.new('HTTP 503: Service Unavailable', status_code: 503))
+      stub_attachment_message([{ 'id' => 'busy', 'name' => 'a.pdf', 'size' => 1 }])
+
+      assert_raises(Teems::ApiError) { engine(store, attachments: true).sync(INBOX) }
+      assert_nil store.load_state['inbox-id']
+    end
+  end
+
+  def test_rejected_delta_link_restarts_once
+    with_store do |store|
+      store.save_index('Inbox', {})
+      store.save_state({ 'inbox-id' => { 'delta_link' => 'https://g/delta?$deltatoken=bad' } })
+      @client.stub_error('deltatoken=bad', Teems::ApiError.new('HTTP 400: Bad Request', status_code: 400))
+      @client.stub('/messages/delta', { 'value' => [], '@odata.deltaLink' => 'https://g/delta?$deltatoken=d1' })
+
+      engine(store).sync(INBOX)
+
+      assert_equal 'https://g/delta?$deltatoken=d1', store.load_state.dig('inbox-id', 'delta_link')
+    end
+  end
 end
 # rubocop:enable Metrics/MethodLength, Metrics/AbcSize, Metrics/ClassLength

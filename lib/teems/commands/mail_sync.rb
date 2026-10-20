@@ -39,22 +39,39 @@ module Teems
         names.empty? ? ['Inbox'] : names.uniq
       end
 
+      # A folder that fails is reported and skipped so the others still sync; the exit
+      # status is 1 when any failed
       def sync_folders(store, since)
-        engine = Services::MailSyncEngine.new(api: mail_api, store: store,
-                                              options: { since: since, attachments: @options[:attachments] })
-        results = sync_folder_names.to_h { |name| sync_one(engine, store, name) }
+        engine = sync_engine(store, since)
+        names = sync_folder_names
+        results = names.filter_map { |name| sync_one(engine, store, name) }.to_h
         output_json(results) if @options[:json]
-        0
+        results.size == names.size ? 0 : 1
       end
 
+      def sync_engine(store, since)
+        options = { since: since, attachments: @options[:attachments], on_warning: ->(message) { warn(message) } }
+        Services::MailSyncEngine.new(api: mail_api, store: store, options: options)
+      end
+
+      # [path, stats], or nil when the folder failed. Expired tokens are raised for
+      # with_token_refresh; a folder interrupted by anything else resumes on the next run.
       def sync_one(engine, store, name)
         folder = mail_folders.resolve(name)
         path = folder.path
-        info("Syncing #{path} -> #{store.folder_dir(path)}")
+        sync_info("Syncing #{path} -> #{store.folder_dir(path)}")
         stats = engine.sync(folder)
-        info("  #{sync_summary(stats)}")
+        sync_info("  #{sync_summary(stats)}")
         [path, stats]
+      rescue Teems::Error => e
+        raise if e.is_a?(ApiError) && token_expired?(e)
+
+        warn("#{name}: #{e.message}")
+        nil
       end
+
+      # Progress lines go to stdout, so --json leaves them out to keep its output parseable
+      def sync_info(message) = @options[:json] || info(message)
 
       def sync_summary(stats)
         created, updated, unchanged, adopted, removed = stats.values_at(*Services::MailSyncFolder::STAT_KEYS)

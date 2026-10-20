@@ -240,6 +240,47 @@ class MailCommandTest < Minitest::Test
     end
   end
 
+  def test_sync_json_prints_only_json
+    with_temp_config do
+      result = run_mail(%w[sync --json], stubs: sync_stubs)
+
+      assert_equal 0, result[:code]
+      assert_equal ['Inbox'], JSON.parse(result[:stdout]).keys
+    end
+  end
+
+  def test_sync_reports_a_failed_folder_and_syncs_the_rest
+    with_temp_config do
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        sync_stubs.each { |path, response| runner.api_client.stub(path, response) }
+        unavailable = Teems::ApiError.new('HTTP 503: Unavailable', status_code: 503)
+        runner.api_client.stub_error('/mailFolders/archive', unavailable)
+        @code = Teems::Commands::Mail.new(%w[sync archive Inbox --json], runner: runner).execute
+      end
+
+      assert_equal 1, @code
+      assert_equal ['Inbox'], JSON.parse(result[:stdout]).keys
+      assert_includes result[:stderr], 'archive: HTTP 503: Unavailable'
+    end
+  end
+
+  def test_sync_leaves_expired_tokens_to_the_login_retry
+    with_temp_config do
+      capture_output do |output|
+        runner = configured_runner(output: output)
+        extractor = Teems::TestHelpers::SilentOnlyExtractor.new
+        runner.define_singleton_method(:token_extractor) { |**| extractor }
+        runner.api_client.stub('/mailFolders/inbox', sample_mail_folder)
+        runner.api_client.stub_error('/messages/delta', Teems::ApiError.new('Invalid token', status_code: 401))
+
+        error = assert_raises(Teems::ApiError) { Teems::Commands::Mail.new(%w[sync --no-login], runner: runner).execute }
+        assert_equal 'Re-authentication failed', error.message
+        assert_equal 1, extractor.silent_calls
+      end
+    end
+  end
+
   def test_sync_rejects_bad_since
     with_temp_config do
       result = run_mail(%w[sync --since soon])

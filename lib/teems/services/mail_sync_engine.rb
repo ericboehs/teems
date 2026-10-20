@@ -7,9 +7,15 @@ module Teems
     # it stopped. Messages that leave a folder keep their file; the index records removed_at.
     class MailSyncEngine
       FILE_ATTACHMENT = '#microsoft.graph.fileAttachment'
+      # Graph's answers to a delta link it can no longer use: 410 Gone, or 400 with
+      # syncStateNotFound / resyncRequired
+      RESYNC_STATUSES = [400, 410].freeze
+      # 4xx errors that can succeed on a later run, unlike a missing or forbidden attachment
+      RETRYABLE_STATUSES = [401, 408, 429].freeze
 
-      # options: since (Time limiting the first sync of a folder; nil syncs everything) and
-      # attachments (also download file attachments)
+      # options: since (Time limiting the first sync of a folder; nil syncs everything),
+      # attachments (also download file attachments) and on_warning (called with problems
+      # that are skipped rather than raised)
       def initialize(api:, store:, options: {})
         @api = api
         @store = store
@@ -18,14 +24,14 @@ module Teems
       end
 
       # Syncs one Models::MailFolder; returns counts keyed by MailSyncFolder::STAT_KEYS.
-      # An expired delta link (410 Gone) starts the folder over once.
+      # A delta link Graph rejects (RESYNC_STATUSES) starts the folder over once.
       def sync(folder)
         attempts = 0
         begin
           @folder = MailSyncFolder.new(folder, @store)
           run_delta
         rescue ApiError => e
-          raise unless e.status_code == 410 && (attempts += 1) == 1
+          raise unless RESYNC_STATUSES.include?(e.status_code) && (attempts += 1) == 1
 
           @folder.reset_state
           retry
@@ -79,8 +85,26 @@ module Teems
         dir = File.join(@store.folder_dir(@folder.path), 'attachments', message.short_id)
         files.each do |attachment|
           type = attachment.fetch('@odata.type', FILE_ATTACHMENT)
-          download(message, attachment, dir) if type == FILE_ATTACHMENT
+          download_or_skip(message, attachment, dir) if type == FILE_ATTACHMENT
         end
+      end
+
+      # An attachment that fails the same way every time is skipped with a warning. Raising
+      # would fail the page before its checkpoint, so every later run would stop there too.
+      def download_or_skip(message, attachment, dir)
+        download(message, attachment, dir)
+      rescue SystemCallError, ApiError => e
+        raise unless permanent?(e)
+
+        name = attachment['name'].to_s.inspect
+        @options[:on_warning]&.call("Skipped attachment #{name} of message #{message.short_id}: #{e.message}")
+      end
+
+      def permanent?(error)
+        return true unless error.is_a?(ApiError)
+
+        status = error.status_code.to_i
+        status.between?(400, 499) && !RETRYABLE_STATUSES.include?(status)
       end
 
       # Skipped when a file of the same size is already there
