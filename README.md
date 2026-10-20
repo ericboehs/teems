@@ -53,6 +53,22 @@ teems cal delete 3           # Delete event #3
 
 All-day events cover `--date` (or `--start YYYY-MM-DD`; default today). Add `--end YYYY-MM-DD` for a multi-day event: like `teems ooo --end`, it is the last day of the event, inclusive. The example above is one event covering November 12 and 13.
 
+### Mail
+
+```bash
+teems mail list                     # 20 newest Inbox messages (alias: recent)
+teems mail list Archive 50 --unread # Folder and count, unread only
+teems mail read 3fa2c1              # Headers, plain-text body, numbered links
+teems mail read 3fa2c1 --html       # Raw HTML body
+teems mail folders                  # Unread and total counts
+teems mail search "from:alice subject:report" --folder Inbox
+teems mail sync Inbox "Sent Items" --since 30
+```
+
+Mail is read-only: teems never sends, moves, deletes or flags messages, and reading one does not mark it read. Message IDs in `list` and `search` output are short handles that `read` accepts (`--tsv` prints the full Graph IDs). `search` uses Graph's KQL `$search`.
+
+`teems mail sync` keeps a Markdown copy of each message in `~/.local/share/teems/sync/mail/<Folder>/` (or `--dir`) with an `index.json` per folder. The first run of a folder fetches `--since` days (default 90, or `all`); later runs fetch only what changed, using Graph delta links stored in `~/.local/state/teems/mail-sync.json`. Messages that leave the folder keep their file and are marked `removed_at` in the index. `--attachments` also saves file attachments. A lock file keeps overlapping runs (launchd) from colliding. Syncing into a directory filled by the older AppleScript-based outlook-cli sync adopts its files instead of writing duplicates.
+
 ### Messages
 
 ```bash

@@ -56,6 +56,8 @@ module Teems
     autoload :User, 'teems/models/user'
     autoload :UserProfile, 'teems/models/user_profile'
     autoload :Duration, 'teems/models/duration'
+    autoload :MailFolder, 'teems/models/mail_folder'
+    autoload :MailMessage, 'teems/models/mail_message'
   end
 
   # Application services for configuration, caching, and API communication
@@ -76,6 +78,13 @@ module Teems
     autoload :SafariJsRunner, 'teems/services/safari_js_runner'
     autoload :SyncEngine, 'teems/services/sync_engine'
     autoload :SyncImages, 'teems/services/sync_images'
+    autoload :MailFolders, 'teems/services/mail_folders'
+    autoload :MailIdCache, 'teems/services/mail_id_cache'
+    autoload :MailLegacyFiles, 'teems/services/mail_legacy_files'
+    autoload :MailSyncEngine, 'teems/services/mail_sync_engine'
+    autoload :MailSyncFolder, 'teems/services/mail_sync_folder'
+    autoload :MailSyncIndex, 'teems/services/mail_sync_folder'
+    autoload :MailSyncStore, 'teems/services/mail_sync_store'
   end
 
   # Output formatters for messages and terminal output
@@ -86,6 +95,15 @@ module Teems
     autoload :MarkdownFormatter, 'teems/formatters/markdown_formatter'
     autoload :CalendarFormatter, 'teems/formatters/calendar_formatter'
     autoload :TranscriptMarkdown, 'teems/formatters/transcript_markdown'
+    autoload :HtmlEntities, 'teems/formatters/html_entities'
+    autoload :HtmlTags, 'teems/formatters/html_text'
+    autoload :HtmlText, 'teems/formatters/html_text'
+    autoload :TextBuffer, 'teems/formatters/html_text'
+    autoload :LinkCleaner, 'teems/formatters/link_cleaner'
+    autoload :LinkCollector, 'teems/formatters/link_collector'
+    autoload :MailDates, 'teems/formatters/mail_formatter'
+    autoload :MailFormatter, 'teems/formatters/mail_formatter'
+    autoload :MailMarkdown, 'teems/formatters/mail_markdown'
   end
 
   # CLI commands implementing user-facing functionality
@@ -106,6 +124,9 @@ module Teems
     autoload :Meeting, 'teems/commands/meeting'
     autoload :Transcripts, 'teems/commands/transcripts'
     autoload :Status, 'teems/commands/status'
+    autoload :Mail, 'teems/commands/mail'
+    autoload :MailReading, 'teems/commands/mail'
+    autoload :MailSyncing, 'teems/commands/mail_sync'
   end
 
   # Thin wrappers around Teams API endpoints
@@ -115,6 +136,7 @@ module Teems
     autoload :Channels, 'teems/api/channels'
     autoload :Chats, 'teems/api/chats'
     autoload :Files, 'teems/api/files'
+    autoload :Mail, 'teems/api/mail'
     autoload :Meetings, 'teems/api/meetings'
     autoload :Messages, 'teems/api/messages'
     autoload :Users, 'teems/api/users'

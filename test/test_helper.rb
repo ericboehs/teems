@@ -107,13 +107,31 @@ module Teems
         'type' => type,
         'status' => { 'response' => response, 'time' => '0001-01-01T00:00:00Z' } }
     end
+
+    MAIL_ID = 'AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0Ac9X7jP0Ww0eYs3Bl6N2f5wAAAgEMAAAA'
+
+    def sample_mail_message(**overrides)
+      { 'id' => MAIL_ID, 'receivedDateTime' => '2026-10-20T14:05:09Z', 'subject' => 'Quarterly report: Q3',
+        'from' => { 'emailAddress' => { 'name' => 'Alice Smith', 'address' => 'alice@example.com' } },
+        'toRecipients' => [{ 'emailAddress' => { 'name' => 'Eric Boehs', 'address' => 'eric@example.com' } }],
+        'ccRecipients' => [], 'isRead' => false, 'hasAttachments' => false, 'categories' => ['Work'],
+        'body' => { 'contentType' => 'html',
+                    'content' => '<p>Hello <a href="https://example.com/r?utm_source=x">the report</a></p>' },
+        'internetMessageId' => '<abc@example.com>', 'webLink' => 'https://outlook.office365.com/owa/?ItemID=1' }
+        .merge(overrides)
+    end
+
+    def sample_mail_folder(name = 'Inbox', **overrides)
+      { 'id' => "#{name.delete(' ')}#{'F' * 70}", 'displayName' => name, 'parentFolderId' => 'root',
+        'childFolderCount' => 0, 'unreadItemCount' => 2, 'totalItemCount' => 10 }.merge(overrides)
+    end
   end
 
   # Shared test utilities for temp config dirs, mock objects, and output capture
   module TestHelpers
     include SampleData
 
-    XDG_ENV_KEYS = %w[XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME].freeze
+    XDG_ENV_KEYS = %w[XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME].freeze
 
     private
 
@@ -187,6 +205,7 @@ module Teems
       ENV['XDG_CONFIG_HOME'] = dir
       ENV['XDG_CACHE_HOME'] = "#{dir}/cache"
       ENV['XDG_DATA_HOME'] = "#{dir}/data"
+      ENV['XDG_STATE_HOME'] = "#{dir}/state"
     end
 
     def restore_xdg_env(saved)
