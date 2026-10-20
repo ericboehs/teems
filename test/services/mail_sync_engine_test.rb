@@ -252,6 +252,32 @@ class MailSyncEngineTest < Minitest::Test
     end
   end
 
+  def test_same_named_attachments_each_get_their_own_file
+    with_store do |store|
+      contents = { 'one' => 'first', 'two' => 'second!', 'caps' => 'third', 'dot1' => 'd', 'dot2' => 'dd' }
+      contents.each { |id, text| @client.stub("/attachments/#{id}", { 'contentBytes' => [text].pack('m0') }) }
+      stub_attachment_message([{ 'id' => 'one', 'name' => 'invoice.pdf', 'size' => 5 },
+                               { 'id' => 'two', 'name' => 'invoice.pdf', 'size' => 7 },
+                               { 'id' => 'caps', 'name' => 'INVOICE.pdf', 'size' => 5 },
+                               { 'id' => 'dot1', 'name' => '.', 'size' => 1 },
+                               { 'id' => 'dot2', 'name' => '..', 'size' => 2 }])
+      dir = File.join(store.folder_dir('Inbox'), 'attachments', mail('m1').short_id)
+
+      engine(store, attachments: true).sync(INBOX)
+
+      saved = { 'invoice.pdf' => 'first', 'invoice (2).pdf' => 'second!', 'INVOICE (3).pdf' => 'third',
+                'file' => 'd', 'file (2)' => 'dd' }
+
+      assert_equal saved.sort, Dir.children(dir).map { |name| [name, File.read(File.join(dir, name))] }.sort
+      calls = @client.calls.length
+      @client.stub('deltatoken=d1', { 'value' => [sample_mail_message('id' => 'm1', 'hasAttachments' => true)],
+                                      '@odata.deltaLink' => 'https://g/delta?$deltatoken=d2' })
+      engine(store, attachments: true).sync(INBOX)
+
+      assert_equal 2, @client.calls.length - calls, 'only the delta page and the listing'
+    end
+  end
+
   def test_skipped_attachments_need_no_warning_handler
     with_store do |store|
       @client.stub_error('/attachments/gone', Teems::ApiError.new('HTTP 404: Not Found', status_code: 404))

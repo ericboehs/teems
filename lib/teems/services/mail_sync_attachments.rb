@@ -34,6 +34,18 @@ module Teems
         status.between?(400, 499) && !RETRYABLE_STATUSES.include?(status)
       end
 
+      # The attachment's safe file name, or "name (2).ext" and so on when an earlier one in
+      # the message took it (compared without case, as on macOS). The first keeps the plain
+      # name, so files saved before stay where they are.
+      def self.unique_name(name, taken)
+        base = Formatters::FormatUtils.safe_filename(name.to_s)
+        ext = File.extname(base)
+        candidates = (2..).lazy.map { |number| "#{base.delete_suffix(ext)} (#{number})#{ext}" }
+        unique = [base].lazy.chain(candidates).find { |candidate| !taken.include?(candidate.downcase) }
+        taken << unique.downcase
+        unique
+      end
+
       private
 
       # A listing Graph refuses for good leaves the message without attachment names
@@ -47,14 +59,16 @@ module Teems
       # Item and reference attachments (attached emails, cloud links) have no file to save
       def download_all(message, files, attachments_dir)
         dir = File.join(attachments_dir, message.short_id)
+        taken = Set.new
         files.each do |attachment|
-          type = attachment.fetch('@odata.type', FILE_ATTACHMENT)
-          download_or_skip(message, attachment, dir) if type == FILE_ATTACHMENT
+          next unless attachment.fetch('@odata.type', FILE_ATTACHMENT) == FILE_ATTACHMENT
+
+          download_or_skip(message, attachment, File.join(dir, self.class.unique_name(attachment['name'], taken)))
         end
       end
 
-      def download_or_skip(message, attachment, dir)
-        download(message, attachment, dir)
+      def download_or_skip(message, attachment, path)
+        download(message, attachment, path)
       rescue SystemCallError, ApiError => e
         skip(e, "attachment #{attachment['name'].to_s.inspect} of message #{message.short_id}")
       end
@@ -66,9 +80,8 @@ module Teems
       end
 
       # Skipped when a file of the same size is already there
-      def download(message, attachment, dir)
-        attachment_id, name, size = attachment.values_at('id', 'name', 'size')
-        path = File.join(dir, Formatters::FormatUtils.safe_filename(name.to_s))
+      def download(message, attachment, path)
+        attachment_id, size = attachment.values_at('id', 'size')
         return if File.size?(path) == size
 
         bytes = @api.attachment(message.id, attachment_id)['contentBytes']
