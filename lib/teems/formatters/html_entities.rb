@@ -29,10 +29,20 @@ module Teems
         end
       end
 
+      # Like browsers, 0x80-0x9F mean their Windows-1252 characters (&#146; is a right quote).
+      # Other control characters decode to nothing (see Support::ControlChars).
       def codepoint(number)
-        return '' if number.zero? || number.between?(0xD800, 0xDFFF) || number > 0x10FFFF
+        return windows_char(number) if number.between?(0x80, 0x9F)
+        return '' if number.between?(0xD800, 0xDFFF) || number > 0x10FFFF
 
-        [number].pack('U')
+        Support::ControlChars.strip([number].pack('U'))
+      end
+
+      # '' for the five bytes Windows-1252 leaves undefined
+      def windows_char(number)
+        number.chr.force_encoding(Encoding::Windows_1252).encode(Encoding::UTF_8)
+      rescue EncodingError
+        ''
       end
     end
   end

@@ -51,6 +51,21 @@ class MailSyncEngineTest < Minitest::Test
     end
   end
 
+  def test_synced_files_carry_no_terminal_controls
+    with_store do |store|
+      hostile = sample_mail_message('id' => 'm1', 'subject' => "Pay\e]52;c;aGk=\a",
+                                    'body' => { 'contentType' => 'html', 'content' => '<p>x&#27;[2Jy</p>' })
+      @client.stub('/messages/delta', { 'value' => [hostile], '@odata.deltaLink' => 'https://g/delta?$deltatoken=d1' })
+      engine(store).sync(INBOX)
+      file = store.load_index('Inbox')['m1']['file']
+      content = File.read(File.join(store.folder_dir('Inbox'), file))
+
+      refute_match(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/, content)
+      assert_includes content, '# Pay]52;c;aGk='
+      assert_includes content, 'x[2Jy'
+    end
+  end
+
   def test_incremental_sync_updates_and_marks_removed
     with_store do |store|
       first = [sample_mail_message('id' => 'm1'), sample_mail_message('id' => 'm2')]

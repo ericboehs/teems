@@ -2,7 +2,8 @@
 
 module Teems
   module Models
-    # A mail message from Microsoft Graph (/me/messages)
+    # A mail message from Microsoft Graph (/me/messages). Text a sender controls is kept free
+    # of terminal control characters (see Support::ControlChars), whichever way it is shown.
     MailMessage = Data.define(
       :id, :subject, :from, :to, :cc, :received_at, :is_read, :has_attachments,
       :categories, :body_type, :body, :internet_message_id, :web_link
@@ -14,7 +15,7 @@ module Teems
       end
 
       def self.header_attrs(data)
-        { id: data['id'], subject: data['subject'].to_s, from: recipient(data['from']),
+        { id: data['id'], subject: clean(data['subject']), from: recipient(data['from']),
           to: recipients(data['toRecipients']), cc: recipients(data['ccRecipients']),
           received_at: parse_time(data['receivedDateTime']), is_read: data['isRead'] == true,
           has_attachments: data['hasAttachments'] == true }
@@ -22,20 +23,23 @@ module Teems
 
       def self.body_attrs(data)
         body = data['body'] || {}
-        { categories: Array(data['categories']), body_type: body['contentType'].to_s.downcase,
-          body: body['content'].to_s, internet_message_id: data['internetMessageId'], web_link: data['webLink'] }
+        { categories: Array(data['categories']).map { |category| clean(category) },
+          body_type: body['contentType'].to_s.downcase, body: clean(body['content']),
+          internet_message_id: data['internetMessageId'], web_link: data['webLink'] }
       end
 
       def self.recipient(data)
         email = Hash(data)['emailAddress'] || {}
-        { name: email['name'].to_s, address: email['address'].to_s }
+        { name: clean(email['name']), address: clean(email['address']) }
       end
+
+      def self.clean(text) = Support::ControlChars.strip(text)
 
       def self.recipients(list) = Array(list).map { |entry| recipient(entry) }
 
       # Names of the attachments a person attached (inline images left out)
       def self.attachment_names(attachments)
-        attachments.reject { |item| item['isInline'] }.map { |item| item['name'].to_s }
+        attachments.reject { |item| item['isInline'] }.map { |item| clean(item['name']) }
       end
 
       # Short handle shown in lists; `teems mail read` accepts it after a list or search

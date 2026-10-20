@@ -116,7 +116,7 @@ module Teems
       private
 
       def tokens(html)
-        html.scrub('').gsub(HtmlTags::COMMENTS, '').gsub(HtmlTags::DROPPED, '').scan(HtmlTags::TOKENS)
+        Support::ControlChars.strip(html.scrub('')).gsub(HtmlTags::COMMENTS, '').gsub(HtmlTags::DROPPED, '').scan(HtmlTags::TOKENS)
       end
 
       def tag(token)

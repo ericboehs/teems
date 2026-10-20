@@ -5,6 +5,27 @@ require 'test_helper'
 class MailMessageTest < Minitest::Test
   def mail_message(**overrides) = Teems::Models::MailMessage.from_api(sample_mail_message(**overrides))
 
+  def test_sender_text_carries_no_terminal_controls
+    msg = mail_message('subject' => "Hi\e]0;owned\a",
+                       'from' => { 'emailAddress' => { 'name' => "\e[31mEvil", 'address' => "e\e@example.com" } },
+                       'categories' => ["Wo\erk"],
+                       'body' => { 'contentType' => 'text', 'content' => "one\e[2J\r\ntwo\a" })
+    text = msg.to_text(attachments: Teems::Models::MailMessage.attachment_names([{ 'name' => "a\e[8m.pdf" }]))
+
+    assert_equal 'Hi]0;owned', msg.subject
+    refute_match(/[\e\a\r]/, text)
+    assert_includes text, 'From: [31mEvil <e@example.com>'
+    assert_includes text, 'Attachments: a[8m.pdf'
+    assert_equal "one[2J\ntwo", msg.body
+  end
+
+  def test_html_bodies_lose_raw_and_encoded_controls
+    msg = mail_message('body' => { 'contentType' => 'html', 'content' => "<p>a\e[2Jb &#27;]52;c;aGk=&#7;c</p>" })
+
+    assert_equal '<p>a[2Jb &#27;]52;c;aGk=&#7;c</p>', msg.body
+    assert_equal 'a[2Jb ]52;c;aGk=c', msg.text_body.to_s
+  end
+
   def test_from_api_parses_headers_and_body
     msg = mail_message
 

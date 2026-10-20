@@ -156,5 +156,6 @@ module Teems
     autoload :Timezone, 'teems/support/timezone'
     autoload :TimeParsing, 'teems/support/time_parsing'
     autoload :Subprocess, 'teems/support/subprocess'
+    autoload :ControlChars, 'teems/support/control_chars'
   end
 end
