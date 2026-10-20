@@ -11,12 +11,12 @@ class CalIcsCommandTest < Minitest::Test
   end
 
   # Runs `cal ics args` at a fixed time; returns stdout and stores the exit code and request params
-  def run_ics(args, events: [graph_event('a')])
+  def run_ics(args, events: [graph_event('a')], stubs: { 'calendarView' => { 'value' => events } })
     with_temp_config do
       Time.stub(:now, Time.utc(2026, 10, 20, 12)) do
         capture_output do |output|
           runner = configured_runner(output: output)
-          runner.api_client.stub('calendarView', { 'value' => events })
+          stubs.each { |path, response| runner.api_client.stub(path, response) }
           @code = Teems::Commands::Cal.new(['ics', *args], runner: runner).execute
           @params = runner.api_client.calls.first[:params]
         end[:stdout]
@@ -52,6 +52,23 @@ class CalIcsCommandTest < Minitest::Test
     assert_equal '2026-10-20T12:00:00Z', @params['startDateTime']
     assert_equal '2026-10-23T12:00:00Z', @params['endDateTime']
     assert_includes stdout, 'X-WR-CALNAME:Work (outlook-cli)'
+  end
+
+  def test_quiet_still_prints_the_calendar
+    assert run_ics(['-q']).start_with?("BEGIN:VCALENDAR\r\n")
+  end
+
+  # View stubs come first: the calendars list path is a prefix of theirs
+  def test_all_calendars_merges_every_calendar_default_first
+    stdout = run_ics(['--all-calendars'], stubs: {
+                       'calendars/def/calendarView' => { 'value' => [graph_event('a'), graph_event('shared')] },
+                       'calendars/hol/calendarView' => { 'value' => [graph_event('holiday'), graph_event('shared')] },
+                       '/v1.0/me/calendars' => { 'value' => [{ 'id' => 'hol' },
+                                                             { 'id' => 'def', 'isDefaultCalendar' => true }] }
+                     })
+
+    assert_equal 0, @code
+    assert_equal %w[a shared holiday], stdout.scan(/^UID:(\S+)\r$/).flatten
   end
 
   def test_exclude_attendee

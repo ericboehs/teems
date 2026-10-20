@@ -18,13 +18,20 @@ module Teems
 
       def export_ics
         now = Time.now
-        events = with_token_refresh { runner.calendar_api.feed_events(from: ics_start(now), to: ics_end(now)) }
+        events = with_token_refresh { fetch_feed_events(now) }
         excluded = excluded_addresses
         kept = events.reject { |event| event.involves?(excluded) }
-        print(Formatters::IcsFormat.calendar(kept, name: ics_option(:name), stamp: now))
+        # The calendar is the command's result, so -q does not silence it
+        output.print(Formatters::IcsFormat.calendar(kept, name: ics_option(:name), stamp: now))
         0
       rescue ApiError => e
         api_error_result('Failed to fetch calendar', e)
+      end
+
+      def fetch_feed_events(now)
+        api = runner.calendar_api
+        views = @options[:all_calendars] ? api.calendar_views : [Api::Calendar::DEFAULT_VIEW]
+        api.feed_events(from: ics_start(now), to: ics_end(now), views: views)
       end
 
       def ics_option(key) = @options[key] || ICS_DEFAULTS.fetch(key)

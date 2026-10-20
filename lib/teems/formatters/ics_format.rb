@@ -35,18 +35,30 @@ module Teems
 
       def people(event)
         organizer = Hash(event.organizer)
-        email = organizer[:email].to_s
-        lines = email.empty? ? [] : ["ORGANIZER;CN=#{param(organizer[:name] || email)}:mailto:#{email}"]
+        email = mail_address(organizer)
+        lines = email ? ["ORGANIZER;CN=#{common_name(organizer, email)}:mailto:#{email}"] : []
         lines + event.attendees.filter_map { |attendee| attendee_line(attendee) }
       end
 
       def attendee_line(attendee)
-        email = attendee[:email].to_s
-        return if email.empty?
+        email = mail_address(attendee)
+        return unless email
 
         role = ROLE.fetch(attendee[:type].to_s, 'REQ-PARTICIPANT')
         partstat = PARTSTAT.fetch(attendee[:response].to_s, 'NEEDS-ACTION')
-        "ATTENDEE;CN=#{param(attendee[:name] || email)};ROLE=#{role};PARTSTAT=#{partstat};RSVP=TRUE:mailto:#{email}"
+        "ATTENDEE;CN=#{common_name(attendee, email)};ROLE=#{role};PARTSTAT=#{partstat};RSVP=TRUE:mailto:#{email}"
+      end
+
+      # An address that makes a valid mailto: URI, or nil. Exchange-internal X.500 addresses
+      # (/O=EXCHANGELABS/...) have no @ and are left out with the people who have them.
+      def mail_address(person)
+        email = person[:email].to_s.strip
+        email.include?('@') ? email : nil
+      end
+
+      def common_name(person, email)
+        name = person[:name].to_s.strip
+        param(name.empty? ? email : name)
       end
 
       # URI values are not text-escaped. URL is what most clients show; CONFERENCE and the
@@ -64,12 +76,17 @@ module Teems
 
       def optional_text(name, text) = text.to_s.strip.empty? ? [] : ["#{name}:#{escape(text)}"]
 
+      # Control characters RFC 5545 allows in no value: all but HTAB, once line breaks are handled
+      CONTROLS = /[\x00-\x08\x0A-\x1F\x7F]/
+
       # RFC 5545 TEXT escaping
-      def escape(text) = text.to_s.gsub(/[\\;,]/) { |char| "\\#{char}" }.gsub(/\r\n|\r|\n/, '\\n')
+      def escape(text)
+        text.to_s.gsub(/[\\;,]/) { |char| "\\#{char}" }.gsub(/\r\n|\r|\n/, '\\n').gsub(CONTROLS, '')
+      end
 
       # Parameter values are quoted when they hold a separator; quotes themselves cannot appear
       def param(value)
-        text = value.to_s.delete('"').gsub(/[\r\n]+/, ' ')
+        text = value.to_s.delete('"').gsub(/[\r\n]+/, ' ').gsub(CONTROLS, '')
         text.match?(/[;:,]/) ? %("#{text}") : text
       end
 

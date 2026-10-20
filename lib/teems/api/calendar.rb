@@ -16,6 +16,8 @@ module Teems
         responseStatus sensitivity
       ].join(',').freeze
 
+      DEFAULT_VIEW = '/v1.0/me/calendarView'
+      FEED_HEADERS = { 'Prefer' => 'outlook.timezone="UTC", IdType="ImmutableId"' }.freeze
       FEED_SELECT = %w[
         id iCalUId subject start end location isAllDay organizer attendees
         body onlineMeeting showAs isCancelled
@@ -28,14 +30,22 @@ module Teems
         paginate_events('/v1.0/me/calendarView', params: params, headers: headers)
       end
 
-      # Every event (each occurrence of a series on its own) between two Times, for `teems cal ics`.
-      # Times come back in UTC and IDs are immutable, so UIDs stay stable between exports.
-      def feed_events(from:, to:)
+      # Every event (each occurrence of a series on its own) between two Times, for `teems cal ics`,
+      # from the default calendar or the given calendarView paths (see #calendar_views).
+      # Times come back in UTC and IDs are immutable, so UIDs stay stable between exports. An
+      # event on two calendars is kept once.
+      def feed_events(from:, to:, views: [DEFAULT_VIEW])
         params = { 'startDateTime' => from.utc.iso8601, 'endDateTime' => to.utc.iso8601,
                    '$select' => FEED_SELECT, '$orderby' => 'start/dateTime', '$top' => 250 }
-        headers = { 'Prefer' => 'outlook.timezone="UTC", IdType="ImmutableId"' }
-        collect_pages(get('/v1.0/me/calendarView', params: params, headers: headers), headers)
-          .map { |data| Models::IcsEvent.from_api(data) }
+        views.flat_map { |path| feed_page_events(path, params) }.uniq(&:uid)
+      end
+
+      # calendarView paths for every calendar (holidays, shared ones), the default calendar
+      # first so its copy of an event on two calendars is the one kept
+      def calendar_views
+        calendars = collect_pages(get('/v1.0/me/calendars', params: { '$select' => 'id,isDefaultCalendar' }), {})
+        calendars.sort_by { |calendar| calendar['isDefaultCalendar'] ? 0 : 1 }
+                 .map { |calendar| "/v1.0/me/calendars/#{URI.encode_www_form_component(calendar['id'])}/calendarView" }
       end
 
       # Get a single event by ID with full details
@@ -83,6 +93,11 @@ module Teems
 
       def paginate_events(path, params:, headers:)
         collect_pages(get(path, params: params, headers: headers), headers).map { |data| Models::Event.from_api(data) }
+      end
+
+      def feed_page_events(path, params)
+        collect_pages(get(path, params: params, headers: FEED_HEADERS), FEED_HEADERS)
+          .map { |data| Models::IcsEvent.from_api(data) }
       end
 
       def collect_pages(response, headers)

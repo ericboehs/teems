@@ -31,6 +31,8 @@ module Teems
         -h, --help           Show this help
 
       ICS OPTIONS:
+        --all-calendars      Every calendar (holidays, shared ones), not just the
+                             default one
         --days N             Days ahead to include (default: 60)
         --days-back N        Days back to include (default: 7)
         --exclude-attendee ADDRS
@@ -91,6 +93,7 @@ module Teems
         teems cal --json | jq ...        # JSON output, no prompt
         teems cal ics > work.ics         # 7 days back through 60 ahead
         teems cal ics --days 30 --days-back 0 --no-login
+        teems cal ics --all-calendars    # Include holiday and shared calendars
     HELP
 
     # Date range computation for calendar queries
@@ -820,7 +823,8 @@ module Teems
         '--days-back' => ->(opts, args) { opts[:days_back] = args.shift.to_i },
         '--exclude-attendee' => ->(opts, args) { opts[:exclude_attendee] = args.shift },
         '--name' => ->(opts, args) { opts[:name] = args.shift },
-        '--no-login' => ->(opts, _args) { opts[:no_login] = true }
+        '--no-login' => ->(opts, _args) { opts[:no_login] = true },
+        '--all-calendars' => ->(opts, _args) { opts[:all_calendars] = true }
       }.freeze
     end
 

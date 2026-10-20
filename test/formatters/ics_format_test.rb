@@ -17,6 +17,8 @@ class IcsFormatTest < Minitest::Test
     status: { cancelled: false, show_as: 'busy' }
   }.freeze
 
+  X500 = '/O=EXCHANGELABS/OU=EXCHANGE ADMINISTRATIVE GROUP/CN=RECIPIENTS/CN=LEGACY'
+
   def event(**overrides) = Teems::Models::IcsEvent.new(**EVENT, **overrides)
 
   def unfolded(ics) = ics.gsub("\r\n ", '').split("\r\n")
@@ -89,6 +91,24 @@ class IcsFormatTest < Minitest::Test
     assert(parts.drop(1).all? { |part| part.start_with?(' ') })
     assert_equal line, folded.gsub("\r\n ", '')
     assert_equal 'short', Ics.fold('short')
+  end
+
+  def test_people_without_names_or_internet_addresses
+    attendees = [{ name: '', email: 'cara@example.com', type: 'required', response: 'none' },
+                 { name: 'Legacy', email: X500, type: 'required', response: 'accepted' }]
+    lines = unfolded(Ics.calendar([event(organizer: { name: ' ', email: 'olive@example.com' }, attendees: attendees),
+                                   event(uid: 'uid-2', organizer: { name: 'Legacy', email: X500 }, attendees: [])],
+                                  name: 'Cal', stamp: STAMP))
+
+    assert_equal ['ORGANIZER;CN=olive@example.com:mailto:olive@example.com'],
+                 lines.grep(/\AORGANIZER/)
+    assert_equal ['ATTENDEE;CN=cara@example.com;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:' \
+                  'mailto:cara@example.com'], lines.grep(/\AATTENDEE/)
+  end
+
+  def test_control_characters_are_dropped
+    assert_equal "ab\\nc\td", Ics.escape("a\u0000b\nc\td\u007F")
+    assert_equal 'a b', Ics.param("a\u0007\nb")
   end
 
   def test_param_quoting
