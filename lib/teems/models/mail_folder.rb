@@ -11,11 +11,21 @@ module Teems
             child_count: data['childFolderCount'].to_i)
       end
 
-      # A full path match wins over a display name match; both ignore case
+      # The folder whose full path is name, else the one whose display name is (both ignore
+      # case), or nil. A display name several folders share raises rather than guessing.
       def self.find_named(folders, name)
+        matches = matching(folders, name)
+        return matches.first unless matches.length > 1
+
+        raise Error, "Mail folder name is ambiguous: #{name} matches #{matches.map(&:path).join(', ')} " \
+                     '(use the full path)'
+      end
+
+      def self.matching(folders, name)
         wanted = name.strip
         candidates = folders.select { |folder| folder.named?(wanted) }
-        candidates.find { |folder| folder.path.casecmp?(wanted) } || candidates.first
+        by_path = candidates.select { |folder| folder.path.casecmp?(wanted) }
+        by_path.empty? ? candidates : by_path
       end
 
       def to_json_hash = to_h

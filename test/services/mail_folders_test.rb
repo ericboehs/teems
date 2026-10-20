@@ -52,6 +52,29 @@ class MailFoldersTest < Minitest::Test
     assert_equal "/v1.0/me/mailFolders/#{'B' * 80}", @client.calls.last[:path]
   end
 
+  def test_resolve_by_id_keeps_the_parent_path
+    stub_tree
+    folder = @folders.resolve(sample_mail_folder('EERT')['id'])
+
+    assert_equal 'Projects/EERT', folder.path
+    refute(@client.calls.any? { |call| call[:path].end_with?(folder.id) })
+  end
+
+  # Child stubs go first: the top-level list path is a prefix of theirs
+  def test_resolve_ambiguous_name
+    parents = %w[Projects Old].map { |name| sample_mail_folder(name, 'childFolderCount' => 1) }
+    parents.each do |parent|
+      eert = sample_mail_folder('EERT', 'id' => "#{parent['displayName']}-eert")
+      @client.stub("mailFolders/#{parent['id']}/childFolders", { 'value' => [eert] })
+    end
+    @client.stub('/v1.0/me/mailFolders', { 'value' => parents })
+
+    error = assert_raises(Teems::Error) { @folders.resolve('eert') }
+    assert_equal 'Mail folder name is ambiguous: eert matches Projects/EERT, Old/EERT (use the full path)',
+                 error.message
+    assert_equal 'Old-eert', @folders.resolve('Old/EERT').id
+  end
+
   def test_resolve_unknown
     stub_tree
 

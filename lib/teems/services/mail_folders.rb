@@ -35,17 +35,27 @@ module Teems
       end
 
       def resolve(name)
-        direct = well_known(name) || (name if name.match?(FOLDER_ID))
-        return Models::MailFolder.from_api(@api.folder(direct)) if direct
+        known = well_known(name)
+        return fetch(known) if known
+        return by_id(name) if name.match?(FOLDER_ID)
 
-        find(name) or raise Error, "Mail folder not found: #{name} (run: teems mail folders)"
+        find(name)
       end
 
       private
 
       def well_known(name) = WELL_KNOWN[name.to_s.strip.downcase]
 
-      def find(name) = Models::MailFolder.find_named(all, name)
+      def fetch(id) = Models::MailFolder.from_api(@api.folder(id))
+
+      # A folder fetched by ID alone has no parent path (and so a different sync directory
+      # than by name), so look for it in the tree first
+      def by_id(id) = all.find { |folder| folder.id == id } || fetch(id)
+
+      def find(name)
+        Models::MailFolder.find_named(all, name) or
+          raise Error, "Mail folder not found: #{name} (run: teems mail folders)"
+      end
 
       def walk(items, parent_path)
         items.flat_map do |data|
