@@ -22,6 +22,27 @@ class MailSyncStoreTest < Minitest::Test
     end
   end
 
+  def test_a_folder_whose_directory_another_folder_claims_gets_its_own
+    with_store do |store|
+      store.save_index('Projects/Reports', {})
+      suffix = Digest::SHA256.hexdigest('Projects-Reports')[0, 8]
+
+      assert_equal File.join(store.root, "Projects-Reports (#{suffix})"), store.folder_dir('Projects-Reports')
+      assert_equal File.join(store.root, 'Projects-Reports'), store.folder_dir('Projects/Reports')
+    end
+  end
+
+  def test_dot_folder_names_stay_inside_the_root
+    with_store do |store|
+      %w[. ..].each do |name|
+        dir = store.folder_dir(name)
+
+        assert_equal store.root, File.dirname(dir)
+        assert_match(/\A\.{1,2} \(\h{8}\)\z/, File.basename(dir))
+      end
+    end
+  end
+
   def test_index_round_trip
     with_store do |store|
       store.save_index('Projects/EERT', { 'id1' => { 'file' => 'a.md' } })

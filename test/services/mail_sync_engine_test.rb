@@ -66,6 +66,28 @@ class MailSyncEngineTest < Minitest::Test
     end
   end
 
+  # Projects/Reports and a top-level Projects-Reports would share a directory and index
+  def test_folders_with_the_same_directory_name_sync_apart
+    with_store do |store|
+      nested = Teems::Models::MailFolder.from_api({ 'id' => 'nested-id', 'displayName' => 'Reports' },
+                                                  parent_path: 'Projects')
+      top = Teems::Models::MailFolder.from_api({ 'id' => 'top-id', 'displayName' => 'Projects-Reports' })
+      @client.stub('nested-id/messages/delta', { 'value' => [sample_mail_message('id' => 'n1')],
+                                                 '@odata.deltaLink' => 'https://g/delta?$deltatoken=n' })
+      @client.stub('top-id/messages/delta', { 'value' => [sample_mail_message('id' => 't1')],
+                                              '@odata.deltaLink' => 'https://g/delta?$deltatoken=t' })
+
+      engine(store).sync(nested)
+      engine(store).sync(top)
+
+      refute_equal store.folder_dir('Projects/Reports'), store.folder_dir('Projects-Reports')
+      assert_equal ['n1'], store.load_index('Projects/Reports').keys
+      assert_equal ['t1'], store.load_index('Projects-Reports').keys
+      assert_equal 'Projects/Reports',
+                   JSON.parse(File.read(File.join(store.folder_dir('Projects/Reports'), 'index.json')))['folder']
+    end
+  end
+
   def test_incremental_sync_updates_and_marks_removed
     with_store do |store|
       first = [sample_mail_message('id' => 'm1'), sample_mail_message('id' => 'm2')]

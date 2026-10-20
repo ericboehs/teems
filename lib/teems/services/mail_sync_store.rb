@@ -8,6 +8,11 @@ module Teems
     #   <root>/<Folder>/index.json                             message ID -> file and summary
     #   <root>/<Folder>/attachments/<short id>/                with --attachments
     #
+    # <Folder> is the folder path with "/" as "-", as outlook-cli named them, so its files
+    # are adopted. A folder whose name another folder's index already claims (Projects/Reports
+    # and a top-level Projects-Reports), or that is no usable directory name ("." or ".."),
+    # gets "<Folder> (<8 hex digits>)" instead.
+    #
     # Delta links and the run lock live in the XDG state dir, outside the root, so a run that
     # changes no mail changes nothing under the root (watchers keyed on mtimes stay quiet).
     class MailSyncStore
@@ -15,6 +20,7 @@ module Teems
 
       INDEX_FILE = 'index.json'
       STATE_FILE = 'mail-sync.json'
+      UNUSABLE_NAMES = ['', '.', '..'].freeze
 
       attr_reader :root
 
@@ -27,15 +33,15 @@ module Teems
       def initialize(root: MailSyncStore.default_root, state_dir: MailSyncStore.default_state_dir)
         @root = File.expand_path(root)
         @state_dir = state_dir
+        @folder_dirs = {}
       end
 
-      def folder_dir(folder_path) = File.join(root, folder_path.tr('/', '-'))
+      def folder_dir(folder_path) = @folder_dirs[folder_path] ||= File.join(root, dir_name(folder_path))
 
       def index_exists?(folder_path) = File.file?(index_path(folder_path))
 
       def load_index(folder_path)
-        data = read_json(index_path(folder_path))
-        data.is_a?(Hash) ? data.fetch('messages', {}) : {}
+        read_json(index_path(folder_path)).fetch('messages', {})
       end
 
       def save_index(folder_path, messages)
@@ -56,14 +62,12 @@ module Teems
 
       # Delta state for this root, keyed by Graph folder ID
       def load_state
-        roots = read_json(state_path)
-        folders = roots.is_a?(Hash) ? roots.dig('roots', root, 'folders') : nil
+        folders = read_json(state_path).dig('roots', root, 'folders')
         folders.is_a?(Hash) ? folders : {}
       end
 
       def save_state(folders)
         data = read_json(state_path)
-        data = {} unless data.is_a?(Hash)
         (data['roots'] ||= {})[root] = { 'folders' => folders }
         ensure_dir(@state_dir)
         atomic_write(state_path, JSON.pretty_generate(data))
@@ -83,6 +87,18 @@ module Teems
 
       def index_path(folder_path) = File.join(folder_dir(folder_path), INDEX_FILE)
 
+      def dir_name(folder_path)
+        name = folder_path.tr('/', '-')
+        return name unless UNUSABLE_NAMES.include?(name) || claimed_by_another?(name, folder_path)
+
+        "#{name} (#{Digest::SHA256.hexdigest(folder_path)[0, 8]})"
+      end
+
+      # An index records the folder path it was saved for
+      def claimed_by_another?(name, folder_path)
+        read_json(File.join(root, name, INDEX_FILE)).fetch('folder', folder_path) != folder_path
+      end
+
       def state_path = File.join(@state_dir, STATE_FILE)
 
       def ensure_dir(dir)
@@ -90,7 +106,11 @@ module Teems
         dir
       end
 
-      def read_json(path) = load_json_or_default(path, {})
+      # A JSON object from the file, or {} for anything else
+      def read_json(path)
+        data = load_json_or_default(path, {})
+        data.is_a?(Hash) ? data : {}
+      end
     end
   end
 end
