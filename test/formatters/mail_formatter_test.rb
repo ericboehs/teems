@@ -19,7 +19,7 @@ class MailFormatterTest < Minitest::Test
     rows = @formatter.message_rows([mail_message, mail_message('isRead' => true, 'subject' => "Multi\r\nline")])
 
     assert_match(/\A\h{8}  2026-10-20 09:05  Alice Smith\s+Quarterly report: Q3  unread\z/, rows[0])
-    assert_match(/Multi  line  read\z/, rows[1])
+    assert_match(/Multi line  read\z/, rows[1])
   end
 
   def test_message_rows_truncate_long_senders

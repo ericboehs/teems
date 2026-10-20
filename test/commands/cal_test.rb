@@ -249,6 +249,13 @@ module CalCommandTests
       assert_match(/not found/, result[:stderr])
     end
 
+    # A date that does not parse leaves nothing to look the reference up in
+    def test_show_ref_with_an_invalid_date_is_not_found
+      result = run_cal(%w[show zzz999 --date not-a-date],
+                       stubs: { 'calendarView' => { 'value' => [sample_event_data] } })
+      assert_match(/Event 'zzz999' not found/, result[:stderr])
+    end
+
     def test_show_subcommand_by_number
       result = run_cal_with_resolved_show(%w[show 1], [sample_event_data])
       stdout = result[:stdout]
