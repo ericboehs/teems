@@ -2,12 +2,13 @@
 
 module Teems
   module Services
-    # File I/O helpers for SyncStore: atomic writes, backup, and JSON persistence
+    # File I/O helpers for SyncStore and MailSyncStore: atomic writes, backup, and JSON persistence
     module SyncFileOps
       private
 
+      # The temporary name carries the PID, so two processes never write the same one
       def atomic_write(path, content)
-        tmp_path = "#{path}.tmp"
+        tmp_path = "#{path}.tmp.#{Process.pid}"
         File.write(tmp_path, content)
         File.rename(tmp_path, path)
       end
@@ -20,7 +21,7 @@ module Teems
       end
 
       def load_json_or_default(path, default)
-        return default unless File.exist?(path)
+        return default unless File.file?(path)
 
         JSON.parse(File.read(path))
       rescue JSON::ParserError

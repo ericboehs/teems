@@ -11,6 +11,8 @@ module Teems
     # Delta links and the run lock live in the XDG state dir, outside the root, so a run that
     # changes no mail changes nothing under the root (watchers keyed on mtimes stay quiet).
     class MailSyncStore
+      include SyncFileOps
+
       INDEX_FILE = 'index.json'
       STATE_FILE = 'mail-sync.json'
 
@@ -88,18 +90,7 @@ module Teems
         dir
       end
 
-      def read_json(path)
-        File.file?(path) ? JSON.parse(File.read(path)) : {}
-      rescue JSON::ParserError
-        File.rename(path, "#{path}.corrupt.#{Time.now.strftime('%Y%m%d%H%M%S')}")
-        {}
-      end
-
-      def atomic_write(path, content)
-        tmp = "#{path}.tmp.#{Process.pid}"
-        File.write(tmp, content)
-        File.rename(tmp, path)
-      end
+      def read_json(path) = load_json_or_default(path, {})
     end
   end
 end

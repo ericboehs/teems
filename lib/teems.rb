@@ -75,6 +75,7 @@ module Teems
     autoload :InlineImageDownloader, 'teems/services/inline_image_downloader'
     autoload :TeamsUrlParser, 'teems/services/teams_url_parser'
     autoload :SyncStore, 'teems/services/sync_store'
+    autoload :SyncFileOps, 'teems/services/sync_store'
     autoload :SyncDirNaming, 'teems/services/sync_dir_naming'
     autoload :SyncDirOwnership, 'teems/services/sync_dir_ownership'
     autoload :SyncDirPlanning, 'teems/services/sync_dir_planning'

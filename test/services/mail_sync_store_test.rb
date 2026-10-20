@@ -48,6 +48,20 @@ class MailSyncStoreTest < Minitest::Test
     end
   end
 
+  # A corrupt index that cannot be moved aside is warned about and read as empty
+  def test_corrupt_index_that_cannot_be_moved_aside
+    with_store do |store|
+      dir = FileUtils.mkdir_p(store.folder_dir('Inbox')).first
+      File.write(File.join(dir, 'index.json'), '{broken')
+      File.chmod(0o500, dir)
+
+      _, stderr = capture_io { assert_equal({}, store.load_index('Inbox')) }
+      assert_match(/Could not back up corrupt file .*index.json/, stderr)
+    ensure
+      File.chmod(0o700, dir)
+    end
+  end
+
   def test_write_message_reports_created_updated_unchanged
     with_store do |store|
       assert_equal :created, store.write_message('Inbox', 'a.md', 'one')
