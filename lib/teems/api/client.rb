@@ -34,6 +34,20 @@ module Teems
       def delete(path)
         @api.delete(endpoint, path, account: @account)
       end
+
+      # The items of a Graph collection from its first response, following @odata.nextLink
+      # (sent with the same headers) until the last page, or until limit items are in hand
+      # (no page is fetched past them)
+      def collect_pages(response, headers: {}, limit: nil)
+        items = Enumerator.new do |yielder|
+          loop do
+            Array(response['value']).each(&yielder)
+            link = response['@odata.nextLink'] or break
+            response = get(link, headers: headers)
+          end
+        end
+        limit ? items.first(limit) : items.to_a
+      end
     end
   end
 end

@@ -69,16 +69,8 @@ module Teems
       def list_params(count) = { '$top' => count.clamp(1, PAGE_MAX), '$select' => LIST_FIELDS.join(',') }
 
       def collect(path, params, limit:)
-        items = []
-        response = get(path, params: params, headers: prefer_header)
-        loop do
-          items.concat(response['value'] || [])
-          link = response['@odata.nextLink']
-          break if !link || (limit && items.length >= limit)
-
-          response = get(link, headers: prefer_header)
-        end
-        limit ? items.first(limit) : items
+        headers = prefer_header
+        collect_pages(get(path, params: params, headers: headers), headers: headers, limit: limit)
       end
 
       def folder_fields = 'id,displayName,parentFolderId,childFolderCount,unreadItemCount,totalItemCount'

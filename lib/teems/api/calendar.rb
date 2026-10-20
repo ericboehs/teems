@@ -49,7 +49,7 @@ module Teems
       # one kept and it is never skipped.
       def calendar_views
         params = { '$select' => 'id,name,isDefaultCalendar' }
-        collect_pages(get('/v1.0/me/calendars', params: params), {})
+        collect_pages(get('/v1.0/me/calendars', params: params))
           .sort_by { |calendar| calendar['isDefaultCalendar'] ? 0 : 1 }
           .to_h { |calendar| [calendar_view_path(calendar), calendar['name'].to_s] }
       end
@@ -98,7 +98,7 @@ module Teems
       end
 
       def paginate_events(path, params:, headers:)
-        collect_pages(get(path, params: params, headers: headers), headers).map { |data| Models::Event.from_api(data) }
+        collect_pages(get(path, params: params, headers: headers), headers: headers).map { |data| Models::Event.from_api(data) }
       end
 
       def calendar_view_path(calendar)
@@ -108,24 +108,13 @@ module Teems
       end
 
       def view_events(path, name, params)
-        collect_pages(get(path, params: params, headers: FEED_HEADERS), FEED_HEADERS)
+        collect_pages(get(path, params: params, headers: FEED_HEADERS), headers: FEED_HEADERS)
           .map { |data| Models::IcsEvent.from_api(data) }
       rescue ApiError => e
         raise unless block_given? && path != DEFAULT_VIEW && (e.forbidden? || e.not_found?)
 
         yield name, e
         []
-      end
-
-      def collect_pages(response, headers)
-        items = []
-        loop do
-          items.concat(response['value'] || [])
-          next_link = response['@odata.nextLink']
-          break items unless next_link
-
-          response = get(next_link, headers: headers)
-        end
       end
 
       def timezone_header(timezone)
