@@ -22,7 +22,7 @@ module Teems
       end
 
       def vevent(event, dtstamp)
-        ['BEGIN:VEVENT', "UID:#{event.uid}", "DTSTAMP:#{dtstamp}", *times(event),
+        ['BEGIN:VEVENT', "UID:#{uri(event.uid)}", "DTSTAMP:#{dtstamp}", *times(event),
          "SUMMARY:#{escape(event.subject)}", *optional_text('LOCATION', event.location),
          *people(event), *optional_text('DESCRIPTION', event.description), *join_lines(event.join_url),
          *status_lines(event), 'END:VEVENT']
@@ -52,7 +52,7 @@ module Teems
       # An address that makes a valid mailto: URI, or nil. Exchange-internal X.500 addresses
       # (/O=EXCHANGELABS/...) have no @ and are left out with the people who have them.
       def mail_address(person)
-        email = person[:email].to_s.strip
+        email = uri(person[:email]).strip
         email.include?('@') ? email : nil
       end
 
@@ -63,7 +63,8 @@ module Teems
 
       # URI values are not text-escaped. URL is what most clients show; CONFERENCE and the
       # Microsoft property are what Calendar.app and Outlook look for to offer a Join button.
-      def join_lines(url)
+      def join_lines(join_url)
+        url = uri(join_url)
         return [] if url.empty?
 
         ["URL;VALUE=URI:#{url}", %(CONFERENCE;VALUE=URI;FEATURE=AUDIO,VIDEO;LABEL="Microsoft Teams":#{url}),
@@ -83,6 +84,10 @@ module Teems
       def escape(text)
         text.to_s.gsub(/[\\;,]/) { |char| "\\#{char}" }.gsub(/\r\n|\r|\n/, '\\n').gsub(CONTROLS, '')
       end
+
+      # UIDs, URIs and addresses are not escaped, so a line break in one would start a new
+      # property: control characters are dropped
+      def uri(value) = value.to_s.gsub(CONTROLS, '')
 
       # Parameter values are quoted when they hold a separator; quotes themselves cannot appear
       def param(value)

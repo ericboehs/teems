@@ -64,6 +64,17 @@ class IcsFormatTest < Minitest::Test
     assert_includes lines, 'X-MICROSOFT-SKYPETEAMSMEETINGURL:https://teams.example/j'
   end
 
+  # Unescaped values with a line break would start a property of the sender's choosing
+  def test_uid_join_url_and_addresses_cannot_break_lines
+    hostile = event(uid: "uid-1\r\nATTACH:x", join_url: "https://teams.example/j\nX-EVIL:1",
+                    organizer: { name: 'Olive', email: "olive@example.com\r\nX-EVIL:2" }, attendees: [])
+    lines = unfolded(Ics.calendar([hostile], name: 'Cal', stamp: STAMP))
+
+    assert_includes lines, 'UID:uid-1ATTACH:x'
+    assert_includes lines, 'URL;VALUE=URI:https://teams.example/jX-EVIL:1'
+    assert_includes lines, 'ORGANIZER;CN=Olive:mailto:olive@example.comX-EVIL:2'
+  end
+
   def test_all_day_cancelled_free_and_sparse_event
     sparse = event(starts: Date.new(2026, 10, 21), ends: Date.new(2026, 10, 22), all_day: true, location: '',
                    organizer: nil, attendees: [], body: {}, join_url: '', status: { cancelled: true, show_as: 'free' })
