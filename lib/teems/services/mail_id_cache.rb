@@ -14,7 +14,9 @@ module Teems
       def remember(messages)
         return if messages.empty?
 
-        ids = load.merge(messages.to_h { |message| [message.short_id, message.id] })
+        # Listed IDs move to the end, so the ones in use are the last evicted
+        listed = messages.to_h { |message| [message.short_id, message.id] }
+        ids = load.except(*listed.keys).merge(listed)
         FileUtils.mkdir_p(File.dirname(@path), mode: 0o700)
         File.write(@path, JSON.generate(ids.to_a.last(MAX_ENTRIES).to_h))
       end

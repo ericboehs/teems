@@ -36,7 +36,7 @@ class MailApiTest < Minitest::Test
     params = call[:params]
 
     assert_equal 'receivedDateTime desc', params['$orderby']
-    assert_equal 'isRead eq false', params['$filter']
+    assert_equal 'receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false', params['$filter']
     assert_equal 2, params['$top']
     assert_equal 'IdType="ImmutableId"', call[:headers]['Prefer']
   end

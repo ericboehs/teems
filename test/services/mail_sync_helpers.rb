@@ -13,15 +13,15 @@ module MailSyncTestHelpers
 
   # fields: id, subject and date as outlook-cli wrote them
   def write_legacy(store, folder, file, **fields)
-    id, subject, date, from = fields.values_at(:id, :subject, :date, :from)
+    id, subject, date = fields.values_at(:id, :subject, :date)
     dir = store.folder_dir(folder)
     FileUtils.mkdir_p(dir)
-    from_line = from ? %(from: "#{from}"\n) : ''
+    optional = fields.slice(:from, :to).map { |key, value| %(#{key}: "#{value}"\n) }.join
     File.write(File.join(dir, file), <<~MD)
       ---
       id: #{id}
       subject: "#{subject.gsub('"', '\\"')}"
-      #{from_line}date: "#{date}"
+      #{optional}date: "#{date}"
       ---
 
       # #{subject}

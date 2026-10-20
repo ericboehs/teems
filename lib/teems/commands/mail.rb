@@ -96,7 +96,7 @@ module Teems
           teems mail list [folder] [count] [--unread]   Newest messages (alias: recent)
           teems mail read <id> [--html]                 Headers, plain-text body, numbered links
           teems mail folders                            Folders with unread and total counts
-          teems mail search <query> [folder]            Graph $search (KQL), e.g. from:alice subject:report
+          teems mail search <query> [folder]            Graph $search (KQL), e.g. "from:alice subject:report"
           teems mail sync [folder...] [options]         Incremental local copy (Graph delta)
 
         OPTIONS:
@@ -111,6 +111,8 @@ module Teems
           --dir DIR         Store root (default ~/.local/share/teems/sync/mail)
           --since DAYS      First sync of a folder: only mail from the last DAYS days,
                             or "all" (default 90). Later runs fetch only changes.
+                            Graph caps a first sync limited by DAYS at 5,000 messages
+                            per folder; use "all" for more.
           --attachments     Also download file attachments to <Folder>/attachments/
           --no-login        Never open Safari: renew expired tokens silently from the
                             cached sign-in, or fail (for launchd and cron)

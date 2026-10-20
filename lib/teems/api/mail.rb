@@ -10,7 +10,9 @@ module Teems
       PAGE_MAX = 250
       # Delta pages carry full bodies, so keep them small
       DELTA_PAGE_SIZE = 50
-      UNREAD = 'isRead eq false'
+      # Graph wants each $orderby property (receivedDateTime) to lead the $filter, or it may
+      # refuse the query as InefficientFilter
+      UNREAD = 'receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false'
 
       # Top-level folders, or the children of parent_id
       def folders(parent_id: nil)

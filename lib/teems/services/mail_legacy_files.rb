@@ -11,6 +11,8 @@ module Teems
     class MailLegacyFiles
       DATE_FORMATS = ['%A, %B %d, %Y at %I:%M:%S %p', '%B %d, %Y at %I:%M:%S %p', '%m/%d/%Y %I:%M:%S %p'].freeze
       HEADER_BYTES = 4096
+      # Long recipient lists push the closing --- past HEADER_BYTES; give up beyond this
+      MAX_HEADER_BYTES = 65_536
 
       def initialize(dir, known_files: [])
         @dir = dir
@@ -60,9 +62,13 @@ module Teems
       end
 
       def frontmatter(path)
-        head = File.read(path, HEADER_BYTES).to_s.force_encoding(Encoding::UTF_8).scrub('')
-        block = head[/\A---\n(.*?)\n---/m, 1].to_s
-        block.scan(/^(\w+):[ \t]*(.*)$/).to_h.transform_values { |value| unquote(value) }
+        block = frontmatter_block(path, HEADER_BYTES) || frontmatter_block(path, MAX_HEADER_BYTES)
+        block.to_s.scan(/^(\w+):[ \t]*(.*)$/).to_h.transform_values { |value| unquote(value) }
+      end
+
+      def frontmatter_block(path, bytes)
+        head = File.read(path, bytes).to_s.force_encoding(Encoding::UTF_8).scrub('')
+        head[/\A---\n(.*?)\n---/m, 1]
       end
 
       def unquote(value) = value.strip.delete_prefix('"').delete_suffix('"').gsub('\\"', '"')

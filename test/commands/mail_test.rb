@@ -57,7 +57,7 @@ class MailCommandTest < Minitest::Test
 
       assert_equal '/v1.0/me/mailFolders/archive/messages', call[:path]
       assert_equal 5, call[:params]['$top']
-      assert_equal 'isRead eq false', call[:params]['$filter']
+      assert_equal Teems::Api::Mail::UNREAD, call[:params]['$filter']
       assert_equal 3, run_mail(%w[list 3], stubs: { '/messages' => messages })[:calls].first[:params]['$top']
       assert_equal 7, run_mail(%w[list -n 7], stubs: { '/messages' => messages })[:calls].first[:params]['$top']
     end

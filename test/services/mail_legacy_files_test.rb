@@ -95,15 +95,19 @@ class MailLegacyFilesTest < Minitest::Test
     end
   end
 
-  def test_other_date_formats
+  # c.md's frontmatter runs past the first HEADER_BYTES read
+  LEGACY_VARIANTS = { 'a' => { date: 'October 20, 2026 at 9:05:09 AM' }, 'b' => { date: '10/20/2026 9:05:09 AM' },
+                      'c' => { date: '10/20/2026 9:05:09 AM', to: 'someone@example.com, ' * 300 } }.freeze
+
+  def test_other_date_formats_and_long_frontmatter
     with_tz do
       with_store do |store|
-        write_legacy(store, 'Inbox', 'a.md', id: 1, subject: 'A', date: 'October 20, 2026 at 9:05:09 AM')
-        write_legacy(store, 'Inbox', 'b.md', id: 2, subject: 'B', date: '10/20/2026 9:05:09 AM')
+        LEGACY_VARIANTS.each.with_index(1) do |(name, fields), id|
+          write_legacy(store, 'Inbox', "#{name}.md", id: id, subject: name.upcase, **fields)
+        end
         legacy = legacy_files(store)
 
-        assert_equal 'a.md', legacy.match(mail('x', 'subject' => 'a'))
-        assert_equal 'b.md', legacy.match(mail('x', 'subject' => 'b'))
+        LEGACY_VARIANTS.each_key { |name| assert_equal "#{name}.md", legacy.match(mail('x', 'subject' => name)) }
         assert_nil legacy.match(mail('x', 'receivedDateTime' => nil))
       end
     end
