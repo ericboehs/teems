@@ -97,4 +97,20 @@ class HtmlTextTest < Minitest::Test
   def test_nil_html
     assert_equal '', convert(nil).text
   end
+
+  def test_trailing_whitespace_is_trimmed_after_multibyte_text
+    assert_equal "naïve café\n\nnext", convert("<p>naïve café \t </p><p>next</p>").text
+    assert_equal "über\nzwei", convert("über \t<br>zwei").text
+  end
+
+  # Block boundaries used to rescan the whole buffer with end-anchored regexes, so a 365KB
+  # Outlook message took 10s. Linear now: about 0.1s. The limit leaves room for slow CI.
+  def test_long_outlook_message_converts_in_linear_time
+    para = "<p class=MsoNormal><span>Paragraph – with <a href='https://example.com/x'>a link</a></span></p>\n"
+    html = "<div class=WordSection1>#{para * 2000}</div>"
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    result = convert(html)
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 2.0
+    assert_equal 2000, result.text.lines.count
+  end
 end

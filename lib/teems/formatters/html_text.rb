@@ -55,7 +55,7 @@ module Teems
         return self if @out.empty?
 
         trim_line_end
-        missing = count - @out[/\n*\z/].length
+        missing = count - trailing_newlines(count)
         missing.positive? ? self << ("\n" * missing) : self
       end
 
@@ -72,7 +72,14 @@ module Teems
 
       private
 
-      def trim_line_end = @out.sub!(/[ \t]+\z/, '')
+      # Both helpers look only at the end of the buffer. An end-anchored regex such as
+      # /[ \t]+\z/ is scanned from the start, which made long messages quadratic.
+      def trim_line_end
+        @out.chop! while @out.end_with?(' ', "\t")
+      end
+
+      # Newlines already at the end, counting no further than limit
+      def trailing_newlines(limit) = (1..limit).count { |run| @out.end_with?("\n" * run) }
     end
 
     # Converts an HTML mail body to plain text. Each anchor's text stays inline followed by
