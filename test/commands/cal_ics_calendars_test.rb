@@ -7,10 +7,11 @@ require_relative 'cal_ics_helpers'
 class CalIcsCalendarsTest < Minitest::Test
   include CalIcsTestHelpers
 
-  # View stubs come first: the calendars list path is a prefix of theirs
+  # View stubs come first: the calendars list path is a prefix of theirs. The default
+  # calendar is read through /me/calendarView.
   def test_all_calendars_merges_every_calendar_default_first
     stdout = run_ics(['--all-calendars'], stubs: {
-                       'calendars/def/calendarView' => { 'value' => [graph_event('a'), graph_event('shared')] },
+                       '/me/calendarView' => { 'value' => [graph_event('a'), graph_event('shared')] },
                        'calendars/hol/calendarView' => { 'value' => [graph_event('holiday'), graph_event('shared')] },
                        '/v1.0/me/calendars' => { 'value' => [{ 'id' => 'hol' },
                                                              { 'id' => 'def', 'isDefaultCalendar' => true }] }
@@ -23,7 +24,7 @@ class CalIcsCalendarsTest < Minitest::Test
   def calendars_with(shared_error)
     run_ics(['--all-calendars'],
             errors: { 'calendars/shr/calendarView' => shared_error },
-            stubs: { 'calendars/def/calendarView' => { 'value' => [graph_event('a')] },
+            stubs: { '/me/calendarView' => { 'value' => [graph_event('a')] },
                      '/v1.0/me/calendars' => { 'value' => [{ 'id' => 'def', 'isDefaultCalendar' => true },
                                                            { 'id' => 'shr', 'name' => 'Pat' }] } })
   end
@@ -47,6 +48,20 @@ class CalIcsCalendarsTest < Minitest::Test
       assert_equal 1, @code
       assert_empty stdout
     end
+  end
+
+  # An empty feed would make subscribed clients delete every event
+  def test_all_calendars_never_skips_the_default_calendar
+    forbidden = Teems::ApiError.new('Access forbidden', status_code: 403)
+    stdout = run_ics(['--all-calendars'],
+                     errors: { '/me/calendarView' => forbidden },
+                     stubs: { 'calendars/hol/calendarView' => { 'value' => [graph_event('holiday')] },
+                              '/v1.0/me/calendars' => { 'value' => [{ 'id' => 'def', 'isDefaultCalendar' => true },
+                                                                    { 'id' => 'hol' }] } })
+
+    assert_equal 1, @code
+    assert_empty stdout
+    refute_includes @stderr, 'Skipped calendar'
   end
 
   def test_default_calendar_errors_are_not_skipped

@@ -16,8 +16,8 @@ module Teems
         responseStatus sensitivity
       ].join(',').freeze
 
-      # calendarView path => calendar name, for #feed_events
-      DEFAULT_VIEWS = { '/v1.0/me/calendarView' => 'Calendar' }.freeze
+      # The default calendar's view; #feed_events never skips it
+      DEFAULT_VIEW = '/v1.0/me/calendarView'
       FEED_HEADERS = { 'Prefer' => 'outlook.timezone="UTC", IdType="ImmutableId"' }.freeze
       FEED_SELECT = %w[
         id iCalUId subject start end location isAllDay organizer attendees
@@ -32,24 +32,26 @@ module Teems
       end
 
       # Every event (each occurrence of a series on its own) between two Times, for `teems cal ics`,
-      # from the default calendar or the given views (see #calendar_views). Times come back in
-      # UTC and IDs are immutable, so UIDs stay stable between exports. An event on two
-      # calendars is kept once. Given a block, a calendar that refuses its events (403 or 404:
-      # free/busy rights only, or its owner left) is yielded by name with the error and left
-      # out, instead of failing the whole feed.
-      def feed_events(from:, to:, views: DEFAULT_VIEWS, &unreadable)
+      # from the default calendar or the given views (calendarView path => calendar name, see
+      # #calendar_views). Times come back in UTC and IDs are immutable, so UIDs stay stable
+      # between exports. An event on two calendars is kept once. Given a block, a calendar
+      # other than the default one that refuses its events (403 or 404: free/busy rights only,
+      # or its owner left) is yielded by name with the error and left out, instead of failing
+      # the whole feed.
+      def feed_events(from:, to:, views: { DEFAULT_VIEW => 'Calendar' }, &unreadable)
         params = { 'startDateTime' => from.utc.iso8601, 'endDateTime' => to.utc.iso8601,
                    '$select' => FEED_SELECT, '$orderby' => 'start/dateTime', '$top' => 250 }
         views.flat_map { |path, name| view_events(path, name, params, &unreadable) }.uniq(&:uid)
       end
 
-      # calendarView path => name for every calendar (holidays, shared ones), the default
-      # calendar first so its copy of an event on two calendars is the one kept
+      # calendarView path => name for every calendar (holidays, shared ones). The default
+      # calendar comes first, as DEFAULT_VIEW, so its copy of an event on two calendars is the
+      # one kept and it is never skipped.
       def calendar_views
         params = { '$select' => 'id,name,isDefaultCalendar' }
         collect_pages(get('/v1.0/me/calendars', params: params), {})
           .sort_by { |calendar| calendar['isDefaultCalendar'] ? 0 : 1 }
-          .to_h { |calendar| [calendar_view_path(calendar['id']), calendar['name'].to_s] }
+          .to_h { |calendar| [calendar_view_path(calendar), calendar['name'].to_s] }
       end
 
       # Get a single event by ID with full details
@@ -99,13 +101,17 @@ module Teems
         collect_pages(get(path, params: params, headers: headers), headers).map { |data| Models::Event.from_api(data) }
       end
 
-      def calendar_view_path(id) = "/v1.0/me/calendars/#{URI.encode_www_form_component(id)}/calendarView"
+      def calendar_view_path(calendar)
+        return DEFAULT_VIEW if calendar['isDefaultCalendar']
+
+        "/v1.0/me/calendars/#{URI.encode_www_form_component(calendar['id'])}/calendarView"
+      end
 
       def view_events(path, name, params)
         collect_pages(get(path, params: params, headers: FEED_HEADERS), FEED_HEADERS)
           .map { |data| Models::IcsEvent.from_api(data) }
       rescue ApiError => e
-        raise unless block_given? && (e.forbidden? || e.not_found?)
+        raise unless block_given? && path != DEFAULT_VIEW && (e.forbidden? || e.not_found?)
 
         yield name, e
         []
