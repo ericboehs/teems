@@ -408,4 +408,21 @@ module CLITests
       end
     end
   end
+
+  # launchd and `env -i` start bin/teems without a locale, where Ruby reads files as US-ASCII
+  class NoLocaleTest < Minitest::Test
+    BIN = File.expand_path('../bin/teems', __dir__)
+
+    def test_reads_utf8_files_without_a_locale
+      with_temp_config do
+        Teems::Services::TokenStore.new.save(auth_token: 'a', skype_token: 's', name: 'Zoë Café')
+        locale = %w[LANG LC_ALL LC_CTYPE].to_h { |name| [name, nil] }
+
+        stdout, status = Open3.capture2(locale, RbConfig.ruby, BIN, 'auth', 'status')
+
+        assert_predicate status, :success?
+        assert_includes stdout.force_encoding(Encoding::UTF_8), 'Authenticated as: Zoë Café'
+      end
+    end
+  end
 end
