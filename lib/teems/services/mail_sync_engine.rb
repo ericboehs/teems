@@ -7,8 +7,9 @@ module Teems
     # it stopped. Messages that leave a folder keep their file; the index records removed_at.
     class MailSyncEngine
       # Graph's answers to a delta link it can no longer use: 410 Gone, or 400 with one of
-      # these codes (compared without case)
-      RESYNC_CODES = %w[syncstatenotfound syncstateinvalid resyncrequired].freeze
+      # these codes (compared without case; the last is Exchange's, for an old or malformed
+      # delta token)
+      RESYNC_CODES = %w[syncstatenotfound syncstateinvalid resyncrequired errorinvalidsyncstatedata].freeze
 
       # Raised by fetch_page when Graph rejects the delta link itself (cause: the ApiError).
       # A 400 anywhere else, such as one message's attachments, must not restart the folder.

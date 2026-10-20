@@ -262,8 +262,9 @@ class MailSyncEngineTest < Minitest::Test
   end
 
   def test_rejected_delta_link_restarts_once
-    rejections = [Teems::ApiError.new('HTTP 400: Bad Request', status_code: 400, error_code: 'SyncStateNotFound'),
-                  Teems::ApiError.new('HTTP 410: Gone', status_code: 410)]
+    rejections = %w[SyncStateNotFound ErrorInvalidSyncStateData].map do |code|
+      Teems::ApiError.new('HTTP 400: Bad Request', status_code: 400, error_code: code)
+    end << Teems::ApiError.new('HTTP 410: Gone', status_code: 410)
     rejections.each do |rejection|
       with_store do |store|
         save_delta_link(store, 'bad')
