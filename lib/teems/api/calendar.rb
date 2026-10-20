@@ -16,11 +16,26 @@ module Teems
         responseStatus sensitivity
       ].join(',').freeze
 
+      FEED_SELECT = %w[
+        id iCalUId subject start end location isAllDay organizer attendees
+        body onlineMeeting showAs isCancelled
+      ].join(',').freeze
+
       # List events in a date range using CalendarView
       def list_events(time_range:, top: 50)
         params = calendar_view_params(time_range[:start_dt], time_range[:end_dt], top)
         headers = timezone_header(time_range[:timezone])
         paginate_events('/v1.0/me/calendarView', params: params, headers: headers)
+      end
+
+      # Every event (each occurrence of a series on its own) between two Times, for `teems cal ics`.
+      # Times come back in UTC and IDs are immutable, so UIDs stay stable between exports.
+      def feed_events(from:, to:)
+        params = { 'startDateTime' => from.utc.iso8601, 'endDateTime' => to.utc.iso8601,
+                   '$select' => FEED_SELECT, '$orderby' => 'start/dateTime', '$top' => 250 }
+        headers = { 'Prefer' => 'outlook.timezone="UTC", IdType="ImmutableId"' }
+        collect_pages(get('/v1.0/me/calendarView', params: params, headers: headers), headers)
+          .map { |data| Models::IcsEvent.from_api(data) }
       end
 
       # Get a single event by ID with full details
@@ -67,16 +82,15 @@ module Teems
       end
 
       def paginate_events(path, params:, headers:)
-        events = []
-        response = get(path, params: params, headers: headers)
-        collect_paginated_events(events, response, headers)
+        collect_pages(get(path, params: params, headers: headers), headers).map { |data| Models::Event.from_api(data) }
       end
 
-      def collect_paginated_events(events, response, headers)
+      def collect_pages(response, headers)
+        items = []
         loop do
-          events.concat(parse_events(response))
+          items.concat(response['value'] || [])
           next_link = response['@odata.nextLink']
-          break events unless next_link
+          break items unless next_link
 
           response = get(next_link, headers: headers)
         end
@@ -84,10 +98,6 @@ module Teems
 
       def timezone_header(timezone)
         { 'Prefer' => "outlook.timezone=\"#{timezone}\"" }
-      end
-
-      def parse_events(response)
-        (response['value'] || []).map { |data| Models::Event.from_api(data) }
       end
     end
   end

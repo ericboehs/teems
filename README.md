@@ -53,6 +53,16 @@ teems cal delete 3           # Delete event #3
 
 All-day events cover `--date` (or `--start YYYY-MM-DD`; default today). Add `--end YYYY-MM-DD` for a multi-day event: like `teems ooo --end`, it is the last day of the event, inclusive. The example above is one event covering November 12 and 13.
 
+#### ICS feed
+
+```bash
+teems cal ics > work.ics                       # 7 days back through 60 days ahead
+teems cal ics --days 30 --days-back 0          # A different window
+teems cal ics --exclude-attendee me@other.example --name "Work" --no-login
+```
+
+`teems cal ics` prints your calendar as an iCalendar file, for a local server that Calendar.app subscribes to. Every occurrence of a recurring meeting is its own event. Events keep their invitees, responses and description, and Teams meetings carry their join link (`URL`, `CONFERENCE`) so Calendar.app shows a Join button. Cancelled meetings are marked `STATUS:CANCELLED` and free time is `TRANSP:TRANSPARENT`. `--exclude-attendee` leaves out events those addresses organize or have accepted, such as ones already on another calendar you subscribe to. `--no-login` makes it fail instead of opening Safari when the tokens have expired, which is what you want from launchd or a server.
+
 ### Mail
 
 ```bash

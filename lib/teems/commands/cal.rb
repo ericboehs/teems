@@ -15,6 +15,7 @@ module Teems
         teems cal tentative <N|hash>     Tentatively accept event by # or hash
         teems cal create "Title" [opts]  Create a new event
         teems cal delete <N|hash>        Delete event by # or hash
+        teems cal ics [opts]             Print events as an ICS calendar (for feeds)
 
       OPTIONS:
         --days N             Show events for the next N days (default: 1)
@@ -28,6 +29,16 @@ module Teems
         -q, --quiet          Suppress output
         --json               Output as JSON
         -h, --help           Show this help
+
+      ICS OPTIONS:
+        --days N             Days ahead to include (default: 60)
+        --days-back N        Days back to include (default: 7)
+        --exclude-attendee ADDRS
+                             Leave out events these addresses organize or have
+                             accepted (comma separated), e.g. ones already on
+                             another calendar you subscribe to
+        --name NAME          Calendar name (default: "Outlook (teems)")
+        --no-login           Never open Safari to sign in (for servers, launchd)
 
       CREATE OPTIONS:
         --start TIME         Start time: "YYYY-MM-DD HH:MM", "today HH:MM",
@@ -77,6 +88,8 @@ module Teems
           --show-as oof --no-reminder  # One event spanning both days
         teems cal delete 3               # Delete event #3
         teems cal --json | jq ...        # JSON output, no prompt
+        teems cal ics > work.ics         # 7 days back through 60 ahead
+        teems cal ics --days 30 --days-back 0 --no-login
     HELP
 
     # Date range computation for calendar queries
@@ -171,7 +184,7 @@ module Teems
       SUBCOMMAND_PARSERS = {
         'show' => :parse_show_subcommand, 'today' => :parse_today_subcommand,
         'tomorrow' => :parse_tomorrow_subcommand, 'create' => :parse_create_subcommand,
-        'delete' => :parse_delete_subcommand
+        'delete' => :parse_delete_subcommand, 'ics' => :parse_ics_subcommand
       }.freeze
 
       private
@@ -210,6 +223,11 @@ module Teems
         @subcommand = 'list'
         remaining.shift
         @options[:date] = (Date.today + 1).to_s
+      end
+
+      def parse_ics_subcommand(remaining)
+        @subcommand = 'ics'
+        remaining.shift
       end
 
       def parse_rsvp_subcommand(remaining)
@@ -797,7 +815,11 @@ module Teems
         '--no-reminder' => ->(opts, _args) { opts[:no_reminder] = true },
         '--no-rsvp' => ->(opts, _args) { opts[:no_rsvp] = true },
         '--no-time-proposals' => ->(opts, _args) { opts[:no_time_proposals] = true },
-        '--hide-attendees' => ->(opts, _args) { opts[:hide_attendees] = true }
+        '--hide-attendees' => ->(opts, _args) { opts[:hide_attendees] = true },
+        '--days-back' => ->(opts, args) { opts[:days_back] = args.shift.to_i },
+        '--exclude-attendee' => ->(opts, args) { opts[:exclude_attendee] = args.shift },
+        '--name' => ->(opts, args) { opts[:name] = args.shift },
+        '--no-login' => ->(opts, _args) { opts[:no_login] = true }
       }.freeze
     end
 
@@ -809,6 +831,7 @@ module Teems
       include CalEventActions
       include CalCreateActions
       include CalInteractiveMode
+      include CalIcsExport
 
       def initialize(args, runner:)
         @options = {}
@@ -848,6 +871,7 @@ module Teems
         when 'show' then show_event
         when 'create' then create_event
         when 'delete' then delete_event
+        when 'ics' then export_ics
         when 'accept', 'decline', 'tentative' then rsvp_event
         else list_events
         end
