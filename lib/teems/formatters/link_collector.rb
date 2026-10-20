@@ -9,6 +9,8 @@ module Teems
 
       def initialize
         @links = {}
+        # Each URL's footer number, kept when it is first added
+        @numbers = {}
         @current = nil
       end
 
@@ -61,7 +63,7 @@ module Teems
 
         url = LinkCleaner.clean(href)
         @links[url] = LinkCleaner.label(text, url, max: LABEL_MAX) if @links.fetch(url, '').empty?
-        @links.keys.index(url) + 1
+        @numbers[url] ||= @numbers.size + 1
       end
     end
   end

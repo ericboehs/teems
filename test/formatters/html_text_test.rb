@@ -113,4 +113,15 @@ class HtmlTextTest < Minitest::Test
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 2.0
     assert_equal 2000, result.text.lines.count
   end
+
+  # Numbering a link used to search every URL collected so far, so a body with thousands of
+  # distinct links took quadratic time (about 5s for these 30,000). Now under 1s; the limit
+  # leaves room for slow CI.
+  def test_many_distinct_links_number_in_linear_time
+    html = (1..30_000).map { |number| "<a href='https://example.com/#{number}'>link #{number}</a> " }.join
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    result = convert(html)
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 2.5
+    assert_includes result.text, 'link 30000 [30000]'
+  end
 end
