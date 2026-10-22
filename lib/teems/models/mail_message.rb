@@ -5,7 +5,7 @@ module Teems
     # A mail message from Microsoft Graph (/me/messages). Text a sender controls is kept free
     # of terminal control characters (see Support::ControlChars), whichever way it is shown.
     MailMessage = Data.define(
-      :id, :subject, :from, :to, :cc, :received_at, :is_read, :has_attachments,
+      :id, :subject, :from, :to, :cc, :received_at, :is_read, :has_attachments, :flagged,
       :categories, :body_type, :body, :internet_message_id, :web_link
     ) do
       extend Parsing
@@ -18,7 +18,7 @@ module Teems
         { id: data['id'], subject: clean(data['subject']), from: recipient(data['from']),
           to: recipients(data['toRecipients']), cc: recipients(data['ccRecipients']),
           received_at: parse_time(data['receivedDateTime']), is_read: data['isRead'] == true,
-          has_attachments: data['hasAttachments'] == true }
+          has_attachments: data['hasAttachments'] == true, flagged: Hash(data['flag'])['flagStatus'] == 'flagged' }
       end
 
       def self.body_attrs(data)
@@ -111,7 +111,7 @@ module Teems
 
       def to_json_hash
         { id: id, short_id: short_id, subject: subject, from: from, to: to, cc: cc,
-          received_at: received_at&.iso8601, is_read: is_read, has_attachments: has_attachments,
+          received_at: received_at&.iso8601, is_read: is_read, has_attachments: has_attachments, flagged: flagged,
           categories: categories, internet_message_id: internet_message_id, web_link: web_link }
       end
     end

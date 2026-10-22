@@ -38,6 +38,13 @@ class MailMessageTest < Minitest::Test
     assert_equal ['Work'], msg.categories
   end
 
+  def test_flagged_only_while_the_flag_is_open
+    refute mail_message.flagged
+    assert mail_message('flag' => { 'flagStatus' => 'flagged' }).flagged
+    refute mail_message('flag' => { 'flagStatus' => 'complete' }).flagged
+    assert_equal true, mail_message('flag' => { 'flagStatus' => 'flagged' }).to_json_hash[:flagged]
+  end
+
   def test_short_id_is_stable_hex
     assert_match(/\A\h{8}\z/, mail_message.short_id)
     assert_equal mail_message.short_id, Teems::Models::MailMessage.short_id(sample_mail_message['id'])

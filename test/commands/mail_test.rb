@@ -32,8 +32,17 @@ class MailCommandTest < Minitest::Test
       result = run_mail(['bogus'])
 
       assert_equal 1, result[:code]
-      assert_includes result[:stderr], 'Usage: teems mail <list|recent|read|folders|search|sync>'
+      assert_includes result[:stderr], 'Usage: teems mail <list|recent|read|folders|search|sync|mark-read|'
       assert_equal 1, run_mail(%w[list --bogus])[:code]
+    end
+  end
+
+  def test_list_flagged
+    with_temp_config do
+      result = run_mail(%w[list --flagged], stubs: { '/messages' => messages('m1') })
+
+      assert_equal "receivedDateTime ge 1900-01-01T00:00:00Z and flag/flagStatus eq 'flagged'",
+                   result[:calls].first[:params]['$filter']
     end
   end
 
@@ -57,7 +66,7 @@ class MailCommandTest < Minitest::Test
 
       assert_equal '/v1.0/me/mailFolders/archive/messages', call[:path]
       assert_equal 5, call[:params]['$top']
-      assert_equal Teems::Api::Mail::UNREAD, call[:params]['$filter']
+      assert_equal 'receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false', call[:params]['$filter']
       assert_equal 3, run_mail(%w[list 3], stubs: { '/messages' => messages })[:calls].first[:params]['$top']
       assert_equal 7, run_mail(%w[list -n 7], stubs: { '/messages' => messages })[:calls].first[:params]['$top']
     end

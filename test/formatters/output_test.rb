@@ -64,6 +64,15 @@ module OutputTests
       assert_match(/\u{2713}.*Done/, io.string)
     end
 
+    def test_prompt_goes_to_stderr_even_when_quiet
+      io = StringIO.new
+      err = StringIO.new
+      Teems::Formatters::Output.new(io: io, err: err, color: false, mode: :quiet).prompt('Go? [y/N] ')
+
+      assert_equal 'Go? [y/N] ', err.string
+      assert_empty io.string
+    end
+
     def test_info_writes_to_io
       io = StringIO.new
       output = Teems::Formatters::Output.new(io: io, color: false)

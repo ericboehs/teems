@@ -2,17 +2,31 @@
 
 module Teems
   module Api
-    # API wrapper for Microsoft Graph mail endpoints. Read-only: nothing here sends, moves, or deletes.
-    # Message IDs are requested as immutable IDs so they survive moves between folders.
+    # Paths and headers shared by the Graph mail wrappers. Message IDs are requested as immutable
+    # IDs so they survive moves between folders.
+    module MailPaths
+      private
+
+      def prefer_header = { 'Prefer' => 'IdType="ImmutableId"' }
+
+      def folder_path(folder_id) = "/v1.0/me/mailFolders/#{encode(folder_id)}"
+
+      def message_path(message_id) = "/v1.0/me/messages/#{encode(message_id)}"
+
+      def encode(segment) = URI.encode_www_form_component(segment)
+    end
+
+    # API wrapper for reading Microsoft Graph mail (see MailActions for changing it)
     class Mail < Client
-      LIST_FIELDS = %w[id receivedDateTime from subject isRead hasAttachments].freeze
+      include MailPaths
+
+      LIST_FIELDS = %w[id receivedDateTime from subject isRead hasAttachments flag].freeze
       MESSAGE_FIELDS = (LIST_FIELDS + %w[toRecipients ccRecipients categories body internetMessageId webLink]).freeze
       PAGE_MAX = 250
       # Delta pages carry full bodies, so keep them small
       DELTA_PAGE_SIZE = 50
-      # Graph wants each $orderby property (receivedDateTime) to lead the $filter, or it may
-      # refuse the query as InefficientFilter
-      UNREAD = 'receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false'
+      # $filter conditions messages can be limited to
+      FILTERS = { unread: 'isRead eq false', flagged: "flag/flagStatus eq 'flagged'" }.freeze
 
       # Top-level folders, or the children of parent_id
       def folders(parent_id: nil)
@@ -24,9 +38,9 @@ module Teems
         get(folder_path(folder_id), params: { '$select' => folder_fields })
       end
 
-      # Newest first; filter is an OData $filter such as UNREAD
-      def messages(folder:, count:, filter: nil)
-        params = list_params(count).merge('$orderby' => 'receivedDateTime desc', '$filter' => filter).compact
+      # Newest first; only names FILTERS that every message must match, e.g. [:unread]
+      def messages(folder:, count:, only: [])
+        params = list_params(count).merge('$orderby' => 'receivedDateTime desc', '$filter' => filter(only)).compact
         parse_messages(collect("#{folder_path(folder)}/messages", params, limit: count))
       end
 
@@ -66,6 +80,14 @@ module Teems
 
       private
 
+      # Graph wants each $orderby property (receivedDateTime) to lead the $filter, or it may
+      # refuse the query as InefficientFilter
+      def filter(names)
+        return if names.empty?
+
+        ['receivedDateTime ge 1900-01-01T00:00:00Z', *FILTERS.values_at(*names)].join(' and ')
+      end
+
       def list_params(count) = { '$top' => count.clamp(1, PAGE_MAX), '$select' => LIST_FIELDS.join(',') }
 
       def collect(path, params, limit:)
@@ -77,15 +99,7 @@ module Teems
 
       def parse_messages(items) = items.map { |data| Models::MailMessage.from_api(data) }
 
-      def prefer_header = { 'Prefer' => 'IdType="ImmutableId"' }
-
       def delta_header = { 'Prefer' => "IdType=\"ImmutableId\", odata.maxpagesize=#{DELTA_PAGE_SIZE}" }
-
-      def folder_path(folder_id) = "/v1.0/me/mailFolders/#{encode(folder_id)}"
-
-      def message_path(message_id) = "/v1.0/me/messages/#{encode(message_id)}"
-
-      def encode(segment) = URI.encode_www_form_component(segment)
     end
   end
 end

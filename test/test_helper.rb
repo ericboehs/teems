@@ -325,13 +325,13 @@ module Teems
         record_and_respond(path, { 'value' => [] })
       end
 
-      def post(_endpoint, path, account:, body: nil)
-        @calls << { method: :post, path: path, body: body, account: account }
+      def post(_endpoint, path, account:, body: nil, headers: {})
+        @calls << { method: :post, path: path, body: body, account: account, headers: headers }
         record_and_respond(path, {})
       end
 
-      def patch(_endpoint, path, account:, body: nil)
-        @calls << { method: :patch, path: path, body: body, account: account }
+      def patch(_endpoint, path, account:, body: nil, headers: {})
+        @calls << { method: :patch, path: path, body: body, account: account, headers: headers }
         record_and_respond(path, {})
       end
 

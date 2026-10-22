@@ -38,7 +38,8 @@ module Teems
         short_id, received, from, subject = message.list_columns
         from = FormatUtils.truncate(from, FROM_WIDTH - 3).ljust(FROM_WIDTH)
         row = "#{@output.cyan(short_id)}  #{received}  #{from}  #{FormatUtils.truncate(subject, SUBJECT_WIDTH)}"
-        message.read? ? "#{row}  #{@output.gray('read')}" : @output.bold("#{row}  unread")
+        row = message.read? ? "#{row}  #{@output.gray('read')}" : @output.bold("#{row}  unread")
+        message.flagged ? "#{row}  #{@output.yellow('flagged')}" : row
       end
 
       def folder_row(folder, width)

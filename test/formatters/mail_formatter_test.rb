@@ -22,6 +22,14 @@ class MailFormatterTest < Minitest::Test
     assert_match(/Multi line  read\z/, rows[1])
   end
 
+  # TSV keeps its five columns (outlook-cli reads them); only the table marks flags
+  def test_flagged_messages_are_marked
+    flagged = mail_message('flag' => { 'flagStatus' => 'flagged' })
+
+    assert_match(/unread  flagged\z/, @formatter.message_rows([flagged]).first)
+    assert_equal 5, flagged.tsv_row.split("\t").length
+  end
+
   def test_message_rows_truncate_long_senders
     row = @formatter.message_rows([mail_message('from' => { 'emailAddress' => { 'name' => 'N' * 40,
                                                                                 'address' => '' } })])
