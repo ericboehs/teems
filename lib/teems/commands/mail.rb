@@ -92,6 +92,8 @@ module Teems
       include MailReading
       include MailSyncing
       include MailTriage
+      include MailRules
+      include Confirmation
       include Support::Timezone
 
       HELP = MailHelp::TEXT
@@ -99,14 +101,15 @@ module Teems
       SUBCOMMANDS = {
         'list' => :list_messages, 'recent' => :list_messages, 'read' => :read_message,
         'folders' => :list_folders, 'search' => :search_messages, 'sync' => :sync_mail,
-        **MailTriage::ACTIONS.transform_values { :triage }
+        **MailTriage::ACTIONS.transform_values { :triage }, 'rules' => :mail_rules
       }.freeze
 
       FLAGS = { '--unread' => :unread, '--flagged' => :flagged, '--html' => :html, '--tsv' => :tsv,
                 '--attachments' => :attachments, '--no-login' => :no_login, '--dry-run' => :dry_run,
-                '--yes' => :yes, '-y' => :yes }.freeze
+                '--yes' => :yes, '-y' => :yes, **MailRuleOptions::FLAGS }.freeze
       VALUES = { '--since' => :since, '--dir' => :dir, '--folder' => :folders, '--search' => :search,
-                 '--to' => :to, '--due' => :due }.freeze
+                 '--to' => :to, '--due' => :due, **MailRuleOptions::VALUES }.freeze
+      REPEATABLE = [:folders, *MailRuleOptions::REPEATABLE].freeze
 
       def initialize(args, runner:)
         @options = {}
@@ -119,6 +122,7 @@ module Teems
 
         handler = SUBCOMMANDS[positional_args.first]
         return error("Usage: teems mail <#{SUBCOMMANDS.keys.join('|')}> (teems mail --help)") unless handler
+        return error('Rule options (--from, --move-to, ...) go with rules add only') if misplaced_rule_options?
 
         run_authenticated(handler)
       end
@@ -137,9 +141,10 @@ module Teems
         store_value(key, pending.shift.to_s)
       end
 
-      # --folder repeats (sync takes several); other values keep the last one given
+      # --folder repeats (sync takes several), as do rule conditions and categories; other
+      # values keep the last one given
       def store_value(key, value)
-        key == :folders ? (@options[:folders] ||= []) << value : @options[key] = value
+        REPEATABLE.include?(key) ? (@options[key] ||= []) << value : @options[key] = value
       end
 
       def help_text = HELP

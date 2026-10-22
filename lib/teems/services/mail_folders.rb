@@ -34,6 +34,9 @@ module Teems
         resolve(name).id
       end
 
+      # Graph folder ID => path, for naming folders other responses refer to by ID
+      def paths_by_id = all.to_h(&:id_and_path)
+
       def resolve(name)
         known = well_known(name)
         return fetch(known) if known

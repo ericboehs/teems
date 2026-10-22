@@ -121,6 +121,15 @@ module Teems
         .merge(overrides)
     end
 
+    def sample_mail_rule(name = 'Jira', **overrides)
+      { 'id' => "rule-#{name.delete(' ')}=", 'displayName' => name, 'sequence' => 1, 'isEnabled' => true,
+        'hasError' => false, 'isReadOnly' => false,
+        'conditions' => { 'fromAddresses' => [{ 'emailAddress' => { 'name' => 'Jira',
+                                                                    'address' => 'jira@example.com' } }] },
+        'actions' => { 'moveToFolder' => sample_mail_folder('Projects')['id'], 'stopProcessingRules' => true } }
+        .merge(overrides)
+    end
+
     def sample_mail_folder(name = 'Inbox', **overrides)
       { 'id' => "#{name.delete(' ')}#{'F' * 70}", 'displayName' => name, 'parentFolderId' => 'root',
         'childFolderCount' => 0, 'unreadItemCount' => 2, 'totalItemCount' => 10 }.merge(overrides)
