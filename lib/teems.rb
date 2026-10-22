@@ -61,6 +61,8 @@ module Teems
     autoload :Duration, 'teems/models/duration'
     autoload :MailFolder, 'teems/models/mail_folder'
     autoload :MailMessage, 'teems/models/mail_message'
+    autoload :MailRule, 'teems/models/mail_rule'
+    autoload :MAIL_RULE_SENDING_ACTIONS, 'teems/models/mail_rule'
   end
 
   # Application services for configuration, caching, and API communication
@@ -110,6 +112,8 @@ module Teems
     autoload :MailDates, 'teems/formatters/mail_formatter'
     autoload :MailFormatter, 'teems/formatters/mail_formatter'
     autoload :MailMarkdown, 'teems/formatters/mail_markdown'
+    autoload :MailRuleText, 'teems/formatters/mail_rule_text'
+    autoload :MailRuleFormatter, 'teems/formatters/mail_rule_formatter'
   end
 
   # CLI commands implementing user-facing functionality
@@ -137,6 +141,10 @@ module Teems
     autoload :MailDueDate, 'teems/commands/mail_triage'
     autoload :MailSelection, 'teems/commands/mail_triage'
     autoload :MailHelp, 'teems/commands/mail_help'
+    autoload :MailRules, 'teems/commands/mail_rules'
+    autoload :MailRuleOptions, 'teems/commands/mail_rules'
+    autoload :MailRuleBuilder, 'teems/commands/mail_rules'
+    autoload :Confirmation, 'teems/commands/confirmation'
     autoload :MailSyncing, 'teems/commands/mail_sync'
   end
 
@@ -149,6 +157,7 @@ module Teems
     autoload :Files, 'teems/api/files'
     autoload :Mail, 'teems/api/mail'
     autoload :MailActions, 'teems/api/mail_actions'
+    autoload :MailRules, 'teems/api/mail_rules'
     autoload :MailPaths, 'teems/api/mail'
     autoload :Meetings, 'teems/api/meetings'
     autoload :Messages, 'teems/api/messages'
