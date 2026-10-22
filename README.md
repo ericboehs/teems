@@ -73,9 +73,22 @@ teems mail read 3fa2c1 --html       # Raw HTML body
 teems mail folders                  # Unread and total counts
 teems mail search "from:alice subject:report" --folder Inbox
 teems mail sync Inbox "Sent Items" --since 30
+teems mail list --flagged           # Flagged messages
 ```
 
-Mail is read-only: teems never sends, moves, deletes or flags messages, and reading one does not mark it read. Message IDs in `list` and `search` output are short handles that `read` accepts (`--tsv` prints the full Graph IDs). `search` uses Graph's KQL `$search`.
+Triage changes a message's read state or flag, or moves it. Name messages by ID, or select them with `--search` (optionally within `--folder`) or `--folder` with `--unread`/`--flagged`:
+
+```bash
+teems mail mark-read 3fa2c1 9b0e44            # mark-unread for the reverse
+teems mail flag 3fa2c1 --due friday           # unflag clears it
+teems mail archive 3fa2c1
+teems mail move 3fa2c1 --to Projects/EERT
+teems mail delete 3fa2c1                      # To Deleted Items, never purged
+teems mail archive --search "from:jira" --dry-run   # List what would move
+teems mail mark-read --folder Inbox --unread --yes
+```
+
+teems never sends mail, and reading a message does not mark it read. Message IDs in `list` and `search` output are short handles that `read` and the triage commands accept (`--tsv` prints the full Graph IDs). `search` and `--search` use Graph's KQL `$search`. A selection is confirmed before anything changes (or pass `--yes`) and stops at 1,000 messages (`-n` for fewer). `delete` moves messages to Deleted Items, as Outlook does.
 
 `teems mail sync` keeps a Markdown copy of each message in `~/.local/share/teems/sync/mail/<Folder>/` (or `--dir`) with an `index.json` per folder. The first run of a folder fetches `--since` days (default 90, or `all`); later runs fetch only what changed, using Graph delta links stored in `~/.local/state/teems/mail-sync.json`. Messages that leave the folder keep their file and are marked `removed_at` in the index. `--attachments` also saves file attachments. A lock file keeps overlapping runs (launchd) from colliding. Syncing into a directory filled by the older AppleScript-based outlook-cli sync adopts its files instead of writing duplicates.
 

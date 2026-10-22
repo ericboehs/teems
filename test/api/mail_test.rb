@@ -24,6 +24,26 @@ class MailApiTest < Minitest::Test
     assert_equal '/v1.0/me/mailFolders/abc%2Fdef/childFolders', call[:path]
   end
 
+  def test_messages_flagged_and_unread
+    @api.messages(folder: 'inbox', count: 5, only: %i[unread flagged])
+
+    assert_equal "receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false and flag/flagStatus eq 'flagged'",
+                 call[:params]['$filter']
+    assert_includes call[:params]['$select'], 'flag'
+  end
+
+  def test_actions_update_and_move_by_immutable_id
+    actions = Teems::Api::MailActions.new(@client, mock_account)
+    actions.update('id/with+chars', { isRead: true })
+    actions.move('id/with+chars', 'archive')
+
+    assert_equal [:patch, '/v1.0/me/messages/id%2Fwith%2Bchars', { isRead: true }],
+                 call.values_at(:method, :path, :body)
+    assert_equal [:post, '/v1.0/me/messages/id%2Fwith%2Bchars/move', { destinationId: 'archive' }],
+                 call(1).values_at(:method, :path, :body)
+    assert_equal ['IdType="ImmutableId"'], @client.calls.map { |request| request[:headers]['Prefer'] }.uniq
+  end
+
   def test_folder
     @client.stub('/mailFolders/inbox', sample_mail_folder)
 
@@ -32,7 +52,7 @@ class MailApiTest < Minitest::Test
 
   def test_messages_newest_first_with_unread_filter
     @client.stub('/messages', { 'value' => [sample_mail_message('id' => 'a')] })
-    @api.messages(folder: 'inbox', count: 2, filter: Teems::Api::Mail::UNREAD)
+    @api.messages(folder: 'inbox', count: 2, only: [:unread])
     params = call[:params]
 
     assert_equal 'receivedDateTime desc', params['$orderby']
