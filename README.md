@@ -90,6 +90,18 @@ teems mail mark-read --folder Inbox --unread --yes
 
 teems never sends mail, and reading a message does not mark it read. Message IDs in `list` and `search` output are short handles that `read` and the triage commands accept (`--tsv` prints the full Graph IDs). `search` and `--search` use Graph's KQL `$search`. A selection is confirmed before anything changes (or pass `--yes`) and stops at 1,000 messages (`-n` for fewer). `delete` moves messages to Deleted Items, as Outlook does.
 
+Inbox rules, which Exchange applies as mail arrives:
+
+```bash
+teems mail rules                                   # In order: number, on/off, name, what it does
+teems mail rules add Jira --from jira@example.com --move-to Projects/Jira --mark-read --stop
+teems mail rules add Builds --subject "build failed" --category Red --dry-run
+teems mail rules disable Jira                      # By name, number, or ID; enable turns it on
+teems mail rules delete Jira                       # Asks first; --yes skips
+```
+
+A new rule needs at least one condition (`--from`, `--sent-to`, `--subject`, `--body`, each repeatable) and one action (`--move-to`, `--copy-to`, `--mark-read`, `--category`, `--importance`, `--delete` to Deleted Items, `--stop`). It goes last in order, and `--disabled` adds it turned off. teems never creates a rule that forwards or redirects mail, and won't turn on an existing one that does.
+
 `teems mail sync` keeps a Markdown copy of each message in `~/.local/share/teems/sync/mail/<Folder>/` (or `--dir`) with an `index.json` per folder. The first run of a folder fetches `--since` days (default 90, or `all`); later runs fetch only what changed, using Graph delta links stored in `~/.local/state/teems/mail-sync.json`. Messages that leave the folder keep their file and are marked `removed_at` in the index. `--attachments` also saves file attachments. A lock file keeps overlapping runs (launchd) from colliding. Syncing into a directory filled by the older AppleScript-based outlook-cli sync adopts its files instead of writing duplicates.
 
 ### Messages

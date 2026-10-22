@@ -160,12 +160,8 @@ module Teems
       end
 
       def answered_yes?(count)
-        unless $stdin.tty?
-          raise Error, "#{count_text(count)} selected; pass --yes to go ahead (or --dry-run to list them)"
-        end
-
-        output.prompt("#{triage_phrase(0, count).sub(/\A./, &:upcase)}? [y/N] ")
-        $stdin.gets.to_s.strip.downcase.start_with?('y')
+        confirm?(triage_phrase(0, count).sub(/\A./, &:upcase),
+                 refusal: "#{count_text(count)} selected; pass --yes to go ahead (or --dry-run to list them)")
       end
 
       # { done: [ids], failed: { id => message } }. An expired token stops the run, so the retry

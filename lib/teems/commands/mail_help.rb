@@ -26,6 +26,20 @@ module Teems
           is confirmed first: answer the prompt, or pass --yes. --dry-run lists the
           messages without changing them.
 
+        RULES (Inbox rules, applied by Exchange as mail arrives):
+          teems mail rules                              List them in order (alias: rules list)
+          teems mail rules add <name> <conditions> <actions>
+          teems mail rules enable <rule>                Turn on (disable: turn off)
+          teems mail rules delete <rule>                Remove (asks first; --yes skips)
+
+          <rule> is a name, the number rules lists, or an ID (--tsv shows them).
+          Conditions (repeatable; a message must match each kind given):
+            --from ADDR  --sent-to ADDR  --subject TEXT  --body TEXT
+          Actions: --move-to FOLDER  --copy-to FOLDER  --mark-read  --category NAME
+            --importance low|normal|high  --delete (to Deleted Items)  --stop (skip later rules)
+          --disabled adds the rule turned off, and --dry-run shows it without adding it.
+          Rules never forward or redirect mail, and one that does is not turned on.
+
         OPTIONS:
           --unread          list, triage --folder: only unread messages
           --flagged         list, triage --folder: only flagged messages
