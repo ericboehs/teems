@@ -47,20 +47,22 @@ module Teems
 
     # POST/PATCH request methods, extracted to manage class size
     module WriteRequests
+      # options: account:, and optionally body: (sent as JSON) and headers:
       def post(endpoint_key, path, **options)
-        account = options.delete(:account)
-        body = options.delete(:body)
-        req = Net::HTTP::Post.new(URI("#{resolve_endpoint(endpoint_key)}#{path}"))
-        apply_auth(req, account, endpoint_key)
-        req.body = JSON.generate(body) if body
-        run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
+        send_body(Net::HTTP::Post, options.merge(endpoint: endpoint_key, path: path))
       end
 
       def patch(endpoint_key, path, **options)
-        account = options.delete(:account)
-        body = options.delete(:body)
-        req = Net::HTTP::Patch.new(URI("#{resolve_endpoint(endpoint_key)}#{path}"))
-        apply_auth(req, account, endpoint_key)
+        send_body(Net::HTTP::Patch, options.merge(endpoint: endpoint_key, path: path))
+      end
+
+      private
+
+      def send_body(request_class, request)
+        endpoint_key, path, body = request.values_at(:endpoint, :path, :body)
+        req = request_class.new(URI("#{resolve_endpoint(endpoint_key)}#{path}"))
+        apply_headers(req, request.fetch(:headers, {}))
+        apply_auth(req, request[:account], endpoint_key)
         req.body = JSON.generate(body) if body
         run_request(path, get_http_for_endpoint(endpoint_key)) { |http| http.request(req) }
       end

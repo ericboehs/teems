@@ -19,12 +19,13 @@ module Teems
         @api.get(endpoint, path, account: @account, params: params, headers: headers)
       end
 
-      def post(path, body: nil)
-        @api.post(endpoint, path, account: @account, body: body)
+      # options: body: (sent as JSON) and headers:
+      def post(path, **)
+        @api.post(endpoint, path, account: @account, **)
       end
 
-      def patch(path, body: nil)
-        @api.patch(endpoint, path, account: @account, body: body)
+      def patch(path, **)
+        @api.patch(endpoint, path, account: @account, **)
       end
 
       def post_to(target_endpoint, request)

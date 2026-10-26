@@ -133,6 +133,10 @@ module Teems
     autoload :Status, 'teems/commands/status'
     autoload :Mail, 'teems/commands/mail'
     autoload :MailReading, 'teems/commands/mail'
+    autoload :MailTriage, 'teems/commands/mail_triage'
+    autoload :MailDueDate, 'teems/commands/mail_triage'
+    autoload :MailSelection, 'teems/commands/mail_triage'
+    autoload :MailHelp, 'teems/commands/mail_help'
     autoload :MailSyncing, 'teems/commands/mail_sync'
   end
 
@@ -144,6 +148,8 @@ module Teems
     autoload :Chats, 'teems/api/chats'
     autoload :Files, 'teems/api/files'
     autoload :Mail, 'teems/api/mail'
+    autoload :MailActions, 'teems/api/mail_actions'
+    autoload :MailPaths, 'teems/api/mail'
     autoload :Meetings, 'teems/api/meetings'
     autoload :Messages, 'teems/api/messages'
     autoload :Users, 'teems/api/users'

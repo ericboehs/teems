@@ -79,6 +79,12 @@ module Teems
         to_stderr { |err| err.puts(colorize("#{yellow('Warning:')} #{message}")) } unless quiet?
       end
 
+      # A question for the person at the terminal: on stderr, so piped stdout stays data, and
+      # shown under --quiet too, since an unseen question would just hang (stderr is unbuffered)
+      def prompt(message)
+        to_stderr { |err| err.print(message) }
+      end
+
       def success(message)
         puts(colorize("#{green('✓')} #{message}"))
       end

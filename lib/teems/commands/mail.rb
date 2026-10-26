@@ -4,29 +4,34 @@ module Teems
   module Commands
     # list, read, folders, and search for `teems mail`
     module MailReading
+      DEFAULT_COUNT = 20
+
       private
 
       def list_messages
         folder, count = list_args
         return error('Count must be a positive number') unless count&.positive?
 
-        filter = Api::Mail::UNREAD if @options[:unread]
-        show_messages(mail_api.messages(folder: mail_folders.resolve_id(folder), count: count, filter: filter))
+        show_messages(mail_api.messages(folder: mail_folders.resolve_id(folder), count: count, only: only_filters))
       end
+
+      # --unread and --flagged limit a listing (both: unread and flagged)
+      def only_filters = Api::Mail::FILTERS.keys.select { |key| @options[key] }
 
       # [folder] [count]; a lone number is the count
       def list_args
         folder, count = positional_args.drop(1)
         return ['Inbox', Integer(folder)] if !count && folder.to_s.match?(/\A\d+\z/)
 
-        [folder || 'Inbox', Integer(count || @options[:limit], exception: false)]
+        [folder || 'Inbox', Integer(count || @options[:limit] || DEFAULT_COUNT, exception: false)]
       end
 
       def search_messages
         query = positional_args[1]
         return error('Usage: teems mail search <query> [folder]') if query.to_s.strip.empty?
 
-        show_messages(mail_api.search(query: query, count: @options[:limit].clamp(1, 1000), folder: search_folder))
+        count = (@options[:limit] || DEFAULT_COUNT).clamp(1, 1000)
+        show_messages(mail_api.search(query: query, count: count, folder: search_folder))
       end
 
       def search_folder
@@ -47,10 +52,7 @@ module Teems
         token = positional_args[1]
         return error('Usage: teems mail read <id>') unless token
 
-        message_id = id_cache.resolve(token)
-        return error("Unknown message ID: #{token} (run teems mail list, or pass the full ID)") unless message_id
-
-        show_message(mail_api.message(message_id))
+        show_message(mail_api.message(resolve_message_id(token)))
       end
 
       def show_message(message)
@@ -84,57 +86,27 @@ module Teems
       end
     end
 
-    # Read-only Outlook mail via Microsoft Graph: list, read, folders, search, and local sync
+    # Outlook mail via Microsoft Graph: list, read, folders, search, local sync, and triage
+    # (read state, flags, and moves). Nothing sends mail.
     class Mail < Base
       include MailReading
       include MailSyncing
+      include MailTriage
+      include Support::Timezone
 
-      HELP = <<~HELP
-        teems mail - Read Outlook mail via Microsoft Graph (read-only)
-
-        USAGE:
-          teems mail list [folder] [count] [--unread]   Newest messages (alias: recent)
-          teems mail read <id> [--html]                 Headers, plain-text body, numbered links
-          teems mail folders                            Folders with unread and total counts
-          teems mail search <query> [folder]            Graph $search (KQL), e.g. "from:alice subject:report"
-          teems mail sync [folder...] [options]         Incremental local copy (Graph delta)
-
-        OPTIONS:
-          --unread          list: only unread messages
-          --html            read: print the raw HTML body
-          --folder NAME     search: limit to a folder; sync: folder to sync (repeatable)
-          --tsv             list/search/folders: tab-separated output with full IDs
-          -n, --limit N     list: count (default 20); search: max results (default 20)
-          --json            JSON output
-
-        SYNC OPTIONS:
-          --dir DIR         Store root (default ~/.local/share/teems/sync/mail)
-          --since DAYS      First sync of a folder: only mail from the last DAYS days,
-                            or "all" (default 90). Later runs fetch only changes.
-                            Graph caps a first sync limited by DAYS at 5,000 messages
-                            per folder; use "all" for more.
-          --attachments     Also download file attachments to <Folder>/attachments/
-          --no-login        Never open Safari: renew expired tokens silently from the
-                            cached sign-in, or fail (for launchd and cron)
-
-        Folders are names ("Inbox", "Sent Items", "Projects/EERT"), well-known names
-        (inbox, archive, sent, drafts, deleted, junk), or Graph folder IDs. IDs from
-        list and search are short handles; read accepts them or full Graph IDs.
-
-        Sync writes one Markdown file per message plus <Folder>/index.json, and keeps
-        delta links in ~/.local/state/teems/mail-sync.json. Syncing into a directory an
-        older outlook-cli sync filled (e.g. ~/Mail) adopts its files instead of
-        duplicating them. Removed messages keep their file; the index marks them.
-      HELP
+      HELP = MailHelp::TEXT
 
       SUBCOMMANDS = {
         'list' => :list_messages, 'recent' => :list_messages, 'read' => :read_message,
-        'folders' => :list_folders, 'search' => :search_messages, 'sync' => :sync_mail
+        'folders' => :list_folders, 'search' => :search_messages, 'sync' => :sync_mail,
+        **MailTriage::ACTIONS.transform_values { :triage }
       }.freeze
 
-      FLAGS = { '--unread' => :unread, '--html' => :html, '--tsv' => :tsv,
-                '--attachments' => :attachments, '--no-login' => :no_login }.freeze
-      VALUES = { '--since' => :since, '--dir' => :dir, '--folder' => :folders }.freeze
+      FLAGS = { '--unread' => :unread, '--flagged' => :flagged, '--html' => :html, '--tsv' => :tsv,
+                '--attachments' => :attachments, '--no-login' => :no_login, '--dry-run' => :dry_run,
+                '--yes' => :yes, '-y' => :yes }.freeze
+      VALUES = { '--since' => :since, '--dir' => :dir, '--folder' => :folders, '--search' => :search,
+                 '--to' => :to, '--due' => :due }.freeze
 
       def initialize(args, runner:)
         @options = {}
@@ -152,6 +124,9 @@ module Teems
       end
 
       protected
+
+      # No default -n: list and search show 20, a triage selection up to 1,000
+      def default_options = super.merge(limit: nil)
 
       def handle_option(arg, pending)
         return @options[FLAGS[arg]] = true if FLAGS.key?(arg)

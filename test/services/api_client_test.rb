@@ -636,6 +636,8 @@ module ApiClientTests
 
   # Tests the HTTP POST method with JSON body serialization
   class PostMethodTest < Minitest::Test
+    PREFER = { 'Prefer' => 'IdType="ImmutableId"' }.freeze
+
     def test_post_sends_json_body
       client = StubbedApiClient.new
       account = mock_account
@@ -655,6 +657,25 @@ module ApiClientTests
       client.post(:graph, '/v1.0/me/sendMail', account: account)
 
       assert_nil client.last_request.body
+    end
+
+    def test_post_sends_headers_with_json_content_type
+      client = StubbedApiClient.new
+      client.post(:graph, '/v1.0/me/messages/a/move', account: mock_account, body: {}, headers: PREFER)
+      request = client.last_request
+
+      assert_equal 'IdType="ImmutableId"', request['Prefer']
+      assert_equal 'application/json', request['Content-Type']
+    end
+
+    def test_patch_sends_body_and_headers
+      client = StubbedApiClient.new
+      client.patch(:graph, '/v1.0/me/messages/a', account: mock_account, body: { isRead: true }, headers: PREFER)
+      request = client.last_request
+
+      assert_instance_of Net::HTTP::Patch, request
+      assert_equal 'IdType="ImmutableId"', request['Prefer']
+      assert_equal '{"isRead":true}', request.body
     end
   end
 
