@@ -95,4 +95,14 @@ class MailMessageTest < Minitest::Test
     assert_equal '<abc@example.com>', hash[:internet_message_id]
     assert_nil Teems::Models::MailMessage.from_api('id' => 'x').to_json_hash[:received_at]
   end
+
+  def test_bodyless_and_header_notes
+    assert_predicate mail_message('body' => { 'contentType' => 'text', 'content' => " \r\n" }), :bodyless?
+    refute_predicate mail_message, :bodyless?
+    headers = mail_message.headers(notes: { 'Encryption' => 'S/MIME, decrypted' })
+
+    assert_equal %w[Encryption ID], headers.keys.last(2)
+    assert_includes mail_message.to_text(notes: { 'Signature' => 'Signed (not checked)' }),
+                    "Signature: Signed (not checked)\nID: "
+  end
 end

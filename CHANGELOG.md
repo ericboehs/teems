@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `teems mail read --decrypt` opens S/MIME encrypted mail with the PIV card (or any keychain identity) through macOS's `security cms -D`, which asks for the PIN. The decrypted message shows like any other: HTML or text body, links, attachment names, and a note when it was also signed (the signature is unwrapped, not checked). Plaintext never touches the disk. Without `--decrypt`, an encrypted message is labelled instead of showing an empty body.
+
 ## [0.5.0] - 2026-10-26
 
 ### Added

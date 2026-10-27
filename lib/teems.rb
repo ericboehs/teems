@@ -86,6 +86,8 @@ module Teems
     autoload :SyncImages, 'teems/services/sync_images'
     autoload :MailFolders, 'teems/services/mail_folders'
     autoload :MailIdCache, 'teems/services/mail_id_cache'
+    autoload :SmimeContent, 'teems/services/smime_content'
+    autoload :SmimeDecryptor, 'teems/services/smime_decryptor'
     autoload :MailLegacyFiles, 'teems/services/mail_legacy_files'
     autoload :MailSyncAttachments, 'teems/services/mail_sync_attachments'
     autoload :MailSyncEngine, 'teems/services/mail_sync_engine'
@@ -137,6 +139,7 @@ module Teems
     autoload :Status, 'teems/commands/status'
     autoload :Mail, 'teems/commands/mail'
     autoload :MailReading, 'teems/commands/mail'
+    autoload :MailDecrypting, 'teems/commands/mail_decrypting'
     autoload :MailTriage, 'teems/commands/mail_triage'
     autoload :MailDueDate, 'teems/commands/mail_triage'
     autoload :MailSelection, 'teems/commands/mail_triage'
@@ -172,6 +175,9 @@ module Teems
     autoload :Timezone, 'teems/support/timezone'
     autoload :TimeParsing, 'teems/support/time_parsing'
     autoload :Subprocess, 'teems/support/subprocess'
+    autoload :MimeHeader, 'teems/support/mime_header'
+    autoload :MimePart, 'teems/support/mime_part'
+    autoload :SignedData, 'teems/support/signed_data'
     autoload :ControlChars, 'teems/support/control_chars'
   end
 end

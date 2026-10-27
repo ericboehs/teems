@@ -9,7 +9,7 @@ module Teems
 
         USAGE:
           teems mail list [folder] [count]              Newest messages (alias: recent)
-          teems mail read <id> [--html]                 Headers, plain-text body, numbered links
+          teems mail read <id> [--html] [--decrypt]     Headers, plain-text body, numbered links
           teems mail folders                            Folders with unread and total counts
           teems mail search <query> [folder]            Graph $search (KQL), e.g. "from:alice subject:report"
           teems mail sync [folder...] [options]         Incremental local copy (Graph delta)
@@ -44,6 +44,7 @@ module Teems
           --unread          list, triage --folder: only unread messages
           --flagged         list, triage --folder: only flagged messages
           --html            read: print the raw HTML body
+          --decrypt         read: open S/MIME encrypted mail with your PIV card (asks for the PIN)
           --folder NAME     search: limit to a folder; sync: folder to sync (repeatable)
           --search QUERY    triage: act on the messages a KQL search finds
           --to FOLDER       move: destination folder

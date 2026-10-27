@@ -51,6 +51,9 @@ module Teems
       def status = is_read ? 'Read' : 'Unread'
       def html? = body_type == 'html'
 
+      # True for S/MIME encrypted mail, which Graph returns with no body (the envelope is an attachment)
+      def bodyless? = body.strip.empty?
+
       def from_label = self.class.label(from)
       def from_display = self.class.display(from)
       def to_display = to.map { |entry| self.class.display(entry) }.join(', ')
@@ -87,19 +90,20 @@ module Teems
           .map { |field| field.to_s.tr("\t\r\n", '   ') }.join("\t")
       end
 
-      # Header lines for `teems mail read`, in Outlook's order; Cc and Attachments only when present
-      def headers(attachments: [])
+      # Header lines for `teems mail read`, in Outlook's order; Cc and Attachments only when
+      # present. notes (e.g. Encryption) go just before the ID.
+      def headers(attachments: [], notes: {})
         cc_line = cc_display
         names = attachments.join(', ')
         { 'Subject' => subject, 'From' => from_display, 'To' => to_display, 'Cc' => cc_line,
           'Date' => Formatters::MailDates.long(received_at), 'Categories' => categories.join(', '),
-          'Status' => status, 'Attachments' => names, 'ID' => id }
+          'Status' => status, 'Attachments' => names, **notes, 'ID' => id }
           .reject { |name, value| value.empty? && %w[Cc Attachments].include?(name) }
       end
 
       # `teems mail read` output: header block, blank line, plain-text body with links at the end
-      def to_text(attachments: [])
-        lines = headers(attachments: attachments).map { |name, value| "#{name}: #{value}" }
+      def to_text(attachments: [], notes: {})
+        lines = headers(attachments: attachments, notes: notes).map { |name, value| "#{name}: #{value}" }
         [*lines, '', text_body.to_s].join("\n")
       end
 

@@ -70,6 +70,7 @@ teems mail list                     # 20 newest Inbox messages (alias: recent)
 teems mail list Archive 50 --unread # Folder and count, unread only
 teems mail read 3fa2c1              # Headers, plain-text body, numbered links
 teems mail read 3fa2c1 --html       # Raw HTML body
+teems mail read 3fa2c1 --decrypt    # S/MIME encrypted mail, opened with your PIV card
 teems mail folders                  # Unread and total counts
 teems mail search "from:alice subject:report" --folder Inbox
 teems mail sync Inbox "Sent Items" --since 30
@@ -101,6 +102,8 @@ teems mail rules delete Jira                       # Asks first; --yes skips
 ```
 
 A new rule needs at least one condition (`--from`, `--sent-to`, `--subject`, `--body`, each repeatable) and one action (`--move-to`, `--copy-to`, `--mark-read`, `--category`, `--importance`, `--delete` to Deleted Items, `--stop`). It goes last in order, and `--disabled` adds it turned off. teems never creates a rule that forwards or redirects mail, and won't turn on an existing one that does.
+
+S/MIME encrypted mail reaches Graph with an empty body, so `read` labels it (`Encryption:` in the headers, `encryption` in `--json`) instead of showing nothing. `--decrypt` opens it with macOS's `security cms -D`, which finds the matching key in your keychain or on your PIV card (the current key management key or a retired one) and asks for the PIN in the system dialog. The ciphertext and plaintext travel over pipes, never to disk, and `sync` never decrypts. A signed message inside is unwrapped but its signature is not checked. Mail protected by Microsoft Purview (`message.rpmsg`, "Do Not Forward") uses Microsoft's rights management service rather than certificates and can only be read in Outlook.
 
 `teems mail sync` keeps a Markdown copy of each message in `~/.local/share/teems/sync/mail/<Folder>/` (or `--dir`) with an `index.json` per folder. The first run of a folder fetches `--since` days (default 90, or `all`); later runs fetch only what changed, using Graph delta links stored in `~/.local/state/teems/mail-sync.json`. Messages that leave the folder keep their file and are marked `removed_at` in the index. `--attachments` also saves file attachments. A lock file keeps overlapping runs (launchd) from colliding. Syncing into a directory filled by the older AppleScript-based outlook-cli sync adopts its files instead of writing duplicates.
 
