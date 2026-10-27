@@ -12,7 +12,9 @@ module Teems
       private
 
       def envelope_attachment(message_id)
-        mail_api.attachments(message_id).find { |item| ENVELOPE_TYPES.include?(item['contentType'].to_s.downcase) }
+        mail_api.attachments(message_id).find do |item|
+          ENVELOPE_TYPES.include?(Support::MimeHeader.field(item['contentType']).first)
+        end
       end
 
       def show_encrypted(message, envelope)

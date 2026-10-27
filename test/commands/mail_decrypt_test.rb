@@ -32,8 +32,8 @@ class MailDecryptTest < Minitest::Test
     capture.merge(code: @code, calls: @calls)
   end
 
-  def encrypted_stubs(mime = alternative_mime)
-    envelope = { 'id' => ENVELOPE_ID, 'name' => 'smime.p7m', 'contentType' => 'application/pkcs7-mime' }
+  def encrypted_stubs(mime = alternative_mime, content_type: 'application/pkcs7-mime')
+    envelope = { 'id' => ENVELOPE_ID, 'name' => 'smime.p7m', 'contentType' => content_type }
     { "/attachments/#{ENVELOPE_ID}" => envelope.merge('contentBytes' => [smime_envelope(mime)].pack('m0')),
       '/attachments' => { 'value' => [envelope] },
       '/v1.0/me/messages/' => sample_mail_message('body' => { 'contentType' => 'text', 'content' => '' }) }
@@ -114,6 +114,15 @@ class MailDecryptTest < Minitest::Test
       assert_equal({ 'type' => 'smime', 'decrypted' => true, 'signed' => true }, json['encryption'])
       assert_equal 'Signed secret [31mred', json['body'], 'ESC is stripped, as for any sender text'
       assert_equal ['plan.pdf'], json['attachments']
+    end
+  end
+
+  def test_envelope_type_with_parameters_is_recognized
+    with_temp_config do
+      stubs = encrypted_stubs(content_type: 'Application/PKCS7-MIME; smime-type=enveloped-data; name=smime.p7m')
+      result = run_mail(['read', MAIL_ID, '--decrypt'], stubs: stubs)
+
+      assert_includes result[:stdout], 'Top secret [1]'
     end
   end
 
