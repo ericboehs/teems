@@ -80,6 +80,18 @@ module Teems
         print_lines([message.to_text(attachments: names, notes: notes)])
       end
 
+      # Outlook on the web, which opens what teems cannot (Purview protected mail); --print
+      # prints the address instead
+      def open_message
+        token = positional_args[1] or raise Error, 'Usage: teems mail open <id> [--print]'
+        link = mail_api.web_link(resolve_message_id(token)) or raise Error, 'Graph gave no web link for that message'
+        return print_lines([link]) if @options[:print]
+
+        runner.browser.open(link)
+        success('Opened in Outlook on the web')
+        0
+      end
+
       def list_folders
         all = mail_folders.all
         return json_result(all.map(&:to_json_hash)) if @options[:json]
@@ -116,14 +128,14 @@ module Teems
 
       SUBCOMMANDS = {
         'list' => :list_messages, 'recent' => :list_messages, 'read' => :read_message, 'thread' => :show_thread,
-        'folders' => :list_folders, 'search' => :search_messages, 'sync' => :sync_mail,
+        'open' => :open_message, 'folders' => :list_folders, 'search' => :search_messages, 'sync' => :sync_mail,
         **MailTriage::ACTIONS.transform_values { :triage }, 'rules' => :mail_rules
       }.freeze
 
       FLAGS = { '--unread' => :unread, '--flagged' => :flagged, '--html' => :html, '--tsv' => :tsv,
                 '--attachments' => :attachments, '--no-login' => :no_login, '--dry-run' => :dry_run,
                 '--yes' => :yes, '-y' => :yes, '--decrypt' => :decrypt,
-                '--full' => :full, '--thread' => :thread, **MailRuleOptions::FLAGS }.freeze
+                '--full' => :full, '--thread' => :thread, '--print' => :print, **MailRuleOptions::FLAGS }.freeze
       VALUES = { '--since' => :since, '--dir' => :dir, '--folder' => :folders, '--search' => :search,
                  '--to' => :to, '--due' => :due, **MailRuleOptions::VALUES }.freeze
       REPEATABLE = [:folders, *MailRuleOptions::REPEATABLE].freeze

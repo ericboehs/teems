@@ -53,6 +53,11 @@ module Teems
         Models::MailMessage.from_api(data)
       end
 
+      # The message's Outlook on the web address
+      def web_link(message_id)
+        get(message_path(message_id), params: { '$select' => 'webLink' }, headers: prefer_header)['webLink']
+      end
+
       # The conversation (thread) a message belongs to
       def conversation_id(message_id)
         get(message_path(message_id), params: { '$select' => 'conversationId' },

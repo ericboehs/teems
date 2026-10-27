@@ -88,6 +88,7 @@ module Teems
     autoload :SyncImages, 'teems/services/sync_images'
     autoload :MailFolders, 'teems/services/mail_folders'
     autoload :MailIdCache, 'teems/services/mail_id_cache'
+    autoload :Browser, 'teems/services/browser'
     autoload :SmimeContent, 'teems/services/smime_content'
     autoload :SmimeDecryptor, 'teems/services/smime_decryptor'
     autoload :MailLegacyFiles, 'teems/services/mail_legacy_files'

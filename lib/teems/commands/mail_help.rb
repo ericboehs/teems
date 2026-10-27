@@ -11,6 +11,7 @@ module Teems
           teems mail list [folder] [count]              Newest messages (alias: recent)
           teems mail read <id> [--html] [--decrypt]     Headers, plain-text body, numbered links
           teems mail thread <id> [--full [--decrypt]]   The whole conversation, any folder, oldest first
+          teems mail open <id> [--print]                Open in Outlook on the web (--print: print the link)
           teems mail folders                            Folders with unread and total counts
           teems mail search <query> [folder]            Graph $search (KQL), e.g. "from:alice subject:report"
           teems mail sync [folder...] [options]         Incremental local copy (Graph delta)

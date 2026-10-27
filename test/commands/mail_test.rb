@@ -32,7 +32,7 @@ class MailCommandTest < Minitest::Test
       result = run_mail(['bogus'])
 
       assert_equal 1, result[:code]
-      assert_includes result[:stderr], 'Usage: teems mail <list|recent|read|thread|folders|search|sync|mark-read|'
+      assert_includes result[:stderr], 'Usage: teems mail <list|recent|read|thread|open|folders|search|sync|mark-read|'
       assert_equal 1, run_mail(%w[list --bogus])[:code]
     end
   end

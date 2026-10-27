@@ -6,6 +6,8 @@
 - `teems mail thread <id>` lists every message in a message's conversation, from any folder, oldest first, with the folder each sits in (`--tsv`, `--json`). `--full` prints them all as `read` does, Purview and S/MIME labels included, and `--full --decrypt` opens the S/MIME messages with the PIV card on the way.
 - `--thread` on the triage commands (`mark-read`, `flag`, `archive`, `move`, `delete` and the rest) takes in the rest of each named message's conversation, skipping messages in Sent Items, Drafts, Deleted Items and Junk Email unless named. It is confirmed like a selection, and `--dry-run` lists it.
 
+- `teems mail open <id>` opens a message in Outlook on the web, which can show Purview protected mail; `--print` prints the link instead.
+
 ### Changed
 - Purview protected mail now reads "Protected by Purview; open in Outlook on the web", and `read`, `thread --full` and synced Markdown give its Outlook on the web link (an `Open:` line in the headers), where Exchange decrypts it.
 
