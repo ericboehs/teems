@@ -39,4 +39,17 @@ class MailMarkdownTest < Minitest::Test
     assert_includes front, "# Say \"hi\"\n\n**From:** Alice Smith <alice@example.com>\n**To:** eric@example.com\n"
     assert_equal "Hello the report [1]\n\nLinks:\n[1] the report <https://example.com/r>\n", body
   end
+
+  def test_protected_mail_is_labelled
+    msg = mail_message('internetMessageHeaders' => purview_headers,
+                       'body' => { 'contentType' => 'text', 'content' => 'placeholder' })
+    front, body = Markdown.render(msg, folder: 'Inbox').split("\n\n---\n\n", 2)
+
+    assert_includes front, %(internet_message_id: "<abc@example.com>"\nprotection: "purview"\n---)
+    assert_equal "> Protected by Purview; open in Outlook\n\nplaceholder\n", body
+  end
+
+  def test_plain_mail_has_no_protection_field
+    refute_includes Markdown.render(mail_message, folder: 'Inbox'), 'protection'
+  end
 end

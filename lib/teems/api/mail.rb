@@ -21,7 +21,10 @@ module Teems
       include MailPaths
 
       LIST_FIELDS = %w[id receivedDateTime from subject isRead hasAttachments flag].freeze
-      MESSAGE_FIELDS = (LIST_FIELDS + %w[toRecipients ccRecipients categories body internetMessageId webLink]).freeze
+      # internetMessageHeaders only to tell protected mail apart (MailMessage.protection); delta
+      # has no lighter way, since hasAttachments is unreliable for it and $expand is refused
+      MESSAGE_FIELDS = (LIST_FIELDS + %w[toRecipients ccRecipients categories body internetMessageId webLink
+                                         internetMessageHeaders]).freeze
       PAGE_MAX = 250
       # Delta pages carry full bodies, so keep them small
       DELTA_PAGE_SIZE = 50

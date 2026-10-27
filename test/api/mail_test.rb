@@ -97,6 +97,13 @@ class MailApiTest < Minitest::Test
     assert_equal '/v1.0/me/mailFolders/archive/messages', call(1)[:path]
   end
 
+  def test_delta_selects_internet_headers_for_protection
+    @client.stub('delta', { 'value' => [] })
+    @api.delta(folder: 'inbox')
+
+    assert_includes @client.calls.last[:params]['$select'].split(','), 'internetMessageHeaders'
+  end
+
   def test_delta_since
     @client.stub('delta', { 'value' => [] })
     @api.delta(folder: 'inbox', since: Time.utc(2026, 10, 1, 5))

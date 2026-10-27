@@ -58,6 +58,15 @@ module RunnerTests
       end
     end
 
+    def test_smime_decryptor_is_memoized
+      with_temp_config do
+        runner = Teems::Runner.new
+
+        assert_kind_of Teems::Services::SmimeDecryptor, runner.smime_decryptor
+        assert_same runner.smime_decryptor, runner.smime_decryptor
+      end
+    end
+
     def test_token_extractor_returns_extractor
       with_temp_config do
         assert_kind_of Teems::Services::TokenExtractor, Teems::Runner.new.token_extractor

@@ -24,7 +24,7 @@ module Teems
       def render
         [frontmatter, '', "# #{@message.subject}", '', "**From:** #{@message.from_display}",
          "**To:** #{addresses(@message.to)}", "**Date:** #{MailDates.long(@message.received_at)}",
-         '', '---', '', "#{@message.text_body}\n"].join("\n")
+         '', '---', '', *protection_lines, "#{@message.text_body}\n"].join("\n")
       end
 
       private
@@ -32,7 +32,7 @@ module Teems
       def frontmatter
         fields = { 'id' => @message.id, **quoted_fields, 'status' => @message.status.downcase,
                    'attachments' => quote(@attachments.join(', ')),
-                   'internet_message_id' => quote(@message.internet_message_id) }
+                   'internet_message_id' => quote(@message.internet_message_id), **protection_field }
         ['---', *fields.map { |key, value| "#{key}: #{value}" }, '---'].join("\n")
       end
 
@@ -43,6 +43,18 @@ module Teems
                    'received' => MailDates.iso(received), 'folder' => @folder,
                    'categories' => @message.categories.join(', ') }
         fields.transform_values { |value| quote(value) }
+      end
+
+      # Protected mail only, so files of plain mail stay as outlook-cli wrote them
+      def protection_field
+        kind = @message.protection
+        kind ? { 'protection' => quote(kind) } : {}
+      end
+
+      # A note above the body of protected mail, whose body is empty or Microsoft's placeholder
+      def protection_lines
+        note = @message.protection_note
+        note ? ["> #{note}", ''] : []
       end
 
       def addresses(list) = list.map { |entry| entry[:address] }.reject(&:empty?).join(', ')
