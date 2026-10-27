@@ -26,6 +26,8 @@ module Teems
     module MailSelection
       # Graph's $search returns at most 1,000 messages; folder selections stop there too
       BULK_MAX = 1000
+      # Where --thread leaves the rest of a conversation alone: your own messages, and ones already put away
+      THREAD_SKIPS = %w[sentitems drafts deleteditems junkemail].freeze
 
       # Message IDs to act on; a selection (not IDs given by hand) also has the messages
       Targets = Data.define(:ids, :messages, :selected) do
@@ -46,12 +48,14 @@ module Teems
         return selected_targets if selecting?
         raise Error, "Usage: teems mail #{triage_action} <id>... (or --search QUERY, --folder NAME)" if ids.empty?
 
-        Targets.named(ids.map { |token| resolve_message_id(token) })
+        named = ids.map { |token| resolve_message_id(token) }
+        @options[:thread] ? thread_targets(named) : Targets.named(named)
       end
 
       def selecting? = @options[:search] || @options[:folders]
 
       def check_selection(ids)
+        check_thread
         raise Error, 'Give message IDs or --search/--folder, not both' if selecting? && ids.any?
         return if only_filters.empty? || (@options[:folders] && !@options[:search])
 
@@ -62,6 +66,25 @@ module Teems
         messages = @options[:search] ? search_selection : folder_selection
         id_cache.remember(messages)
         Targets.selected(messages)
+      end
+
+      def check_thread
+        raise Error, '--thread works with message IDs, not --search or --folder' if @options[:thread] && selecting?
+      end
+
+      # The named messages and the rest of their conversations, except what sits in THREAD_SKIPS
+      def thread_targets(named)
+        skipped = thread_skipped_folders
+        kept = mail_api.conversations_of(named).select do |message|
+          named.include?(message.id) || !skipped.include?(message.folder_id)
+        end
+        id_cache.remember(kept)
+        Targets.selected(kept)
+      end
+
+      def thread_skipped_folders
+        folders = mail_folders
+        THREAD_SKIPS.map { |name| folders.resolve(name).id }
       end
 
       def search_selection

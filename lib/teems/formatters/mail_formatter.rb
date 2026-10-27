@@ -26,6 +26,14 @@ module Teems
       # id, received (local), from, subject, read flag
       def message_rows(messages) = messages.map { |message| message_row(message) }
 
+      # message_rows plus each message's folder, which lines up after the read/unread column
+      def thread_rows(conversation)
+        conversation.messages.map do |message|
+          padding = message.read? ? '    ' : '  '
+          "#{message_row(message)}#{padding}#{@output.gray(conversation.folder(message).to_s)}"
+        end
+      end
+
       def folder_rows(folders)
         width = folders.map { |folder| folder.path.length }.push(6).max
         header = @output.bold("#{'FOLDER'.ljust(width)}  #{'UNREAD'.rjust(6)}  #{'TOTAL'.rjust(7)}")

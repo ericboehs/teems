@@ -53,6 +53,25 @@ module Teems
         Models::MailMessage.from_api(data)
       end
 
+      # The conversation (thread) a message belongs to
+      def conversation_id(message_id)
+        get(message_path(message_id), params: { '$select' => 'conversationId' },
+                                      headers: prefer_header)['conversationId']
+      end
+
+      # Every message in a conversation, in any folder, oldest first: Graph refuses $orderby
+      # alongside this filter, so the sorting happens here. MESSAGE_FIELDS as fields adds bodies.
+      def conversation(conversation_id, fields: LIST_FIELDS)
+        params = { '$filter' => "conversationId eq '#{conversation_id.gsub("'", "''")}'", '$top' => PAGE_MAX,
+                   '$select' => [*fields, 'parentFolderId'].join(',') }
+        parse_messages(collect('/v1.0/me/messages', params, limit: nil)).sort_by { |message| message.received_at.to_i }
+      end
+
+      # Every message in the conversations these messages belong to, each once
+      def conversations_of(message_ids)
+        message_ids.filter_map { |id| conversation_id(id) }.uniq.flat_map { |id| conversation(id) }.uniq(&:id)
+      end
+
       # KQL search (Graph $search) across the mailbox, or within one folder
       def search(query:, count:, folder: nil)
         path = folder ? "#{folder_path(folder)}/messages" : '/v1.0/me/messages'

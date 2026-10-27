@@ -61,6 +61,7 @@ module Teems
     autoload :Duration, 'teems/models/duration'
     autoload :MailFolder, 'teems/models/mail_folder'
     autoload :MailMessage, 'teems/models/mail_message'
+    autoload :MailConversation, 'teems/models/mail_conversation'
     autoload :MailRule, 'teems/models/mail_rule'
     autoload :MAIL_RULE_SENDING_ACTIONS, 'teems/models/mail_rule'
   end
@@ -140,6 +141,7 @@ module Teems
     autoload :Mail, 'teems/commands/mail'
     autoload :MailReading, 'teems/commands/mail'
     autoload :MailDecrypting, 'teems/commands/mail_decrypting'
+    autoload :MailThread, 'teems/commands/mail_thread'
     autoload :MailTriage, 'teems/commands/mail_triage'
     autoload :MailDueDate, 'teems/commands/mail_triage'
     autoload :MailSelection, 'teems/commands/mail_triage'

@@ -65,7 +65,7 @@ module Teems
         warn('Not S/MIME encrypted; nothing to decrypt') if @options[:decrypt]
         return print_lines([message.body]) if @options[:html]
 
-        render_message(message, message.has_attachments ? attachment_names(id) : [])
+        render_message(message, message.attachment_names_from(mail_api))
       end
 
       # encryption: nil for plain mail, else { type:, decrypted:, signed: } (see MailDecrypting)
@@ -78,8 +78,6 @@ module Teems
 
         print_lines([message.to_text(attachments: names, notes: encryption_notes(encryption))])
       end
-
-      def attachment_names(message_id) = Models::MailMessage.attachment_names(mail_api.attachments(message_id))
 
       def list_folders
         all = mail_folders.all
@@ -106,6 +104,7 @@ module Teems
     class Mail < Base
       include MailReading
       include MailDecrypting
+      include MailThread
       include MailSyncing
       include MailTriage
       include MailRules
@@ -115,14 +114,15 @@ module Teems
       HELP = MailHelp::TEXT
 
       SUBCOMMANDS = {
-        'list' => :list_messages, 'recent' => :list_messages, 'read' => :read_message,
+        'list' => :list_messages, 'recent' => :list_messages, 'read' => :read_message, 'thread' => :show_thread,
         'folders' => :list_folders, 'search' => :search_messages, 'sync' => :sync_mail,
         **MailTriage::ACTIONS.transform_values { :triage }, 'rules' => :mail_rules
       }.freeze
 
       FLAGS = { '--unread' => :unread, '--flagged' => :flagged, '--html' => :html, '--tsv' => :tsv,
                 '--attachments' => :attachments, '--no-login' => :no_login, '--dry-run' => :dry_run,
-                '--yes' => :yes, '-y' => :yes, '--decrypt' => :decrypt, **MailRuleOptions::FLAGS }.freeze
+                '--yes' => :yes, '-y' => :yes, '--decrypt' => :decrypt,
+                '--full' => :full, '--thread' => :thread, **MailRuleOptions::FLAGS }.freeze
       VALUES = { '--since' => :since, '--dir' => :dir, '--folder' => :folders, '--search' => :search,
                  '--to' => :to, '--due' => :due, **MailRuleOptions::VALUES }.freeze
       REPEATABLE = [:folders, *MailRuleOptions::REPEATABLE].freeze

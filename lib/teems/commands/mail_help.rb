@@ -10,6 +10,7 @@ module Teems
         USAGE:
           teems mail list [folder] [count]              Newest messages (alias: recent)
           teems mail read <id> [--html] [--decrypt]     Headers, plain-text body, numbered links
+          teems mail thread <id> [--full]               The whole conversation, any folder, oldest first
           teems mail folders                            Folders with unread and total counts
           teems mail search <query> [folder]            Graph $search (KQL), e.g. "from:alice subject:report"
           teems mail sync [folder...] [options]         Incremental local copy (Graph delta)
@@ -24,7 +25,9 @@ module Teems
           Instead of IDs, select messages with --search QUERY [--folder NAME] or
           --folder NAME [--unread] [--flagged] (up to 1,000; -n for fewer). A selection
           is confirmed first: answer the prompt, or pass --yes. --dry-run lists the
-          messages without changing them.
+          messages without changing them. --thread adds the rest of each named message's
+          conversation (not what sits in Sent Items, Drafts, Deleted Items, or Junk Email)
+          and is confirmed the same way.
 
         RULES (Inbox rules, applied by Exchange as mail arrives):
           teems mail rules                              List them in order (alias: rules list)
@@ -45,13 +48,15 @@ module Teems
           --flagged         list, triage --folder: only flagged messages
           --html            read: print the raw HTML body
           --decrypt         read: open S/MIME encrypted mail with your PIV card (asks for the PIN)
+          --full            thread: print every message as read does
+          --thread          triage: act on the named messages' whole conversations
           --folder NAME     search: limit to a folder; sync: folder to sync (repeatable)
           --search QUERY    triage: act on the messages a KQL search finds
           --to FOLDER       move: destination folder
           --due DATE        flag: due date (YYYY-MM-DD, today, tomorrow, or a weekday)
           --dry-run         triage: list what would change, change nothing
           -y, --yes         triage: act on a selection without asking
-          --tsv             list/search/folders: tab-separated output with full IDs
+          --tsv             list/search/folders/thread: tab-separated output with full IDs
           -n, --limit N     list: count (default 20); search: max results (default 20)
           --json            JSON output
 

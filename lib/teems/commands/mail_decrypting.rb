@@ -21,8 +21,7 @@ module Teems
       def show_purview(message)
         warn('--decrypt opens S/MIME mail only; Purview protected mail needs Outlook') if @options[:decrypt]
         warn(message.protection_note) if @options[:html]
-        names = message.has_attachments ? attachment_names(message.id) : []
-        render_message(message, names, { type: 'purview', decrypted: false })
+        render_message(message, message.attachment_names_from(mail_api), { type: 'purview', decrypted: false })
       end
 
       def show_encrypted(message, envelope)

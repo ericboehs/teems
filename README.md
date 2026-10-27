@@ -71,6 +71,8 @@ teems mail list Archive 50 --unread # Folder and count, unread only
 teems mail read 3fa2c1              # Headers, plain-text body, numbered links
 teems mail read 3fa2c1 --html       # Raw HTML body
 teems mail read 3fa2c1 --decrypt    # S/MIME encrypted mail, opened with your PIV card
+teems mail thread 3fa2c1            # Its whole conversation, any folder, oldest first
+teems mail thread 3fa2c1 --full     # Every message in it, as read prints them
 teems mail folders                  # Unread and total counts
 teems mail search "from:alice subject:report" --folder Inbox
 teems mail sync Inbox "Sent Items" --since 30
@@ -85,11 +87,12 @@ teems mail flag 3fa2c1 --due friday           # unflag clears it
 teems mail archive 3fa2c1
 teems mail move 3fa2c1 --to Projects/EERT
 teems mail delete 3fa2c1                      # To Deleted Items, never purged
+teems mail archive 3fa2c1 --thread            # The whole conversation (asks first)
 teems mail archive --search "from:jira" --dry-run   # List what would move
 teems mail mark-read --folder Inbox --unread --yes
 ```
 
-teems never sends mail, and reading a message does not mark it read. Message IDs in `list` and `search` output are short handles that `read` and the triage commands accept (`--tsv` prints the full Graph IDs). `search` and `--search` use Graph's KQL `$search`. A selection is confirmed before anything changes (or pass `--yes`) and stops at 1,000 messages (`-n` for fewer). `delete` moves messages to Deleted Items, as Outlook does.
+teems never sends mail, and reading a message does not mark it read. Message IDs in `list` and `search` output are short handles that `read` and the triage commands accept (`--tsv` prints the full Graph IDs). `search` and `--search` use Graph's KQL `$search`. A selection is confirmed before anything changes (or pass `--yes`) and stops at 1,000 messages (`-n` for fewer). `delete` moves messages to Deleted Items, as Outlook does. `thread` finds a conversation's messages in every folder and names the folder each sits in. `--thread` takes in the rest of each named message's conversation, except what sits in Sent Items, Drafts, Deleted Items or Junk Email, so archiving a thread leaves your replies and deleted mail where they are. It counts as a selection: confirmed first, or listed with `--dry-run`.
 
 Inbox rules, which Exchange applies as mail arrives:
 

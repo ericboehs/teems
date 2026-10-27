@@ -6,7 +6,7 @@ module Teems
     # of terminal control characters (see Support::ControlChars), whichever way it is shown.
     MailMessage = Data.define(
       :id, :subject, :from, :to, :cc, :received_at, :is_read, :has_attachments, :flagged,
-      :categories, :body_type, :body, :internet_message_id, :web_link, :protection
+      :categories, :body_type, :body, :internet_message_id, :web_link, :protection, :folder_id
     ) do
       extend Parsing
 
@@ -26,7 +26,7 @@ module Teems
         { categories: Array(data['categories']).map { |category| clean(category) },
           body_type: body['contentType'].to_s.downcase, body: clean(body['content']),
           internet_message_id: data['internetMessageId'], web_link: data['webLink'],
-          protection: protection(data['internetMessageHeaders']) }
+          protection: protection(data['internetMessageHeaders']), folder_id: data['parentFolderId'] }
       end
 
       # 'purview' (rights-managed, Content-Class rpmsg.message), 'smime' (an S/MIME envelope),
@@ -64,6 +64,12 @@ module Teems
 
       # What to show instead of a protected message's body, or nil for plain mail
       def protection_note = self.class::PROTECTION_NOTES[protection]
+
+      # { encryption: { type:, decrypted: false } } for protected mail, as `read --json` has it; else {}
+      def encryption_field = protection ? { encryption: { type: protection, decrypted: false } } : {}
+
+      # Names of the files attached (fetched through api only when there are any)
+      def attachment_names_from(api) = has_attachments ? self.class.attachment_names(api.attachments(id)) : []
 
       # True for S/MIME encrypted mail, which Graph returns with no body (the envelope is an attachment)
       def bodyless? = body.strip.empty?
