@@ -1,8 +1,9 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.0] - 2026-10-27
 
 ### Added
+- `teems mail rules` lists Inbox rules with what each does, and `rules add`, `enable`, `disable` and `delete` manage them. A new rule takes conditions (`--from`, `--sent-to`, `--subject`, `--body`) and actions (`--move-to`, `--copy-to`, `--mark-read`, `--category`, `--importance`, `--delete`, `--stop`), and `--dry-run` shows it first. Rules never forward or redirect mail, and a forwarding rule made elsewhere is not turned on.
 - `teems mail read --decrypt` opens S/MIME encrypted mail with the PIV card (or any keychain identity) through macOS's `security cms -D`, which asks for the PIN. The decrypted message shows like any other: HTML or text body, links, attachment names, and a note when it was also signed (the signature is unwrapped, not checked). Plaintext never touches the disk. Without `--decrypt`, an encrypted message is labelled instead of showing an empty body.
 - Purview (rights-managed) mail is labelled "Protected by Purview; open in Outlook" in `teems mail read` (`encryption` in `--json`), and synced Markdown of protected mail gets that note above the body plus a `protection:` frontmatter field. Graph's `hasAttachments` is unreliable for such mail, so protection is read from the internet headers, which makes a full sync download more.
 
@@ -14,7 +15,6 @@
 ### Added
 - `teems mail` triage: `mark-read`, `mark-unread`, `flag` (with `--due YYYY-MM-DD`, `today`, `tomorrow` or a weekday), `unflag`, `archive`, `move --to FOLDER`, and `delete` (to Deleted Items; nothing is purged). They take message IDs, or a selection: `--search QUERY` (optionally in `--folder`) or `--folder NAME` with `--unread`/`--flagged`, up to 1,000 messages. A selection asks before changing anything (`--yes` skips the question, and without a terminal is required), and `--dry-run` lists the messages instead. One message failing does not stop the rest. Nothing sends mail.
 - `teems mail list --flagged` lists flagged messages, and the table marks them.
-- `teems mail rules` lists Inbox rules with what each does, and `rules add`, `enable`, `disable` and `delete` manage them. A new rule takes conditions (`--from`, `--sent-to`, `--subject`, `--body`) and actions (`--move-to`, `--copy-to`, `--mark-read`, `--category`, `--importance`, `--delete`, `--stop`), and `--dry-run` shows it first. Rules never forward or redirect mail, and a forwarding rule made elsewhere is not turned on.
 
 ## [0.4.0] - 2026-10-20
 
