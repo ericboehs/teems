@@ -6,7 +6,7 @@ module Teems
     # of terminal control characters (see Support::ControlChars), whichever way it is shown.
     MailMessage = Data.define(
       :id, :subject, :from, :to, :cc, :received_at, :is_read, :has_attachments, :flagged,
-      :categories, :body_type, :body, :internet_message_id, :web_link
+      :categories, :body_type, :body, :internet_message_id, :web_link, :protection
     ) do
       extend Parsing
 
@@ -25,7 +25,18 @@ module Teems
         body = data['body'] || {}
         { categories: Array(data['categories']).map { |category| clean(category) },
           body_type: body['contentType'].to_s.downcase, body: clean(body['content']),
-          internet_message_id: data['internetMessageId'], web_link: data['webLink'] }
+          internet_message_id: data['internetMessageId'], web_link: data['webLink'],
+          protection: protection(data['internetMessageHeaders']) }
+      end
+
+      # 'purview' (rights-managed, Content-Class rpmsg.message), 'smime' (an S/MIME envelope),
+      # or nil, from the internet headers. Drafts have none, so nil is not proof of plain mail.
+      def self.protection(headers)
+        fields = Array(headers).to_h { |header| [header['name'].to_s.downcase, header['value'].to_s.downcase] }
+        return 'purview' if fields['content-class'].to_s.start_with?('rpmsg.message')
+
+        type, params = Support::MimeHeader.field(fields['content-type'])
+        'smime' if Support::MimePart::PKCS7_TYPES.include?(type) && params['smime-type'] != 'signed-data'
       end
 
       def self.recipient(data)
@@ -50,6 +61,9 @@ module Teems
       def read? = is_read
       def status = is_read ? 'Read' : 'Unread'
       def html? = body_type == 'html'
+
+      # What to show instead of a protected message's body, or nil for plain mail
+      def protection_note = self.class::PROTECTION_NOTES[protection]
 
       # True for S/MIME encrypted mail, which Graph returns with no body (the envelope is an attachment)
       def bodyless? = body.strip.empty?
@@ -90,15 +104,15 @@ module Teems
           .map { |field| field.to_s.tr("\t\r\n", '   ') }.join("\t")
       end
 
-      # Header lines for `teems mail read`, in Outlook's order; Cc and Attachments only when
-      # present. notes (e.g. Encryption) go just before the ID.
+      # Header lines for `teems mail read`, in Outlook's order; Cc, Categories and Attachments
+      # only when present. notes (e.g. Encryption) go just before the ID.
       def headers(attachments: [], notes: {})
         cc_line = cc_display
         names = attachments.join(', ')
         { 'Subject' => subject, 'From' => from_display, 'To' => to_display, 'Cc' => cc_line,
           'Date' => Formatters::MailDates.long(received_at), 'Categories' => categories.join(', '),
           'Status' => status, 'Attachments' => names, **notes, 'ID' => id }
-          .reject { |name, value| value.empty? && %w[Cc Attachments].include?(name) }
+          .reject { |name, value| value.empty? && %w[Cc Categories Attachments].include?(name) }
       end
 
       # `teems mail read` output: header block, blank line, plain-text body with links at the end
@@ -119,5 +133,11 @@ module Teems
           categories: categories, internet_message_id: internet_message_id, web_link: web_link }
       end
     end
+
+    # Constants set inside Data.define's block would land on Models, so they go here
+    MailMessage::PROTECTION_NOTES = {
+      'purview' => 'Protected by Purview; open in Outlook',
+      'smime' => 'S/MIME encrypted; read it with teems mail read --decrypt'
+    }.freeze
   end
 end

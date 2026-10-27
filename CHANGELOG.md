@@ -4,6 +4,10 @@
 
 ### Added
 - `teems mail read --decrypt` opens S/MIME encrypted mail with the PIV card (or any keychain identity) through macOS's `security cms -D`, which asks for the PIN. The decrypted message shows like any other: HTML or text body, links, attachment names, and a note when it was also signed (the signature is unwrapped, not checked). Plaintext never touches the disk. Without `--decrypt`, an encrypted message is labelled instead of showing an empty body.
+- Purview (rights-managed) mail is labelled "Protected by Purview; open in Outlook" in `teems mail read` (`encryption` in `--json`), and synced Markdown of protected mail gets that note above the body plus a `protection:` frontmatter field. Graph's `hasAttachments` is unreliable for such mail, so protection is read from the internet headers, which makes a full sync download more.
+
+### Changed
+- `teems mail read` leaves out the `Categories:` line when a message has none.
 
 ## [0.5.0] - 2026-10-26
 

@@ -130,6 +130,12 @@ module Teems
         .merge(overrides)
     end
 
+    # internetMessageHeaders of a Purview (rights-managed) message
+    def purview_headers
+      [{ 'name' => 'Content-Type', 'value' => 'multipart/mixed' },
+       { 'name' => 'Content-Class', 'value' => 'rpmsg.message' }]
+    end
+
     def sample_mail_folder(name = 'Inbox', **overrides)
       { 'id' => "#{name.delete(' ')}#{'F' * 70}", 'displayName' => name, 'parentFolderId' => 'root',
         'childFolderCount' => 0, 'unreadItemCount' => 2, 'totalItemCount' => 10 }.merge(overrides)

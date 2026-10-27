@@ -2,9 +2,10 @@
 
 module Teems
   module Commands
-    # S/MIME encrypted mail for `teems mail read`. Graph hands such a message over with an empty
+    # Protected mail for `teems mail read`. Graph hands S/MIME encrypted mail over with an empty
     # body and its envelope as an smime.p7m attachment; --decrypt opens it with the PIV card
-    # (macOS asks for the PIN) and shows it like any other message.
+    # (macOS asks for the PIN) and shows it like any other message. Purview (rights-managed)
+    # mail needs Microsoft's service, so it is only labelled.
     module MailDecrypting
       ENVELOPE_TYPES = Support::MimePart::PKCS7_TYPES
       LOCKED_HINT = 'S/MIME encrypted; read it with --decrypt (macOS asks for your PIV PIN)'
@@ -15,6 +16,13 @@ module Teems
         mail_api.attachments(message_id).find do |item|
           ENVELOPE_TYPES.include?(Support::MimeHeader.field(item['contentType']).first)
         end
+      end
+
+      def show_purview(message)
+        warn('--decrypt opens S/MIME mail only; Purview protected mail needs Outlook') if @options[:decrypt]
+        warn(message.protection_note) if @options[:html]
+        names = message.has_attachments ? attachment_names(message.id) : []
+        render_message(message, names, { type: 'purview', decrypted: false })
       end
 
       def show_encrypted(message, envelope)
@@ -38,6 +46,9 @@ module Teems
       # Header lines describing how an encrypted message was shown
       def encryption_notes(encryption)
         return {} unless encryption
+
+        type = encryption[:type]
+        return { 'Encryption' => Models::MailMessage::PROTECTION_NOTES[type] } if type == 'purview'
         return { 'Encryption' => LOCKED_HINT } unless encryption[:decrypted]
 
         { 'Encryption' => 'S/MIME, decrypted', 'Signature' => encryption[:signed] ? 'Signed (not checked)' : '' }

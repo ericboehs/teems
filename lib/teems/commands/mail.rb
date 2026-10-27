@@ -56,6 +56,8 @@ module Teems
       end
 
       def show_message(message)
+        return show_purview(message) if message.protection == 'purview'
+
         id = message.id
         envelope = message.bodyless? && envelope_attachment(id)
         return show_encrypted(message, envelope) if envelope

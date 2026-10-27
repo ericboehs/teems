@@ -158,6 +158,42 @@ class MailDecryptTest < Minitest::Test
     end
   end
 
+  def purview_stubs(has_attachments: false)
+    message = sample_mail_message('hasAttachments' => has_attachments, 'internetMessageHeaders' => purview_headers,
+                                  'body' => { 'contentType' => 'text', 'content' => 'Open this in Outlook.' })
+    rpmsg = { 'id' => 'r', 'name' => 'message_v2.rpmsg', 'contentType' => 'application/x-microsoft-rpmsg-message' }
+    { '/attachments' => { 'value' => [rpmsg] }, '/v1.0/me/messages/' => message }
+  end
+
+  def test_purview_mail_is_labelled
+    with_temp_config do
+      result = run_mail(['read', MAIL_ID], stubs: purview_stubs)
+
+      assert_equal 0, result[:code]
+      assert_includes result[:stdout], "Encryption: Protected by Purview; open in Outlook\nID: "
+      assert_includes result[:stdout], 'Open this in Outlook.'
+      assert_equal 1, result[:calls].size, 'no attachment lookup when Graph says there are none'
+      assert_empty result[:stderr]
+    end
+  end
+
+  def test_purview_mail_json_html_and_decrypt
+    with_temp_config do
+      json = JSON.parse(run_mail(['read', MAIL_ID, '--json'], stubs: purview_stubs(has_attachments: true))[:stdout])
+
+      assert_equal({ 'type' => 'purview', 'decrypted' => false }, json['encryption'])
+      assert_equal ['message_v2.rpmsg'], json['attachments']
+      html = run_mail(['read', MAIL_ID, '--html'], stubs: purview_stubs)
+
+      assert_includes html[:stderr], 'Protected by Purview; open in Outlook'
+      assert_equal "Open this in Outlook.\n", html[:stdout]
+      decrypt = run_mail(['read', MAIL_ID, '--decrypt'], stubs: purview_stubs)
+
+      assert_includes decrypt[:stderr], '--decrypt opens S/MIME mail only'
+      assert_empty @decryptor.envelopes
+    end
+  end
+
   def test_decryption_failure_is_an_error
     failing = Object.new
     def failing.decrypt(_envelope) = raise(Teems::Error, 'None of your keys can open this message')
