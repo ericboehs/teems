@@ -76,7 +76,8 @@ module Teems
           return json_result(message.full_json_hash(attachments: names).merge(encryption ? { encryption: } : {}))
         end
 
-        print_lines([message.to_text(attachments: names, notes: encryption_notes(encryption))])
+        notes = Models::MailEncryption.notes(encryption, web_link: message.web_link)
+        print_lines([message.to_text(attachments: names, notes: notes)])
       end
 
       def list_folders

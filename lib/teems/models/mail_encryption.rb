@@ -3,15 +3,16 @@
 module Teems
   module Models
     # How protected mail was shown, as { type: 'smime' | 'purview', decrypted:, signed: } (signed
-    # only once decrypted), and the header lines `read` and `thread --full` print for it
+    # only once decrypted), and the header lines `read` and `thread --full` print for it. Purview
+    # mail gets its Outlook on the web link, where Exchange decrypts it for you.
     module MailEncryption
       LOCKED_HINT = 'S/MIME encrypted; read it with --decrypt (macOS asks for your PIV PIN)'
 
-      def self.notes(encryption)
+      def self.notes(encryption, web_link: nil)
         return {} unless encryption
 
         type = encryption[:type]
-        return { 'Encryption' => MailMessage::PROTECTION_NOTES[type] } if type == 'purview'
+        return { 'Encryption' => MailMessage::PROTECTION_NOTES[type], 'Open' => web_link }.compact if type == 'purview'
         return { 'Encryption' => LOCKED_HINT } unless encryption[:decrypted]
 
         { 'Encryption' => 'S/MIME, decrypted', 'Signature' => encryption[:signed] ? 'Signed (not checked)' : '' }

@@ -277,7 +277,9 @@ class MailThreadCommandTest < Minitest::Test
       stubs = { '/v1.0/me/messages/AAMk-1/attachments' => { 'value' => [] }, **thread_stubs(messages) }
       result = run_mail(%w[thread AAMk-3 --full], stubs: stubs)
 
-      assert_equal ['Encryption: Protected by Purview; open in Outlook'], result[:stdout].scan(/^Encryption: .*/)
+      assert_equal ['Encryption: Protected by Purview; open in Outlook on the web'],
+                   result[:stdout].scan(/^Encryption: .*/)
+      assert_includes result[:stdout], "Open: https://outlook.office365.com/owa/?ItemID=1\nID: AAMk-3"
       assert_equal(['/v1.0/me/messages/AAMk-1/attachments'],
                    @api.calls.map { |call| call[:path] }.grep(/attachments/))
     end

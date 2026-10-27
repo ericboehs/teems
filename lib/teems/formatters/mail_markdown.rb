@@ -51,10 +51,14 @@ module Teems
         kind ? { 'protection' => quote(kind) } : {}
       end
 
-      # A note above the body of protected mail, whose body is empty or Microsoft's placeholder
+      # A note above the body of protected mail, whose body is empty or Microsoft's placeholder;
+      # Purview mail's links to Outlook on the web, which opens it
       def protection_lines
         note = @message.protection_note
-        note ? ["> #{note}", ''] : []
+        return [] unless note
+
+        link = @message.protection == 'purview' && @message.web_link
+        [link ? "> #{note}: <#{link}>" : "> #{note}", '']
       end
 
       def addresses(list) = list.map { |entry| entry[:address] }.reject(&:empty?).join(', ')

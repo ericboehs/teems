@@ -152,7 +152,7 @@ module Teems
 
     # Constants set inside Data.define's block would land on Models, so they go here
     MailMessage::PROTECTION_NOTES = {
-      'purview' => 'Protected by Purview; open in Outlook',
+      'purview' => 'Protected by Purview; open in Outlook on the web',
       'smime' => 'S/MIME encrypted; read it with teems mail read --decrypt'
     }.freeze
   end

@@ -170,7 +170,8 @@ class MailDecryptTest < Minitest::Test
       result = run_mail(['read', MAIL_ID], stubs: purview_stubs)
 
       assert_equal 0, result[:code]
-      assert_includes result[:stdout], "Encryption: Protected by Purview; open in Outlook\nID: "
+      assert_includes result[:stdout], "Encryption: Protected by Purview; open in Outlook on the web\n" \
+                                       "Open: https://outlook.office365.com/owa/?ItemID=1\nID: "
       assert_includes result[:stdout], 'Open this in Outlook.'
       assert_equal 1, result[:calls].size, 'no attachment lookup when Graph says there are none'
       assert_empty result[:stderr]
@@ -185,7 +186,7 @@ class MailDecryptTest < Minitest::Test
       assert_equal ['message_v2.rpmsg'], json['attachments']
       html = run_mail(['read', MAIL_ID, '--html'], stubs: purview_stubs)
 
-      assert_includes html[:stderr], 'Protected by Purview; open in Outlook'
+      assert_includes html[:stderr], 'Protected by Purview; open in Outlook on the web: https://outlook.office365.com/owa/?ItemID=1'
       assert_equal "Open this in Outlook.\n", html[:stdout]
       decrypt = run_mail(['read', MAIL_ID, '--decrypt'], stubs: purview_stubs)
 

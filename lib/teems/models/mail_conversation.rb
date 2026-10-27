@@ -53,7 +53,10 @@ module Teems
 
       def encryption(message) = message.encryption_in(encryptions)
 
-      def notes(message) = { 'Folder' => folder(message) }.compact.merge(MailEncryption.notes(encryption(message)))
+      def notes(message)
+        protection = MailEncryption.notes(encryption(message), web_link: message.web_link)
+        { 'Folder' => folder(message) }.compact.merge(protection)
+      end
     end
   end
 end

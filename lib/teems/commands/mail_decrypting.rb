@@ -20,7 +20,7 @@ module Teems
 
       def show_purview(message)
         warn('--decrypt opens S/MIME mail only; Purview protected mail needs Outlook') if @options[:decrypt]
-        warn(message.protection_note) if @options[:html]
+        warn([message.protection_note, message.web_link].compact.join(': ')) if @options[:html]
         render_message(message, message.attachment_names_from(mail_api), { type: 'purview', decrypted: false })
       end
 
@@ -44,9 +44,6 @@ module Teems
       def envelope_bytes(message_id, attachment_id)
         mail_api.attachment(message_id, attachment_id)['contentBytes'].to_s.unpack1('m')
       end
-
-      # Header lines describing how an encrypted message was shown
-      def encryption_notes(encryption) = Models::MailEncryption.notes(encryption)
     end
   end
 end
