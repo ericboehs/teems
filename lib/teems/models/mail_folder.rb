@@ -35,6 +35,8 @@ module Teems
       # Matches a display name or full path, ignoring case
       def named?(wanted) = [path, name].any? { |candidate| candidate.casecmp?(wanted) }
 
+      def id_and_path = [id, path]
+
       # [id, path] to list this folder's children with, or nil when it has none
       def child_lookup = child_count.positive? ? [id, path] : nil
     end
