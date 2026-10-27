@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Added
-- `teems mail thread <id>` lists every message in a message's conversation, from any folder, oldest first, with the folder each sits in (`--tsv`, `--json`). `--full` prints them all as `read` does, Purview and S/MIME labels included.
+- `teems mail thread <id>` lists every message in a message's conversation, from any folder, oldest first, with the folder each sits in (`--tsv`, `--json`). `--full` prints them all as `read` does, Purview and S/MIME labels included, and `--full --decrypt` opens the S/MIME messages with the PIV card on the way.
 - `--thread` on the triage commands (`mark-read`, `flag`, `archive`, `move`, `delete` and the rest) takes in the rest of each named message's conversation, skipping messages in Sent Items, Drafts, Deleted Items and Junk Email unless named. It is confirmed like a selection, and `--dry-run` lists it.
 
 ## [0.6.0] - 2026-10-27

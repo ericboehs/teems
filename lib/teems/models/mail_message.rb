@@ -65,14 +65,24 @@ module Teems
       # What to show instead of a protected message's body, or nil for plain mail
       def protection_note = self.class::PROTECTION_NOTES[protection]
 
-      # { encryption: { type:, decrypted: false } } for protected mail, as `read --json` has it; else {}
-      def encryption_field = protection ? { encryption: { type: protection, decrypted: false } } : {}
+      # { type:, decrypted: false } for protected mail, as `read --json` has it (see MailEncryption); else nil
+      def encryption = protection && { type: protection, decrypted: false }
 
-      # Names of the files attached (fetched through api only when there are any)
-      def attachment_names_from(api) = has_attachments ? self.class.attachment_names(api.attachments(id)) : []
+      # How this message was shown when overrides (message ID => encryption) say, else #encryption
+      def encryption_in(overrides) = overrides.fetch(id) { encryption }
+
+      # Names of attached files, fetched through api only if there are any
+      def attachment_names_from(api) = files? ? self.class.attachment_names(api.attachments(id)) : []
+
+      # An S/MIME message's one attachment is its envelope, not a file
+      def files? = has_attachments && protection != 'smime'
 
       # True for S/MIME encrypted mail, which Graph returns with no body (the envelope is an attachment)
       def bodyless? = body.strip.empty?
+
+      # Worth looking for an S/MIME envelope: no body, and not Purview. Exchange often wraps
+      # encrypted mail as TNEF, so neither its headers nor hasAttachments give it away.
+      def envelope_candidate? = bodyless? && protection != 'purview'
 
       def from_label = self.class.label(from)
       def from_display = self.class.display(from)

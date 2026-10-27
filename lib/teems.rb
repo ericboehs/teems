@@ -62,6 +62,7 @@ module Teems
     autoload :MailFolder, 'teems/models/mail_folder'
     autoload :MailMessage, 'teems/models/mail_message'
     autoload :MailConversation, 'teems/models/mail_conversation'
+    autoload :MailEncryption, 'teems/models/mail_encryption'
     autoload :MailRule, 'teems/models/mail_rule'
     autoload :MAIL_RULE_SENDING_ACTIONS, 'teems/models/mail_rule'
   end

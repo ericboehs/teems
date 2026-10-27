@@ -1,11 +1,14 @@
 # frozen_string_literal: true
 
 require 'test_helper'
+require 'smime_fixtures'
 
 # `teems mail thread` and the --thread option on triage: a message's whole conversation,
 # from every folder, oldest first.
 # rubocop:disable Metrics/MethodLength, Metrics/AbcSize, Metrics/ClassLength
 class MailThreadCommandTest < Minitest::Test
+  include SmimeFixtures
+
   # Stands in for a terminal on stdin that answers the confirmation prompt
   FakeTerminal = Struct.new(:answer) do
     def tty? = true
@@ -21,9 +24,16 @@ class MailThreadCommandTest < Minitest::Test
     $stdin = @saved_stdin
   end
 
-  def run_mail(args, stubs: thread_stubs)
+  # A decryptor that cannot open anything, as when no key on the card matches
+  class LockedOutDecryptor
+    def decrypt(_envelope) = raise(Teems::Error, 'None of your keys can open this message')
+  end
+
+  def run_mail(args, stubs: thread_stubs, decryptor: FakeDecryptor.new)
+    @decryptor = decryptor
     capture = capture_output do |output|
       runner = configured_runner(output: output)
+      runner.define_singleton_method(:smime_decryptor) { decryptor }
       @api = runner.api_client
       stubs.each { |path, response| @api.stub(path, response) }
       @code = Teems::Commands::Mail.new(args, runner: runner).execute
@@ -43,7 +53,7 @@ class MailThreadCommandTest < Minitest::Test
   def conversation
     [thread_message('AAMk-3', '2026-10-27T19:17:19Z', 'Inbox'),
      thread_message('AAMk-sent', '2026-10-05T14:00:00Z', 'Sent Items'),
-     thread_message('AAMk-gone', '2026-10-05T13:32:18Z', 'Deleted Items'),
+     thread_message('AAMk-gone', '2026-10-05T13:32:18Z', 'Deleted Items', 'isRead' => true),
      thread_message('AAMk-1', '2026-10-01T18:44:53Z', 'Inbox')]
   end
 
@@ -71,7 +81,8 @@ class MailThreadCommandTest < Minitest::Test
       assert_equal 4, lines.length
       assert_equal(%w[2026-10-01 2026-10-05 2026-10-05 2026-10-27], lines.map { |line| line[/\d{4}-\d\d-\d\d/] })
       assert_match(/unread  Inbox$/, lines.first.chomp)
-      assert_includes lines[1], 'Deleted Items'
+      assert_match(/  read    Deleted Items$/, lines[1].chomp)
+      assert_equal lines.first.index('Inbox'), lines[1].index('Deleted Items'), 'folders line up after read and unread'
       assert_includes lines[2], 'Sent Items'
     end
   end
@@ -151,7 +162,7 @@ class MailThreadCommandTest < Minitest::Test
       result = run_mail(%w[thread])
 
       assert_equal 1, result[:code]
-      assert_includes result[:stderr], 'Usage: teems mail thread <id> [--full]'
+      assert_includes result[:stderr], 'Usage: teems mail thread <id> [--full [--decrypt]]'
 
       result = run_mail(%w[thread AAMk-1], stubs: { '/v1.0/me/messages/AAMk-1' => {} })
 
@@ -209,6 +220,122 @@ class MailThreadCommandTest < Minitest::Test
       assert_equal 1, result[:code]
       assert_includes result[:stderr], '--thread works with message IDs, not --search or --folder'
       assert_empty writes
+    end
+  end
+
+  # How Exchange hands over S/MIME encrypted mail: wrapped as TNEF, so the headers say nothing
+  # of S/MIME and hasAttachments is false, but the envelope is listed as an attachment
+  TNEF_HEADERS = [{ 'name' => 'Content-Type', 'value' => 'application/ms-tnef' }].freeze
+
+  # A plain message, then an S/MIME one (empty body, its envelope the only attachment)
+  def encrypted_thread_stubs
+    envelope = { 'id' => 'ATT-SMIME', 'name' => 'smime.p7m', 'contentType' => 'application/pkcs7-mime' }
+    messages = [thread_message('AAMk-1', '2026-10-01T18:44:53Z', 'Inbox'),
+                thread_message('AAMk-3', '2026-10-27T19:17:19Z', 'Inbox',
+                               'body' => { 'contentType' => 'text', 'content' => '' }, 'hasAttachments' => false,
+                               'internetMessageHeaders' => TNEF_HEADERS)]
+    { '/v1.0/me/messages/AAMk-3/attachments/ATT-SMIME' =>
+        envelope.merge('contentBytes' => [smime_envelope(alternative_mime)].pack('m0')),
+      '/v1.0/me/messages/AAMk-3/attachments' => { 'value' => [envelope] },
+      **thread_stubs(messages) }
+  end
+
+  def test_full_decrypt_opens_the_smime_messages
+    with_temp_config do
+      result = run_mail(%w[thread AAMk-3 --full --decrypt], stubs: encrypted_thread_stubs)
+      plain, secret = result[:stdout].split(/^-{72}$/)
+
+      assert_equal 0, result[:code]
+      assert_includes secret, 'Top secret'
+      assert_includes secret, "Folder: Inbox\nEncryption: S/MIME, decrypted\nID: AAMk-3"
+      refute_includes secret, 'smime.p7m'
+      refute_includes plain, 'Encryption:'
+      assert_equal 1, @decryptor.envelopes.length
+      assert_empty result[:stderr]
+    end
+  end
+
+  def test_full_without_decrypt_shows_smime_mail_locked
+    with_temp_config do
+      result = run_mail(%w[thread AAMk-3 --full], stubs: encrypted_thread_stubs)
+
+      assert_includes result[:stdout], "Encryption: #{Teems::Models::MailEncryption::LOCKED_HINT}\nID: AAMk-3"
+      refute_includes result[:stdout], 'smime.p7m'
+      assert_empty @decryptor.envelopes
+      refute(@api.calls.any? { |call| call[:path].end_with?('/ATT-SMIME') }, 'the envelope is not downloaded')
+    end
+  end
+
+  # An empty body alone is not encryption, and Purview mail is not looked through for an envelope
+  def test_only_messages_with_an_envelope_are_labelled_smime
+    with_temp_config do
+      messages = [thread_message('AAMk-1', '2026-10-01T18:44:53Z', 'Inbox',
+                                 'body' => { 'contentType' => 'text', 'content' => '' }),
+                  thread_message('AAMk-3', '2026-10-27T19:17:19Z', 'Inbox',
+                                 'body' => { 'contentType' => 'text', 'content' => '' },
+                                 'internetMessageHeaders' => purview_headers)]
+      stubs = { '/v1.0/me/messages/AAMk-1/attachments' => { 'value' => [] }, **thread_stubs(messages) }
+      result = run_mail(%w[thread AAMk-3 --full], stubs: stubs)
+
+      assert_equal ['Encryption: Protected by Purview; open in Outlook'], result[:stdout].scan(/^Encryption: .*/)
+      assert_equal(['/v1.0/me/messages/AAMk-1/attachments'],
+                   @api.calls.map { |call| call[:path] }.grep(/attachments/))
+    end
+  end
+
+  def test_a_message_that_will_not_open_stays_locked_and_the_rest_print
+    with_temp_config do
+      result = run_mail(%w[thread AAMk-3 --full --decrypt], stubs: encrypted_thread_stubs,
+                                                            decryptor: LockedOutDecryptor.new)
+
+      assert_equal 0, result[:code]
+      assert_includes result[:stderr],
+                      "#{Teems::Models::MailMessage.short_id('AAMk-3')}: None of your keys can open this message"
+      assert_includes result[:stdout], Teems::Models::MailEncryption::LOCKED_HINT
+      assert_includes result[:stdout], 'Hello the report'
+    end
+  end
+
+  def test_full_decrypt_json
+    with_temp_config do
+      json = JSON.parse(run_mail(%w[thread AAMk-3 --full --decrypt --json], stubs: encrypted_thread_stubs)[:stdout])
+
+      assert_equal({ 'type' => 'smime', 'decrypted' => true, 'signed' => false }, json.last['encryption'])
+      assert_includes json.last['body'], 'secret'
+      refute json.first.key?('encryption')
+    end
+  end
+
+  def test_decrypt_needs_full_and_says_when_there_is_nothing_to_open
+    with_temp_config do
+      result = run_mail(%w[thread AAMk-3 --decrypt])
+
+      assert_equal 1, result[:code]
+      assert_includes result[:stderr], '--decrypt works with --full'
+      assert_empty @api.calls
+
+      result = run_mail(%w[thread AAMk-3 --full --decrypt])
+
+      assert_equal 0, result[:code]
+      assert_includes result[:stderr], 'No S/MIME encrypted messages in this thread'
+    end
+  end
+
+  # Only decryption failures are per message; a Graph error stops the command
+  def test_an_api_error_fetching_an_envelope_stops_the_thread
+    with_temp_config do
+      stubs = encrypted_thread_stubs.except('/v1.0/me/messages/AAMk-3/attachments')
+      result = capture_output do |output|
+        runner = configured_runner(output: output)
+        runner.define_singleton_method(:smime_decryptor) { FakeDecryptor.new }
+        runner.api_client.stub_error('/v1.0/me/messages/AAMk-3/attachments',
+                                     Teems::ApiError.new('Not found', status_code: 404))
+        stubs.each { |path, response| runner.api_client.stub(path, response) }
+        @code = Teems::Commands::Mail.new(%w[thread AAMk-3 --full --decrypt], runner: runner).execute
+      end
+
+      assert_equal 1, @code
+      assert_includes result[:stderr], 'Not found'
     end
   end
 end
