@@ -16,8 +16,46 @@ require 'fileutils'
 
 # Root namespace for all teems test support code
 module Teems
+  # Graph mail payloads: messages, folders, rules, internet headers
+  module MailSampleData
+    MAIL_ID = 'AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0Ac9X7jP0Ww0eYs3Bl6N2f5wAAAgEMAAAA'
+
+    def sample_mail_message(**overrides)
+      { 'id' => MAIL_ID, 'receivedDateTime' => '2026-10-20T14:05:09Z', 'subject' => 'Quarterly report: Q3',
+        'from' => { 'emailAddress' => { 'name' => 'Alice Smith', 'address' => 'alice@example.com' } },
+        'toRecipients' => [{ 'emailAddress' => { 'name' => 'Eric Boehs', 'address' => 'eric@example.com' } }],
+        'ccRecipients' => [], 'isRead' => false, 'hasAttachments' => false, 'categories' => ['Work'],
+        'body' => { 'contentType' => 'html',
+                    'content' => '<p>Hello <a href="https://example.com/r?utm_source=x">the report</a></p>' },
+        'internetMessageId' => '<abc@example.com>', 'webLink' => 'https://outlook.office365.com/owa/?ItemID=1' }
+        .merge(overrides)
+    end
+
+    def sample_mail_rule(name = 'Jira', **overrides)
+      { 'id' => "rule-#{name.delete(' ')}=", 'displayName' => name, 'sequence' => 1, 'isEnabled' => true,
+        'hasError' => false, 'isReadOnly' => false,
+        'conditions' => { 'fromAddresses' => [{ 'emailAddress' => { 'name' => 'Jira',
+                                                                    'address' => 'jira@example.com' } }] },
+        'actions' => { 'moveToFolder' => sample_mail_folder('Projects')['id'], 'stopProcessingRules' => true } }
+        .merge(overrides)
+    end
+
+    # internetMessageHeaders of a Purview (rights-managed) message
+    def purview_headers
+      [{ 'name' => 'Content-Type', 'value' => 'multipart/mixed' },
+       { 'name' => 'Content-Class', 'value' => 'rpmsg.message' }]
+    end
+
+    def sample_mail_folder(name = 'Inbox', **overrides)
+      { 'id' => "#{name.delete(' ')}#{'F' * 70}", 'displayName' => name, 'parentFolderId' => 'root',
+        'childFolderCount' => 0, 'unreadItemCount' => 2, 'totalItemCount' => 10 }.merge(overrides)
+    end
+  end
+
   # Sample API response data used across test suites
   module SampleData
+    include MailSampleData
+
     def sample_graph_message
       { 'id' => '1234567890', 'body' => { 'content' => '<p>Hello world</p>' },
         'from' => { 'user' => { 'id' => 'user123', 'displayName' => 'John Doe' } },
@@ -106,39 +144,6 @@ module Teems
       { 'emailAddress' => { 'name' => name, 'address' => email },
         'type' => type,
         'status' => { 'response' => response, 'time' => '0001-01-01T00:00:00Z' } }
-    end
-
-    MAIL_ID = 'AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0Ac9X7jP0Ww0eYs3Bl6N2f5wAAAgEMAAAA'
-
-    def sample_mail_message(**overrides)
-      { 'id' => MAIL_ID, 'receivedDateTime' => '2026-10-20T14:05:09Z', 'subject' => 'Quarterly report: Q3',
-        'from' => { 'emailAddress' => { 'name' => 'Alice Smith', 'address' => 'alice@example.com' } },
-        'toRecipients' => [{ 'emailAddress' => { 'name' => 'Eric Boehs', 'address' => 'eric@example.com' } }],
-        'ccRecipients' => [], 'isRead' => false, 'hasAttachments' => false, 'categories' => ['Work'],
-        'body' => { 'contentType' => 'html',
-                    'content' => '<p>Hello <a href="https://example.com/r?utm_source=x">the report</a></p>' },
-        'internetMessageId' => '<abc@example.com>', 'webLink' => 'https://outlook.office365.com/owa/?ItemID=1' }
-        .merge(overrides)
-    end
-
-    def sample_mail_rule(name = 'Jira', **overrides)
-      { 'id' => "rule-#{name.delete(' ')}=", 'displayName' => name, 'sequence' => 1, 'isEnabled' => true,
-        'hasError' => false, 'isReadOnly' => false,
-        'conditions' => { 'fromAddresses' => [{ 'emailAddress' => { 'name' => 'Jira',
-                                                                    'address' => 'jira@example.com' } }] },
-        'actions' => { 'moveToFolder' => sample_mail_folder('Projects')['id'], 'stopProcessingRules' => true } }
-        .merge(overrides)
-    end
-
-    # internetMessageHeaders of a Purview (rights-managed) message
-    def purview_headers
-      [{ 'name' => 'Content-Type', 'value' => 'multipart/mixed' },
-       { 'name' => 'Content-Class', 'value' => 'rpmsg.message' }]
-    end
-
-    def sample_mail_folder(name = 'Inbox', **overrides)
-      { 'id' => "#{name.delete(' ')}#{'F' * 70}", 'displayName' => name, 'parentFolderId' => 'root',
-        'childFolderCount' => 0, 'unreadItemCount' => 2, 'totalItemCount' => 10 }.merge(overrides)
     end
   end
 
