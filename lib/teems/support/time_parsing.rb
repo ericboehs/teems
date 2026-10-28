@@ -3,15 +3,23 @@
 module Teems
   module Support
     # Shared time-input parsing for commands that accept schedule inputs
-    # like "HH:MM", "today HH:MM", "tomorrow HH:MM", and "YYYY-MM-DD HH:MM".
+    # like "now", "HH:MM", "today HH:MM", "tomorrow HH:MM", and "YYYY-MM-DD HH:MM".
     module TimeParsing
       private
 
       def parse_time_input(raw)
+        return current_minute if raw.strip.casecmp?('now')
+
         date, time_str = split_time_input(raw)
         return unless time_str
 
         date.is_a?(String) ? parse_absolute_time(date, time_str) : parse_relative_time(date, time_str)
+      end
+
+      # The start of the current minute, as "HH:MM" would give it
+      def current_minute
+        now = Time.now
+        Time.new(now.year, now.month, now.day, now.hour, now.min, 0)
       end
 
       def split_time_input(raw)

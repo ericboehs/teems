@@ -45,8 +45,8 @@ module Teems
                              from the cached sign-in, or fail (servers, launchd)
 
       CREATE OPTIONS:
-        --start TIME         Start time: "YYYY-MM-DD HH:MM", "today HH:MM",
-                             "tomorrow HH:MM", or "HH:MM" (assumes today)
+        --start TIME         Start time: "now" (the default), "YYYY-MM-DD HH:MM",
+                             "today HH:MM", "tomorrow HH:MM", or "HH:MM" (today)
         --end TIME           End time (default: start + 30 minutes)
         --duration MIN       Duration in minutes (alternative to --end)
         --all-day            Create an all-day event on --date (default: today)
@@ -721,16 +721,10 @@ module Teems
         [format_time(start_time), format_time(end_time)]
       end
 
+      # Now when --start is left out
       def validated_start_time
-        start_input = @options[:start]
-        return missing_start_time_error unless start_input
-
+        start_input = @options[:start] || 'now'
         parse_time_input(start_input) || (error("Invalid start time: #{start_input}") || 1)
-      end
-
-      def missing_start_time_error
-        error('Start time required. Use --start "YYYY-MM-DD HH:MM" or --start "today HH:MM"')
-        1
       end
 
       def compute_end_time(start_time)

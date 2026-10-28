@@ -57,6 +57,21 @@ module OutputTests
       assert_empty err.string
     end
 
+    # Commentary beside data: stderr, so piped stdout stays clean; silent under --quiet
+    def test_note_writes_to_err_unless_quiet
+      io = StringIO.new
+      err = StringIO.new
+      Teems::Formatters::Output.new(io: io, err: err, color: false).note('Copied the link')
+
+      assert_equal "Copied the link\n", err.string
+      assert_empty io.string
+
+      quiet = StringIO.new
+      Teems::Formatters::Output.new(err: quiet, color: false, mode: :quiet).note('Copied the link')
+
+      assert_empty quiet.string
+    end
+
     def test_success_writes_checkmark
       io = StringIO.new
       output = Teems::Formatters::Output.new(io: io, color: false)

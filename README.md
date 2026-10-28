@@ -48,8 +48,23 @@ teems cal accept 3           # Accept event #3
 teems cal decline 3          # Decline event #3
 teems cal create "Standup" --start "tomorrow 09:00" --attendees alice@example.com
 teems cal create "PTO" --all-day --date 2026-11-12 --end 2026-11-13 --show-as oof
+teems cal create "Pairing" --teams   # Starts now (the default), 30 minutes
 teems cal delete 3           # Delete event #3
 ```
+
+`--start` defaults to now and takes `now` too; the end defaults to 30 minutes later.
+
+#### Instant Teams meetings
+
+```bash
+teems meet                           # A Teams meeting now, 30 minutes; prints the link and joins here
+teems meet 60 --title "Pairing"      # An hour
+teems meet --copy                    # Also copy the link
+teems meet --no-open | pbcopy        # Just the link
+teems meet --at 14:30 --with alice@example.com   # Asks before inviting (--yes skips)
+```
+
+`teems meet` puts a Teams meeting on your calendar and prints its join link alone on stdout (`teems meet | pbcopy` works; `--json` gives the event too). With nobody invited, nothing is sent; `--with` invites people, and since Exchange emails each an invitation it asks first. It also opens the link here to join (`--no-open` skips that), because people from organizations yours does not trust wait in the lobby until a member of yours joins: setting "Everyone" to bypass the lobby in Meeting options does not change that, and neither does inviting them. Once you are in you can admit them, and the meeting usually carries on after you leave.
 
 All-day events cover `--date` (or `--start YYYY-MM-DD`; default today). Add `--end YYYY-MM-DD` for a multi-day event: like `teems ooo --end`, it is the last day of the event, inclusive. The example above is one event covering November 12 and 13.
 
