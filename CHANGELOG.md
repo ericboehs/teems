@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.8.0] - 2026-10-28
 
 ### Added
 - `teems meet [minutes]` puts a Teams meeting on your calendar, starting now for 30 minutes unless `--at` and the minutes say otherwise, and prints its join link alone on stdout. `--title` names it, it opens the link here to join, since people from organizations yours does not trust wait in the lobby until a member of yours joins (`--no-open` skips that), `--copy` copies the link, and `--json` gives the event. `--with` invites people after asking, since Exchange emails each an invitation (`--yes` skips the question).
