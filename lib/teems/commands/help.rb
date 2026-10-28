@@ -8,6 +8,7 @@ module Teems
       ['cal', 'List calendar events and view details'],
       ['channels', 'List joined teams and channels'],
       ['chats', 'List recent chats'],
+      ['meet', 'Start a Teams meeting and print its join link'],
       ['meeting', 'View meeting details, chat, transcripts, and recordings'],
       ['transcripts', 'Sync saved meeting transcripts to this machine'],
       ['messages', 'Read messages from a channel or chat'],

@@ -67,6 +67,15 @@ module RunnerTests
       end
     end
 
+    def test_clipboard_is_memoized
+      with_temp_config do
+        runner = Teems::Runner.new
+
+        assert_kind_of Teems::Services::Clipboard, runner.clipboard
+        assert_same runner.clipboard, runner.clipboard
+      end
+    end
+
     def test_browser_is_memoized
       with_temp_config do
         runner = Teems::Runner.new

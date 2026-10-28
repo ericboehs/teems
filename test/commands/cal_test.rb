@@ -451,9 +451,26 @@ module CalCommandTests
       assert_match(/Event title required/, result[:stderr])
     end
 
-    def test_create_without_start_time
-      result = run_create(['Meeting'])
-      assert_match(/Start time required/, result[:stderr])
+    # No --start, or --start now, is the current minute; no --duration is 30 minutes
+    def test_create_starts_now_by_default
+      now = Time.new(2026, 3, 20, 14, 7, 42)
+      [['Meeting'], ['Meeting', '--start', 'now'], ['Meeting', '--start', 'NOW']].each do |args|
+        body = Time.stub(:now, now) { posted_event(args) }
+        times = body.values_at(:start, :end).map { |time| time[:dateTime] }
+
+        assert_equal %w[2026-03-20T14:07:00 2026-03-20T14:37:00], times, args.join(' ')
+      end
+    end
+
+    # A trailing --attendees with no value invites nobody rather than failing
+    def test_create_with_attendees_missing_its_value
+      body = posted_event(['Meeting', '--attendees'])
+
+      refute body.key?(:attendees)
+    end
+
+    def posted_event(args)
+      run_create_runner(args).api_client.calls.find { |call| call[:method] == :post }[:body]
     end
 
     def test_create_with_invalid_start
