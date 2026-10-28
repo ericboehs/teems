@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.7.0] - 2026-10-28
 
 ### Added
 - `teems mail thread <id>` lists every message in a message's conversation, from any folder, oldest first, with the folder each sits in (`--tsv`, `--json`). `--full` prints them all as `read` does, Purview and S/MIME labels included, and `--full --decrypt` opens the S/MIME messages with the PIV card on the way.
