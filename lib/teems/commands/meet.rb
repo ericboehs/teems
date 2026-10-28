@@ -11,9 +11,13 @@ module Teems
         teems meet [minutes] [options]
 
       Puts a Teams meeting on your calendar, starting now for 30 minutes unless told
-      otherwise, and prints its join link (alone on stdout, so it pipes). With nobody
-      invited, nothing is sent. People from outside your organization usually wait in
-      the lobby until someone inside lets them in: --open joins here so you can.
+      otherwise, prints its join link (alone on stdout, so it pipes) and opens it here
+      to join. With nobody invited, nothing is sent.
+
+      Joining here matters: people from organizations yours does not trust wait in the
+      lobby until a member of yours joins, even with "Everyone" set to bypass the lobby
+      in Meeting options, and even when invited. Once you are in you can admit them;
+      the meeting usually carries on after you leave.
 
       OPTIONS:
         --at TIME            Start: now (default), HH:MM, "today HH:MM",
@@ -23,14 +27,15 @@ module Teems
                              each an invitation, so this asks first
         -y, --yes            Invite without asking (needed without a terminal)
         --copy               Also copy the link to the clipboard
-        --open               Also open the link here, to join and admit guests
+        --no-open            Do not open the link here (just print it)
         -q, --quiet          Just the link
         --json               Event ID, title, start, end and link as JSON
 
       EXAMPLES:
-        teems meet                         # Now, 30 minutes
+        teems meet                         # Now, 30 minutes, and join here
         teems meet 60 --title "Pairing"    # Now, an hour
-        teems meet --copy --open           # Copy the link and join here
+        teems meet --copy                  # Also copy the link
+        teems meet --no-open | pbcopy      # Just the link, for someone else
         teems meet --at 14:30 --with alice@example.com
     HELP
 
@@ -45,7 +50,8 @@ module Teems
       DEFAULT_MINUTES = 30
       MAX_MINUTES = 24 * 60
       VALUE_OPTIONS = { '--at' => :at, '--title' => :title, '--with' => :with }.freeze
-      FLAGS = { '--copy' => :copy, '--open' => :open, '--yes' => :yes, '-y' => :yes }.freeze
+      # --open is the default; it is still accepted, so scripts that pass it keep working
+      FLAGS = { '--copy' => :copy, '--open' => :open, '--no-open' => :no_open, '--yes' => :yes, '-y' => :yes }.freeze
 
       def initialize(args, runner:)
         @options = {}
@@ -146,7 +152,7 @@ module Teems
 
       def hand_off(link)
         runner.clipboard.copy(link) && note('Copied the link') if @options[:copy]
-        runner.browser.open(link) && note('Opened it to join') if @options[:open]
+        runner.browser.open(link) && note('Opened it to join') unless @options[:no_open]
       end
     end
   end

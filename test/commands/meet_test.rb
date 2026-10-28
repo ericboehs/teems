@@ -71,6 +71,17 @@ class MeetCommandTest < Minitest::Test
       assert_equal({ dateTime: '2026-03-20T14:07:00', timeZone: 'America/Chicago' }, body[:start])
       assert_equal '2026-03-20T14:37:00', body[:end][:dateTime]
       assert_empty body[:attendees], 'nobody invited, so nothing is sent'
+      assert_equal [LINK], @browser.received, 'joins here, to let outsiders in from the lobby'
+    end
+  end
+
+  def test_no_open_just_prints_the_link
+    with_temp_config do
+      result = run_meet(%w[--no-open])
+
+      assert_equal "#{LINK}\n", result[:stdout]
+      assert_empty @browser.received
+      refute_includes result[:stderr], 'Opened it to join'
     end
   end
 
@@ -130,6 +141,7 @@ class MeetCommandTest < Minitest::Test
     end
   end
 
+  # --open is the default now, and still accepted
   def test_copy_and_open_hand_off_the_link
     with_temp_config do
       result = run_meet(%w[--copy --open])
