@@ -4,6 +4,8 @@ module Teems
   module Services
     # A message's attachments during mail sync: lists them for its Markdown file and, with
     # the attachments option, saves file attachments under <folder>/attachments/<short id>/.
+    # The listing is also where S/MIME encrypted mail shows itself: Exchange wraps it as TNEF,
+    # so only an empty body and an smime.p7m attachment give it away.
     # One that fails the same way every time is skipped with a warning. Raising would fail
     # the page before its checkpoint, so every later run would stop there too.
     class MailSyncAttachments
@@ -13,6 +15,9 @@ module Teems
       # Local failures that can clear up (disk full, I/O), unlike a name the disk refuses
       RETRYABLE_ERRNOS = [Errno::ENOSPC, Errno::EIO, Errno::EDQUOT].freeze
 
+      # names: attachment names for the Markdown; encrypted: an S/MIME envelope stood in for the body
+      Listing = Data.define(:names, :encrypted)
+
       # options as for MailSyncEngine: attachments and on_warning
       def initialize(api:, store:, options:)
         @api = api
@@ -20,11 +25,12 @@ module Teems
         @options = options
       end
 
-      # Names of the message's attachments, other than inline images
-      def names(message, folder_path)
-        files = list(message)
+      # The message's attachments other than inline images and, for a message with no body, its
+      # S/MIME envelope: ciphertext, so neither listed nor saved as a file
+      def listing(message, folder_path)
+        envelopes, files = list(message).partition { |item| message.bodyless? && Models::MailEncryption.envelope?(item) }
         download_all(message, files, File.join(@store.folder_dir(folder_path), 'attachments')) if @options[:attachments]
-        Models::MailMessage.attachment_names(files)
+        Listing.new(names: Models::MailMessage.attachment_names(files), encrypted: envelopes.any?)
       end
 
       def self.permanent?(error)

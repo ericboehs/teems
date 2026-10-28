@@ -21,7 +21,7 @@ module Teems
       include MailPaths
 
       LIST_FIELDS = %w[id receivedDateTime from subject isRead hasAttachments flag].freeze
-      # internetMessageHeaders only to tell protected mail apart (MailMessage.protection); delta
+      # internetMessageHeaders only to tell protected mail apart (MailEncryption.from_headers); delta
       # has no lighter way, since hasAttachments is unreliable for it and $expand is refused
       MESSAGE_FIELDS = (LIST_FIELDS + %w[toRecipients ccRecipients categories body internetMessageId webLink
                                          internetMessageHeaders]).freeze

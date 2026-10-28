@@ -7,15 +7,12 @@ module Teems
     # (macOS asks for the PIN) and shows it like any other message. Purview (rights-managed)
     # mail needs Microsoft's service, so it is only labelled.
     module MailDecrypting
-      ENVELOPE_TYPES = Support::MimePart::PKCS7_TYPES
       LOCKED_HINT = Models::MailEncryption::LOCKED_HINT
 
       private
 
       def envelope_attachment(message_id)
-        mail_api.attachments(message_id).find do |item|
-          ENVELOPE_TYPES.include?(Support::MimeHeader.field(item['contentType']).first)
-        end
+        mail_api.attachments(message_id).find { |item| Models::MailEncryption.envelope?(item) }
       end
 
       def show_purview(message)

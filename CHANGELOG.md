@@ -11,6 +11,9 @@
 ### Changed
 - Purview protected mail now reads "Protected by Purview; open in Outlook on the web", and `read`, `thread --full` and synced Markdown give its Outlook on the web link (an `Open:` line in the headers), where Exchange decrypts it.
 
+### Fixed
+- `teems mail sync` now labels S/MIME encrypted mail that Exchange wraps as TNEF, which is most of it: its headers do not say S/MIME and Graph reports no attachments, so sync lists the attachments of a message with no body and looks for an `smime.p7m` envelope. The envelope is not listed or saved as a file. Files synced before keep their old content until the message changes.
+
 ## [0.6.0] - 2026-10-27
 
 ### Added

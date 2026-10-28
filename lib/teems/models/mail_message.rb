@@ -26,17 +26,7 @@ module Teems
         { categories: Array(data['categories']).map { |category| clean(category) },
           body_type: body['contentType'].to_s.downcase, body: clean(body['content']),
           internet_message_id: data['internetMessageId'], web_link: data['webLink'],
-          protection: protection(data['internetMessageHeaders']), folder_id: data['parentFolderId'] }
-      end
-
-      # 'purview' (rights-managed, Content-Class rpmsg.message), 'smime' (an S/MIME envelope),
-      # or nil, from the internet headers. Drafts have none, so nil is not proof of plain mail.
-      def self.protection(headers)
-        fields = Array(headers).to_h { |header| [header['name'].to_s.downcase, header['value'].to_s.downcase] }
-        return 'purview' if fields['content-class'].to_s.start_with?('rpmsg.message')
-
-        type, params = Support::MimeHeader.field(fields['content-type'])
-        'smime' if Support::MimePart::PKCS7_TYPES.include?(type) && params['smime-type'] != 'signed-data'
+          protection: MailEncryption.from_headers(data['internetMessageHeaders']), folder_id: data['parentFolderId'] }
       end
 
       def self.recipient(data)
@@ -79,6 +69,9 @@ module Teems
 
       # True for S/MIME encrypted mail, which Graph returns with no body (the envelope is an attachment)
       def bodyless? = body.strip.empty?
+
+      # Graph says it has attachments, or it may hide an S/MIME envelope
+      def attachments_to_list? = has_attachments || envelope_candidate?
 
       # Worth looking for an S/MIME envelope: no body, and not Purview. Exchange often wraps
       # encrypted mail as TNEF, so neither its headers nor hasAttachments give it away.
