@@ -46,7 +46,15 @@ class MailMarkdownTest < Minitest::Test
     front, body = Markdown.render(msg, folder: 'Inbox').split("\n\n---\n\n", 2)
 
     assert_includes front, %(internet_message_id: "<abc@example.com>"\nprotection: "purview"\n---)
-    assert_equal "> Protected by Purview; open in Outlook\n\nplaceholder\n", body
+    assert_equal "> Protected by Purview; open in Outlook on the web: <https://outlook.office365.com/owa/?ItemID=1>\n\nplaceholder\n",
+                 body
+  end
+
+  # A Purview note without a link, should Graph leave webLink out, still reads as a sentence
+  def test_purview_note_without_a_web_link
+    msg = mail_message('internetMessageHeaders' => purview_headers, 'webLink' => nil)
+
+    assert_includes Markdown.render(msg, folder: 'Inbox'), "> Protected by Purview; open in Outlook on the web\n\n"
   end
 
   def test_plain_mail_has_no_protection_field

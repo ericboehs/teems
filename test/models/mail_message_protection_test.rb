@@ -15,7 +15,7 @@ class MailMessageProtectionTest < Minitest::Test
                                                               'Application/PKCS7-MIME; smime-type=enveloped-data']))
 
     assert_equal 'purview', purview.protection
-    assert_equal 'Protected by Purview; open in Outlook', purview.protection_note
+    assert_equal 'Protected by Purview; open in Outlook on the web', purview.protection_note
     assert_equal 'smime', smime.protection
     assert_includes smime.protection_note, 'teems mail read --decrypt'
   end

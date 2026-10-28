@@ -87,8 +87,9 @@ module Teems
       def write(message)
         path = @folder.path
         file = @folder.file_for(message)
-        names = message.has_attachments ? attachments.names(message, path) : []
-        content = Formatters::MailMarkdown.render(message, folder: path, attachments: names)
+        listing = attachments.listing(message, path) if message.attachments_to_list?
+        message = message.with(protection: 'smime') if listing&.encrypted
+        content = Formatters::MailMarkdown.render(message, folder: path, attachments: listing ? listing.names : [])
         @folder.count(@store.write_message(path, file, content))
         @folder.record(message, file)
       end

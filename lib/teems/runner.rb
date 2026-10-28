@@ -12,6 +12,7 @@ module Teems
     def mail_actions = Api::MailActions.new(api_client, account)
     def mail_rules_api = Api::MailRules.new(api_client, account)
     def smime_decryptor = @smime_decryptor ||= Services::SmimeDecryptor.new
+    def browser = @browser ||= Services::Browser.new
     def users_api = Api::Users.new(api_client, account)
     def files_api = Api::Files.new(api_client, account)
   end

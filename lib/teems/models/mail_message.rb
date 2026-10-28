@@ -6,7 +6,7 @@ module Teems
     # of terminal control characters (see Support::ControlChars), whichever way it is shown.
     MailMessage = Data.define(
       :id, :subject, :from, :to, :cc, :received_at, :is_read, :has_attachments, :flagged,
-      :categories, :body_type, :body, :internet_message_id, :web_link, :protection
+      :categories, :body_type, :body, :internet_message_id, :web_link, :protection, :folder_id
     ) do
       extend Parsing
 
@@ -26,17 +26,7 @@ module Teems
         { categories: Array(data['categories']).map { |category| clean(category) },
           body_type: body['contentType'].to_s.downcase, body: clean(body['content']),
           internet_message_id: data['internetMessageId'], web_link: data['webLink'],
-          protection: protection(data['internetMessageHeaders']) }
-      end
-
-      # 'purview' (rights-managed, Content-Class rpmsg.message), 'smime' (an S/MIME envelope),
-      # or nil, from the internet headers. Drafts have none, so nil is not proof of plain mail.
-      def self.protection(headers)
-        fields = Array(headers).to_h { |header| [header['name'].to_s.downcase, header['value'].to_s.downcase] }
-        return 'purview' if fields['content-class'].to_s.start_with?('rpmsg.message')
-
-        type, params = Support::MimeHeader.field(fields['content-type'])
-        'smime' if Support::MimePart::PKCS7_TYPES.include?(type) && params['smime-type'] != 'signed-data'
+          protection: MailEncryption.from_headers(data['internetMessageHeaders']), folder_id: data['parentFolderId'] }
       end
 
       def self.recipient(data)
@@ -65,8 +55,27 @@ module Teems
       # What to show instead of a protected message's body, or nil for plain mail
       def protection_note = self.class::PROTECTION_NOTES[protection]
 
+      # { type:, decrypted: false } for protected mail, as `read --json` has it (see MailEncryption); else nil
+      def encryption = protection && { type: protection, decrypted: false }
+
+      # How this message was shown when overrides (message ID => encryption) say, else #encryption
+      def encryption_in(overrides) = overrides.fetch(id) { encryption }
+
+      # Names of attached files, fetched through api only if there are any
+      def attachment_names_from(api) = files? ? self.class.attachment_names(api.attachments(id)) : []
+
+      # An S/MIME message's one attachment is its envelope, not a file
+      def files? = has_attachments && protection != 'smime'
+
       # True for S/MIME encrypted mail, which Graph returns with no body (the envelope is an attachment)
       def bodyless? = body.strip.empty?
+
+      # Graph says it has attachments, or it may hide an S/MIME envelope
+      def attachments_to_list? = has_attachments || envelope_candidate?
+
+      # Worth looking for an S/MIME envelope: no body, and not Purview. Exchange often wraps
+      # encrypted mail as TNEF, so neither its headers nor hasAttachments give it away.
+      def envelope_candidate? = bodyless? && protection != 'purview'
 
       def from_label = self.class.label(from)
       def from_display = self.class.display(from)
@@ -136,7 +145,7 @@ module Teems
 
     # Constants set inside Data.define's block would land on Models, so they go here
     MailMessage::PROTECTION_NOTES = {
-      'purview' => 'Protected by Purview; open in Outlook',
+      'purview' => 'Protected by Purview; open in Outlook on the web',
       'smime' => 'S/MIME encrypted; read it with teems mail read --decrypt'
     }.freeze
   end

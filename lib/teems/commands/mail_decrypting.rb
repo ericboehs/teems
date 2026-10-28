@@ -7,31 +7,30 @@ module Teems
     # (macOS asks for the PIN) and shows it like any other message. Purview (rights-managed)
     # mail needs Microsoft's service, so it is only labelled.
     module MailDecrypting
-      ENVELOPE_TYPES = Support::MimePart::PKCS7_TYPES
-      LOCKED_HINT = 'S/MIME encrypted; read it with --decrypt (macOS asks for your PIV PIN)'
+      LOCKED_HINT = Models::MailEncryption::LOCKED_HINT
 
       private
 
       def envelope_attachment(message_id)
-        mail_api.attachments(message_id).find do |item|
-          ENVELOPE_TYPES.include?(Support::MimeHeader.field(item['contentType']).first)
-        end
+        mail_api.attachments(message_id).find { |item| Models::MailEncryption.envelope?(item) }
       end
 
       def show_purview(message)
         warn('--decrypt opens S/MIME mail only; Purview protected mail needs Outlook') if @options[:decrypt]
-        warn(message.protection_note) if @options[:html]
-        names = message.has_attachments ? attachment_names(message.id) : []
-        render_message(message, names, { type: 'purview', decrypted: false })
+        warn([message.protection_note, message.web_link].compact.join(': ')) if @options[:html]
+        render_message(message, message.attachment_names_from(mail_api), { type: 'purview', decrypted: false })
       end
 
       def show_encrypted(message, envelope)
         return show_locked(message) unless @options[:decrypt]
 
-        content = Services::SmimeContent.parse(runner.smime_decryptor.decrypt(envelope_bytes(message, envelope)))
-        decrypted = message.with(body: Models::MailMessage.clean(content.body), body_type: content.body_type)
-        names = content.attachments.map { |name| Models::MailMessage.clean(name) }
-        render_message(decrypted, names, { type: 'smime', decrypted: true, signed: content.signed })
+        content = decrypt_content(message.id, envelope)
+        render_message(content.apply_to(message), content.attachment_names, Models::MailEncryption.decrypted(content))
+      end
+
+      # The message inside an envelope (an smime.p7m attachment), opened with the PIV card
+      def decrypt_content(message_id, envelope)
+        Services::SmimeContent.parse(runner.smime_decryptor.decrypt(envelope_bytes(message_id, envelope['id'])))
       end
 
       def show_locked(message)
@@ -39,20 +38,8 @@ module Teems
         render_message(message, [], { type: 'smime', decrypted: false })
       end
 
-      def envelope_bytes(message, envelope)
-        mail_api.attachment(message.id, envelope['id'])['contentBytes'].to_s.unpack1('m')
-      end
-
-      # Header lines describing how an encrypted message was shown
-      def encryption_notes(encryption)
-        return {} unless encryption
-
-        type = encryption[:type]
-        return { 'Encryption' => Models::MailMessage::PROTECTION_NOTES[type] } if type == 'purview'
-        return { 'Encryption' => LOCKED_HINT } unless encryption[:decrypted]
-
-        { 'Encryption' => 'S/MIME, decrypted', 'Signature' => encryption[:signed] ? 'Signed (not checked)' : '' }
-          .reject { |_name, value| value.empty? }
+      def envelope_bytes(message_id, attachment_id)
+        mail_api.attachment(message_id, attachment_id)['contentBytes'].to_s.unpack1('m')
       end
     end
   end

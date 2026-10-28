@@ -7,7 +7,12 @@ module Teems
     # is unwrapped to reach the content but not checked.
     class SmimeContent
       # body: text in body_type ('html' or 'text'); attachments: file names; signed: true/false
-      Result = Data.define(:body, :body_type, :attachments, :signed)
+      Result = Data.define(:body, :body_type, :attachments, :signed) do
+        # The bodyless message Graph returned, with the decrypted body in its place
+        def apply_to(message) = message.with(body: Models::MailMessage.clean(body), body_type: body_type)
+
+        def attachment_names = attachments.map { |name| Models::MailMessage.clean(name) }
+      end
       BODY_TYPES = %w[text/html text/plain].freeze
 
       def self.parse(mime) = new.parse(Support::MimePart.parse(mime))
